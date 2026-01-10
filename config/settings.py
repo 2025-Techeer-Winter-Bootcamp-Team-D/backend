@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    "drf_spectacular",
 ]
 
 MIDDLEWARE = [
@@ -71,6 +72,30 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
+REST_FRAMEWORK = {
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Django API",
+    "DESCRIPTION": "Django REST API with TimescaleDB, Redis, OpenSearch",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    # API 문서 UI 설정
+    "SWAGGER_UI_SETTINGS": {
+        "deepLinking": True,  # 딥 링킹 활성화
+        "persistAuthorization": True,  # 인증 정보 유지
+        "displayOperationId": True,  # Operation ID 표시
+        "filter": True,  # 검색 필터 활성화
+    },
+    # 스키마 생성 설정
+    "COMPONENT_SPLIT_REQUEST": True,  # 요청/응답 스키마 분리
+    "SCHEMA_PATH_PREFIX": "/api/",  # API 경로 접두사
+    # 태그 정렬
+    "TAGS": [
+        {"name": "Health Check", "description": "서버 상태 확인"},
+    ],
+}
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
