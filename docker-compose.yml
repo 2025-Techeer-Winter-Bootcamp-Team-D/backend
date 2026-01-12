@@ -15,7 +15,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -97,8 +97,47 @@ services:
         - path: ./config
           target: config/
           action: sync+restart
+        - path: ./core
+          target: core/
+          action: sync+restart
         - path: ./requirements.txt
           action: rebuild
+
+  kis-publisher:
+    build: ./kis-publisher
+    container_name: kis-publisher
+    env_file:
+      - .env
+    environment:
+      - REDIS_HOST=redis
+      - PYTHONUNBUFFERED=1
+      - KRX_SYMBOLS_CSV_PATH=/app/companies_data.csv
+      - KIS_SYMBOL_LIMIT=500
+      - KIS_USE_TEST_MODE=false
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - django-network
+    restart: always
+
+  persistence-worker:
+    build: ./persistence-worker
+    container_name: persistence-worker
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-postgres}
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    networks:
+      - django-network
+    restart: always
 
 volumes:
   postgres_data:
