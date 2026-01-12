@@ -6,4 +6,4 @@ from .models import Company
 class CompanySerializer(serializers.ModelSerializer):
     class Meta:
         model = Company
-        fields = '__all__'  # 모든 필드를 가져오겠다는 설정
+        fields = ['ticker_symbol', 'company_name', 'description', 'rank_in_industry']
