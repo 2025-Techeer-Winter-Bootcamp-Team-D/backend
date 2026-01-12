@@ -38,7 +38,7 @@ class Migration(migrations.Migration):
                         if_not_exists => TRUE
                     );
                     """,
-                    reverse_sql="",
+                    reverse_sql="-- Hypertable conversion cannot be reversed; table must be dropped and recreated",
                 ),
                 # 3단계: 압축 설정
                 migrations.RunSQL(

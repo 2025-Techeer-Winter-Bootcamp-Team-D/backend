@@ -4,8 +4,8 @@ from django.db import models
 class StockTick(models.Model):
     """실시간 주가 체결 데이터 (TimescaleDB Hypertable)
 
-    주의: 이 모델은 TimescaleDB hypertable로 마이그레이션에서 직접 생성됩니다.
-    복합 primary key (symbol, time)를 사용하며, managed=False로 설정되어 있습니다.
+    주의: 이 모델은 TimescaleDB hypertable로 마이그레이션에서 직접 생성되지 않습니다.
+    복합 primary key (symbol, time)를 사용합니다.
     """
 
     symbol = models.CharField(max_length=10, db_column="symbol")  # KIS 내부 식별자
@@ -22,7 +22,7 @@ class StockTick(models.Model):
         # TimescaleDB hypertable은 파티셔닝 컬럼(time)이 primary key에 포함되어야 함
         # 복합 primary key (symbol, time)는 마이그레이션의 RunSQL로 생성
         unique_together = [["symbol", "time"]]
-        managed = True
+        managed = False
 
     def __str__(self):
         return f"{self.symbol} @ {self.time}: {self.price} (vol: {self.volume})"
