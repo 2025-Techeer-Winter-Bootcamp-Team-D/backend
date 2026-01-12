@@ -3,6 +3,7 @@ import json
 import os
 import redis.asyncio as redis
 import asyncpg
+import re
 from datetime import datetime
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -15,6 +16,14 @@ class PersistenceWorker:
         self.lock = asyncio.Lock()
         self.batch_size = 200
         self.flush_interval = 5  # 5초마다 버퍼 비우기 (배치 효율성 향상)
+
+    def parse_time(self, time_str: str) -> datetime:
+        """HHMMSS 형식의 시간 문자열을 datetime으로 변환"""
+        today = datetime.now().date()
+        hour = int(time_str[0:2])
+        minute = int(time_str[2:4])
+        second = int(time_str[4:6])
+        return datetime(today.year, today.month, today.day, hour, minute, second)
 
     async def save_to_database(self, pool):
         if not self.buffer:
@@ -29,7 +38,11 @@ class PersistenceWorker:
             async with pool.acquire() as conn:
                 records = [
                     (
-                        datetime.now(),
+                        (
+                            self.parse_time(time_str=r["time"])
+                            if isinstance(r["time"], str)
+                            else r["time"]
+                        ),
                         r["symbol"],  # KIS 내부 식별자
                         r.get("stock_code"),  # 실제 종목코드 (6자리)
                         r["price"],
@@ -45,11 +58,16 @@ class PersistenceWorker:
             print(f"Saved {len(current_batch)} rows to database")
         except Exception as e:
             print(f"Error saving to database: {e}")
+            # 실패 시 버퍼 복구
+            async with self.lock:
+                self.buffer.extend(current_batch)
+            print(f"Buffer restored: {len(self.buffer)} rows")
 
     async def run(self):
         print(f"[INIT] Starting PersistenceWorker...")
         print(f"[INIT] REDIS_URL: {REDIS_URL}")
-        print(f"[INIT] DATABASE_URL: {DATABASE_URL}")
+        masked_url = re.sub(r"://[^:]+:[^@]+@", "://***:***@", DATABASE_URL)
+        print(f"[INIT] DATABASE_URL: {masked_url}")
 
         try:
             # Redis 연결
