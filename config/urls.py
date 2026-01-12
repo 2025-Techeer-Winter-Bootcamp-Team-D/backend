@@ -15,13 +15,18 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, include
+from django.http import HttpResponse
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularRedocView,
     SpectacularSwaggerView,
 )
 from core.views import health_check
+
+#임시 메인 페이지 함수수
+def main_page(request):
+    return HttpResponse("메인 페이지입니다.")
 
 urlpatterns = [
     # Admin
@@ -40,4 +45,6 @@ urlpatterns = [
         SpectacularRedocView.as_view(url_name="schema"),
         name="redoc",
     ),
+    path('', main_page, name='main'),
+    path('api/users/', include('users.urls')),
 ]
