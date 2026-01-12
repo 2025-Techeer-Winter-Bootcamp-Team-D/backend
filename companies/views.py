@@ -1,7 +1,7 @@
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from drf_spectacular.utils import extend_schema, OpenApiResponse
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter
 from .models import Company
 from .serializers import CompanySerializer
 
@@ -22,7 +22,7 @@ from .serializers import CompanySerializer
 @api_view(["GET"])
 def get_company_info(request, ticker_symbol):
     try:
-        company = Company.objects.get(pk=ticker_symbol)
+        company = Company.objects.get(pk=ticker_symbol, is_deleted=False)
         serializer = CompanySerializer(company)
         return Response(serializer.data, status=status.HTTP_200_OK)
     except Company.DoesNotExist:
