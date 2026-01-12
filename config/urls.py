@@ -15,29 +15,13 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
-from drf_spectacular.views import (
-    SpectacularAPIView,
-    SpectacularRedocView,
-    SpectacularSwaggerView,
-)
-from core.views import health_check
+from django.urls import path, include
+#from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 urlpatterns = [
-    # Admin
-    path("admin/", admin.site.urls),
-    # Health Check
-    path("health/", health_check, name="health-check"),
-    # API Schema & Documentation
-    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
-    path(
-        "swagger/",
-        SpectacularSwaggerView.as_view(url_name="schema"),
-        name="swagger-ui",
-    ),
-    path(
-        "redoc/",
-        SpectacularRedocView.as_view(url_name="schema"),
-        name="redoc",
-    ),
+    path('admin/', admin.site.urls),
+    path('api/companies/', include('companies.urls')),
+    # # Swagger API 명세서 (테스트를 위해 필수)
+    # path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    # path('swagger/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
 ]
