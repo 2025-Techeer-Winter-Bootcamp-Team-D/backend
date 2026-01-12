@@ -15,29 +15,15 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
-from drf_spectacular.views import (
-    SpectacularAPIView,
-    SpectacularRedocView,
-    SpectacularSwaggerView,
-)
-from core.views import health_check
+from django.urls import path, include
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 urlpatterns = [
-    # Admin
-    path("admin/", admin.site.urls),
-    # Health Check
-    path("health/", health_check, name="health-check"),
-    # API Schema & Documentation
-    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
-    path(
-        "swagger/",
-        SpectacularSwaggerView.as_view(url_name="schema"),
-        name="swagger-ui",
-    ),
-    path(
-        "redoc/",
-        SpectacularRedocView.as_view(url_name="schema"),
-        name="redoc",
-    ),
-]
+    path('admin/', admin.site.urls),
+    path('api/core/', include('core.urls')),      # 기존 경로
+    path('api/companies/', include('companies.urls')), # 기존 경로
+
+    # 문서 데이터(Schema) 생성 엔진
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    # Swagger UI (위에서 만든 schema를 시각화)
+    path('api/schema/swagger-ui/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),]
