@@ -98,15 +98,13 @@ async def test_subscriber():
 
                 try:
                     data = json.loads(data_raw)
-                    print(
-                        f"[RECV #{message_count}] channel={channel}, data={data}"
-                    )
+                    print(f"[RECV #{message_count}] channel={channel}, data={data}")
                 except json.JSONDecodeError as e:
                     print(f"[ERROR] Failed to parse JSON: {e}, raw={data_raw}")
     except KeyboardInterrupt:
         print("\n[INFO] Subscriber stopped")
     finally:
-        await pubsub.unsubscribe()
+        await pubsub.punsubscribe()
         await r.close()
 
 
