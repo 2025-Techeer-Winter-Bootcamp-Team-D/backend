@@ -9,3 +9,5 @@ websockets
 redis
 aiohttp
 python-dotenv
+django-channels
+django-extensions
