@@ -172,7 +172,7 @@ class UserProfile(models.Model):
         return f"{self.user.username} - {self.nickname}"
 ```
 
-### 1.2 모델 설계 체크리스트
+### 2.2 모델 설계 체크리스트
 
 - [ ] 필드 타입이 적절한가?
 - [ ] `null=True`와 `blank=True`를 올바르게 설정했는가?
@@ -234,7 +234,7 @@ docker-compose exec app python manage.py sqlmigrate users 0001
 python manage.py sqlmigrate users 0001
 ```
 
-### 2.4 마이그레이션 적용
+### 3.4 마이그레이션 적용
 
 #### Docker 환경
 
@@ -257,7 +257,7 @@ Running migrations:
   Applying core.0002_userprofile... OK
 ```
 
-### 2.5 데이터베이스 확인
+### 3.5 데이터베이스 확인
 
 테이블이 제대로 생성되었는지 확인합니다.
 
