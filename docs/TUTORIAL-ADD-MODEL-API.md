@@ -1,0 +1,998 @@
+# Django 앱 생성 및 REST API 구현 튜토리얼
+
+이 문서는 Django 프로젝트에서 새로운 앱을 생성하고, 모델을 추가하고, REST API를 구현하고, 테스트하는 전체 과정을 단계별로 설명합니다.
+
+## 목차
+
+1. [새로운 Django 앱 생성](#1-새로운-django-앱-생성)
+2. [모델 추가](#2-모델-추가)
+3. [마이그레이션 생성 및 적용](#3-마이그레이션-생성-및-적용)
+4. [Serializer 작성](#4-serializer-작성)
+5. [ViewSet 작성](#5-viewset-작성)
+6. [URL 라우팅 설정](#6-url-라우팅-설정)
+7. [API 문서화](#7-api-문서화)
+8. [테스트 작성](#8-테스트-작성)
+9. [전체 테스트](#9-전체-테스트)
+
+---
+
+## 1. 새로운 Django 앱 생성
+
+### 1.1 앱 생성
+
+Django에서는 기능별로 앱을 분리하는 것이 좋은 설계입니다. 예를 들어:
+- `users`: 사용자 관리
+- `posts`: 게시글 관리
+- `comments`: 댓글 관리
+
+#### Docker 환경
+
+```bash
+docker-compose exec app python manage.py startapp users
+```
+
+#### 로컬 환경
+
+```bash
+source .venv/bin/activate
+python manage.py startapp users
+```
+
+**생성된 파일 구조:**
+
+```
+users/
+├── __init__.py
+├── admin.py
+├── apps.py
+├── migrations/
+│   └── __init__.py
+├── models.py
+├── tests.py
+└── views.py
+```
+
+### 1.2 앱 등록
+
+생성한 앱을 `config/settings.py`의 `INSTALLED_APPS`에 추가합니다.
+
+```python
+INSTALLED_APPS = [
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "rest_framework",
+    "drf_spectacular",
+    "core",
+    "users",  # 새로 추가
+]
+```
+
+### 1.3 앱 설정 파일 수정 (선택사항)
+
+`users/apps.py`에서 앱 설정을 커스터마이징할 수 있습니다.
+
+```python
+from django.apps import AppConfig
+
+
+class UsersConfig(AppConfig):
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "users"
+    verbose_name = "사용자 관리"  # Django Admin에서 표시될 이름
+```
+
+### 1.4 앱 디렉토리 구조 재구성 (권장)
+
+프로젝트가 커질 것을 대비해 파일을 분리합니다.
+
+```bash
+cd users
+mkdir -p tests
+touch serializers.py urls.py
+```
+
+**최종 디렉토리 구조:**
+
+```
+users/
+├── __init__.py
+├── admin.py
+├── apps.py
+├── migrations/
+│   └── __init__.py
+├── models.py
+├── serializers.py  # 새로 생성
+├── urls.py         # 새로 생성
+├── views.py
+└── tests/          # 새로 생성
+    ├── __init__.py
+    ├── test_models.py
+    └── test_api.py
+```
+
+---
+
+## 2. 모델 추가
+
+### 2.1 모델 정의
+
+`users/models.py`에 새로운 모델을 정의합니다.
+
+**예제: User 프로필 모델**
+
+```python
+from django.db import models
+from django.contrib.auth.models import User
+
+
+class UserProfile(models.Model):
+    """사용자 프로필 정보"""
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='profile',
+        verbose_name='사용자'
+    )
+    nickname = models.CharField(
+        max_length=50,
+        unique=True,
+        verbose_name='닉네임'
+    )
+    bio = models.TextField(
+        blank=True,
+        default='',
+        verbose_name='자기소개'
+    )
+    avatar_url = models.URLField(
+        blank=True,
+        null=True,
+        verbose_name='프로필 이미지 URL'
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name='생성일시'
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name='수정일시'
+    )
+
+    class Meta:
+        db_table = 'user_profiles'
+        ordering = ['-created_at']
+        verbose_name = '사용자 프로필'
+        verbose_name_plural = '사용자 프로필'
+
+    def __str__(self):
+        return f"{self.user.username} - {self.nickname}"
+```
+
+### 1.2 모델 설계 체크리스트
+
+- [ ] 필드 타입이 적절한가?
+- [ ] `null=True`와 `blank=True`를 올바르게 설정했는가?
+- [ ] `on_delete` 동작이 의도한 대로인가?
+- [ ] `db_table` 이름이 명확한가?
+- [ ] `verbose_name`으로 한글 설명을 추가했는가?
+- [ ] `__str__` 메서드를 정의했는가?
+
+---
+
+## 3. 마이그레이션 생성 및 적용
+
+### 3.1 마이그레이션 파일 생성
+
+특정 앱에 대해서만 마이그레이션을 생성할 수 있습니다.
+
+#### Docker 환경
+
+```bash
+# users 앱만 마이그레이션 생성
+docker-compose exec app python manage.py makemigrations users
+
+# 전체 앱 마이그레이션 생성
+docker-compose exec app python manage.py makemigrations
+```
+
+#### 로컬 환경
+
+```bash
+source .venv/bin/activate
+python manage.py makemigrations users
+```
+
+**출력 예시:**
+
+```
+Migrations for 'users':
+  users/migrations/0001_initial.py
+    + Create model UserProfile
+```
+
+### 3.2 마이그레이션 확인
+
+생성된 마이그레이션 파일을 확인합니다.
+
+```bash
+cat users/migrations/0001_initial.py
+```
+
+### 3.3 마이그레이션 SQL 미리보기 (선택사항)
+
+실제로 실행될 SQL을 확인할 수 있습니다.
+
+```bash
+# Docker 환경
+docker-compose exec app python manage.py sqlmigrate users 0001
+
+# 로컬 환경
+python manage.py sqlmigrate users 0001
+```
+
+### 2.4 마이그레이션 적용
+
+#### Docker 환경
+
+```bash
+docker-compose exec app python manage.py migrate
+```
+
+#### 로컬 환경
+
+```bash
+python manage.py migrate
+```
+
+**출력 예시:**
+
+```
+Operations to perform:
+  Apply all migrations: admin, auth, contenttypes, core, sessions
+Running migrations:
+  Applying core.0002_userprofile... OK
+```
+
+### 2.5 데이터베이스 확인
+
+테이블이 제대로 생성되었는지 확인합니다.
+
+```bash
+docker-compose exec db psql -U admin -d stock_db -c "\d user_profiles"
+```
+
+**출력 예시:**
+
+```
+                                       Table "public.user_profiles"
+   Column    |           Type           | Collation | Nullable |      Default
+-------------+--------------------------+-----------+----------+-------------------
+ id          | bigint                   |           | not null | generated by default
+ user_id     | integer                  |           | not null |
+ nickname    | character varying(50)    |           | not null |
+ bio         | text                     |           | not null |
+ avatar_url  | character varying(200)   |           |          |
+ created_at  | timestamp with time zone |           | not null |
+ updated_at  | timestamp with time zone |           | not null |
+Indexes:
+    "user_profiles_pkey" PRIMARY KEY, btree (id)
+    "user_profiles_nickname_key" UNIQUE CONSTRAINT, btree (nickname)
+    "user_profiles_user_id_key" UNIQUE CONSTRAINT, btree (user_id)
+```
+
+### 3.6 마이그레이션 롤백 (필요시)
+
+실수로 잘못된 마이그레이션을 적용한 경우 롤백할 수 있습니다.
+
+```bash
+# users 앱의 모든 마이그레이션 롤백 (초기 상태로)
+docker-compose exec app python manage.py migrate users zero
+
+# 특정 마이그레이션까지 롤백
+docker-compose exec app python manage.py migrate users 0001
+
+# 마이그레이션 파일 삭제
+rm users/migrations/0001_initial.py
+```
+
+### 3.7 마이그레이션 상태 확인
+
+```bash
+# 전체 앱의 마이그레이션 상태 확인
+docker-compose exec app python manage.py showmigrations
+
+# users 앱만 확인
+docker-compose exec app python manage.py showmigrations users
+```
+
+**출력 예시:**
+
+```
+users
+ [X] 0001_initial
+```
+
+---
+
+## 4. Serializer 작성
+
+### 4.1 Serializer 파일 생성
+
+`users/serializers.py` 파일을 생성합니다 (이미 1.4에서 생성했다면 편집만 하면 됩니다).
+
+```python
+# users/serializers.py
+from rest_framework import serializers
+from django.contrib.auth.models import User
+from .models import UserProfile
+
+
+class UserSerializer(serializers.ModelSerializer):
+    """사용자 기본 정보 Serializer"""
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'first_name', 'last_name']
+        read_only_fields = ['id']
+
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    """사용자 프로필 Serializer"""
+
+    user = UserSerializer(read_only=True)
+    username = serializers.CharField(
+        write_only=True,
+        required=False,
+        help_text="사용자 이름 (생성 시에만 필요)"
+    )
+
+    class Meta:
+        model = UserProfile
+        fields = [
+            'id',
+            'user',
+            'username',
+            'nickname',
+            'bio',
+            'avatar_url',
+            'created_at',
+            'updated_at'
+        ]
+        read_only_fields = ['id', 'user', 'created_at', 'updated_at']
+
+    def create(self, validated_data):
+        """프로필 생성 (User도 함께 생성)"""
+        username = validated_data.pop('username')
+        user = User.objects.create_user(username=username)
+        profile = UserProfile.objects.create(user=user, **validated_data)
+        return profile
+
+
+class UserProfileListSerializer(serializers.ModelSerializer):
+    """사용자 프로필 목록용 간소화 Serializer"""
+
+    username = serializers.CharField(source='user.username', read_only=True)
+
+    class Meta:
+        model = UserProfile
+        fields = ['id', 'username', 'nickname', 'avatar_url', 'created_at']
+```
+
+### 4.2 Serializer 테스트 (Django Shell)
+
+```bash
+docker-compose exec app python manage.py shell
+```
+
+```python
+from users.models import UserProfile
+from users.serializers import UserProfileSerializer
+
+# 데이터 직렬화 테스트
+profile = UserProfile.objects.first()
+serializer = UserProfileSerializer(profile)
+print(serializer.data)
+
+# 데이터 역직렬화 테스트
+data = {
+    'username': 'testuser',
+    'nickname': 'test_nick',
+    'bio': 'Hello, World!'
+}
+serializer = UserProfileSerializer(data=data)
+if serializer.is_valid():
+    profile = serializer.save()
+    print(f"Created: {profile}")
+else:
+    print(f"Errors: {serializer.errors}")
+```
+
+---
+
+## 5. ViewSet 작성
+
+### 5.1 ViewSet 파일 수정
+
+`users/views.py` 파일을 편집합니다.
+
+```python
+# users/views.py
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from drf_spectacular.utils import extend_schema, extend_schema_view
+from .models import UserProfile
+from .serializers import (
+    UserProfileSerializer,
+    UserProfileListSerializer
+)
+
+
+@extend_schema_view(
+    list=extend_schema(
+        summary="사용자 프로필 목록 조회",
+        description="모든 사용자 프로필 목록을 조회합니다.",
+        tags=["User Profile"]
+    ),
+    retrieve=extend_schema(
+        summary="사용자 프로필 상세 조회",
+        description="특정 사용자 프로필의 상세 정보를 조회합니다.",
+        tags=["User Profile"]
+    ),
+    create=extend_schema(
+        summary="사용자 프로필 생성",
+        description="새로운 사용자 프로필을 생성합니다.",
+        tags=["User Profile"]
+    ),
+    update=extend_schema(
+        summary="사용자 프로필 전체 수정",
+        description="사용자 프로필 정보를 전체 수정합니다.",
+        tags=["User Profile"]
+    ),
+    partial_update=extend_schema(
+        summary="사용자 프로필 부분 수정",
+        description="사용자 프로필 정보를 부분 수정합니다.",
+        tags=["User Profile"]
+    ),
+    destroy=extend_schema(
+        summary="사용자 프로필 삭제",
+        description="사용자 프로필을 삭제합니다.",
+        tags=["User Profile"]
+    ),
+)
+class UserProfileViewSet(viewsets.ModelViewSet):
+    """
+    사용자 프로필 CRUD API
+
+    - list: 프로필 목록 조회
+    - retrieve: 프로필 상세 조회
+    - create: 프로필 생성
+    - update: 프로필 전체 수정
+    - partial_update: 프로필 부분 수정
+    - destroy: 프로필 삭제
+    """
+
+    queryset = UserProfile.objects.select_related('user').all()
+
+    def get_serializer_class(self):
+        """액션에 따라 다른 Serializer 사용"""
+        if self.action == 'list':
+            return UserProfileListSerializer
+        return UserProfileSerializer
+
+    @extend_schema(
+        summary="내 프로필 조회",
+        description="현재 로그인한 사용자의 프로필을 조회합니다.",
+        tags=["User Profile"]
+    )
+    @action(detail=False, methods=['get'])
+    def me(self, request):
+        """현재 사용자의 프로필 조회"""
+        try:
+            profile = UserProfile.objects.get(user=request.user)
+            serializer = self.get_serializer(profile)
+            return Response(serializer.data)
+        except UserProfile.DoesNotExist:
+            return Response(
+                {'error': '프로필이 존재하지 않습니다.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+```
+
+### 5.2 ViewSet vs APIView 선택 가이드
+
+#### ViewSet을 사용하는 경우
+- 표준 CRUD 작업이 필요한 경우
+- 코드 중복을 최소화하고 싶은 경우
+- Router를 사용한 자동 URL 라우팅을 원하는 경우
+
+#### APIView를 사용하는 경우
+- 복잡한 비즈니스 로직이 필요한 경우
+- RESTful 하지 않은 엔드포인트가 필요한 경우
+- 세밀한 제어가 필요한 경우
+
+---
+
+## 6. URL 라우팅 설정
+
+### 6.1 앱 URL 설정
+
+`users/urls.py` 파일을 생성 또는 편집합니다 (1.4에서 이미 생성했다면 편집만).
+
+```python
+# users/urls.py
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import UserProfileViewSet
+
+# Router 설정
+router = DefaultRouter()
+router.register(r'profiles', UserProfileViewSet, basename='userprofile')
+
+# app_name을 설정하면 URL reverse 시 users:userprofile-list 형태로 사용 가능
+app_name = 'users'
+
+urlpatterns = [
+    path('', include(router.urls)),
+]
+```
+
+### 6.2 프로젝트 URL 설정
+
+`config/urls.py`에 users 앱 URL을 포함시킵니다.
+
+```python
+from django.contrib import admin
+from django.urls import path, include
+from drf_spectacular.views import (
+    SpectacularAPIView,
+    SpectacularSwaggerView,
+    SpectacularRedocView,
+)
+
+urlpatterns = [
+    path("admin/", admin.site.urls),
+
+    # API - 각 앱별로 분리
+    path("api/users/", include("users.urls")),  # 새로 추가
+    path("api/core/", include("core.urls")),    # 기존 core 앱 (있다면)
+
+    # API 문서화
+    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
+    path("api/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
+]
+```
+
+### 6.3 URL 구조 확인
+
+생성된 URL을 확인합니다.
+
+```bash
+docker-compose exec app python manage.py show_urls
+```
+
+**예상 출력:**
+
+```
+/api/users/profiles/              GET, POST
+/api/users/profiles/<pk>/         GET, PUT, PATCH, DELETE
+/api/users/profiles/me/           GET
+/api/docs/                        Swagger UI
+/api/schema/                      OpenAPI Schema
+```
+
+### 6.4 URL 네이밍 규칙
+
+앱별로 URL을 분리하면 다음과 같은 장점이 있습니다:
+
+- **명확한 구조**: `/api/users/`, `/api/posts/` 등으로 기능 구분
+- **확장성**: 각 앱을 독립적으로 관리 가능
+- **충돌 방지**: 다른 앱에서 같은 이름의 엔드포인트 사용 가능
+
+**권장 URL 구조:**
+```
+/api/users/profiles/              # 사용자 프로필
+/api/users/auth/login/            # 인증
+/api/posts/                       # 게시글
+/api/comments/                    # 댓글
+```
+
+---
+
+## 6. API 문서화
+
+### 6.1 Swagger UI 접속
+
+서버를 실행하고 브라우저에서 접속합니다.
+
+```bash
+docker-compose up -d
+```
+
+브라우저에서 접속:
+- Swagger UI: http://localhost:8000/api/docs/
+- ReDoc: http://localhost:8000/api/redoc/
+
+### 6.2 drf-spectacular 설정 확인
+
+`config/settings.py`에서 다음 설정을 확인합니다.
+
+```python
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Django API",
+    "DESCRIPTION": "Django REST API with TimescaleDB, Redis, OpenSearch",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "SWAGGER_UI_SETTINGS": {
+        "deepLinking": True,
+        "persistAuthorization": True,
+        "displayOperationId": True,
+        "filter": True,
+    },
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SCHEMA_PATH_PREFIX": "/api/",
+    "TAGS": [
+        {"name": "Health Check", "description": "서버 상태 확인"},
+        {"name": "User Profile", "description": "사용자 프로필 관리"},
+    ],
+}
+```
+
+### 6.3 API 문서 커스터마이징
+
+더 상세한 문서를 위해 `@extend_schema` 데코레이터를 활용합니다.
+
+```python
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
+from drf_spectacular.types import OpenApiTypes
+
+@extend_schema(
+    parameters=[
+        OpenApiParameter(
+            name='nickname',
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
+            description='닉네임으로 검색',
+        ),
+    ],
+    examples=[
+        OpenApiExample(
+            'Example 1',
+            value={
+                'username': 'testuser',
+                'nickname': 'test_nick',
+                'bio': 'Hello, World!'
+            },
+            request_only=True,
+        ),
+    ],
+)
+def list(self, request):
+    # ...
+```
+
+---
+
+## 7. 테스트 작성
+
+### 7.1 테스트 파일 생성
+
+`core/tests.py` 또는 `core/tests/test_userprofile.py` 파일을 생성합니다.
+
+```python
+from django.test import TestCase
+from django.contrib.auth.models import User
+from rest_framework.test import APITestCase, APIClient
+from rest_framework import status
+from .models import UserProfile
+
+
+class UserProfileModelTest(TestCase):
+    """UserProfile 모델 테스트"""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='testuser',
+            password='testpass123'
+        )
+
+    def test_create_profile(self):
+        """프로필 생성 테스트"""
+        profile = UserProfile.objects.create(
+            user=self.user,
+            nickname='test_nick',
+            bio='Test bio'
+        )
+        self.assertEqual(profile.nickname, 'test_nick')
+        self.assertEqual(profile.user.username, 'testuser')
+
+    def test_profile_str(self):
+        """__str__ 메서드 테스트"""
+        profile = UserProfile.objects.create(
+            user=self.user,
+            nickname='test_nick'
+        )
+        expected = f"{self.user.username} - {profile.nickname}"
+        self.assertEqual(str(profile), expected)
+
+
+class UserProfileAPITest(APITestCase):
+    """UserProfile API 테스트"""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='testuser',
+            password='testpass123'
+        )
+        self.profile = UserProfile.objects.create(
+            user=self.user,
+            nickname='test_nick',
+            bio='Test bio'
+        )
+
+    def test_list_profiles(self):
+        """프로필 목록 조회 테스트"""
+        url = '/api/profiles/'
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+
+    def test_retrieve_profile(self):
+        """프로필 상세 조회 테스트"""
+        url = f'/api/profiles/{self.profile.id}/'
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['nickname'], 'test_nick')
+
+    def test_create_profile(self):
+        """프로필 생성 테스트"""
+        url = '/api/profiles/'
+        data = {
+            'username': 'newuser',
+            'nickname': 'new_nick',
+            'bio': 'New bio'
+        }
+        response = self.client.post(url, data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['nickname'], 'new_nick')
+        self.assertTrue(User.objects.filter(username='newuser').exists())
+
+    def test_update_profile(self):
+        """프로필 수정 테스트"""
+        url = f'/api/profiles/{self.profile.id}/'
+        data = {
+            'nickname': 'updated_nick',
+            'bio': 'Updated bio'
+        }
+        response = self.client.patch(url, data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.nickname, 'updated_nick')
+
+    def test_delete_profile(self):
+        """프로필 삭제 테스트"""
+        url = f'/api/profiles/{self.profile.id}/'
+        response = self.client.delete(url)
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(UserProfile.objects.filter(id=self.profile.id).exists())
+
+    def test_unique_nickname(self):
+        """닉네임 중복 검증 테스트"""
+        url = '/api/profiles/'
+        data = {
+            'username': 'anotheruser',
+            'nickname': 'test_nick',  # 이미 존재하는 닉네임
+            'bio': 'Test'
+        }
+        response = self.client.post(url, data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+```
+
+### 7.2 테스트 실행
+
+#### Docker 환경
+
+```bash
+# 전체 테스트 실행
+docker-compose exec app python manage.py test
+
+# 특정 앱 테스트
+docker-compose exec app python manage.py test core
+
+# 특정 테스트 클래스
+docker-compose exec app python manage.py test core.tests.UserProfileAPITest
+
+# 특정 테스트 메서드
+docker-compose exec app python manage.py test core.tests.UserProfileAPITest.test_create_profile
+
+# 상세 출력
+docker-compose exec app python manage.py test --verbosity=2
+```
+
+#### 로컬 환경
+
+```bash
+source .venv/bin/activate
+python manage.py test core
+```
+
+### 7.3 테스트 커버리지 확인
+
+```bash
+# coverage 설치
+pip install coverage
+
+# 테스트 실행 및 커버리지 측정
+coverage run --source='.' manage.py test core
+
+# 커버리지 리포트 출력
+coverage report
+
+# HTML 리포트 생성
+coverage html
+```
+
+---
+
+## 8. 전체 테스트
+
+### 8.1 수동 테스트 (curl)
+
+#### 프로필 생성
+
+```bash
+curl -X POST http://localhost:8000/api/profiles/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "testuser",
+    "nickname": "test_nick",
+    "bio": "Hello, World!"
+  }'
+```
+
+#### 프로필 목록 조회
+
+```bash
+curl http://localhost:8000/api/profiles/
+```
+
+#### 프로필 상세 조회
+
+```bash
+curl http://localhost:8000/api/profiles/1/
+```
+
+#### 프로필 수정
+
+```bash
+curl -X PATCH http://localhost:8000/api/profiles/1/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "bio": "Updated bio"
+  }'
+```
+
+#### 프로필 삭제
+
+```bash
+curl -X DELETE http://localhost:8000/api/profiles/1/
+```
+
+### 8.2 수동 테스트 (HTTPie)
+
+HTTPie를 사용하면 더 간편합니다.
+
+```bash
+# 설치
+pip install httpie
+
+# 프로필 생성
+http POST localhost:8000/api/profiles/ \
+  username=testuser \
+  nickname=test_nick \
+  bio="Hello, World!"
+
+# 프로필 조회
+http localhost:8000/api/profiles/
+
+# 프로필 수정
+http PATCH localhost:8000/api/profiles/1/ \
+  bio="Updated bio"
+```
+
+### 8.3 데이터베이스 확인
+
+```bash
+# 프로필 데이터 확인
+docker-compose exec db psql -U admin -d stock_db -c "SELECT * FROM user_profiles;"
+
+# 사용자 데이터 확인
+docker-compose exec db psql -U admin -d stock_db -c "SELECT * FROM auth_user;"
+```
+
+---
+
+## 체크리스트
+
+전체 과정을 완료했는지 확인하세요.
+
+- [ ] 모델 정의 완료
+- [ ] 마이그레이션 생성 및 적용
+- [ ] 데이터베이스 테이블 생성 확인
+- [ ] Serializer 작성
+- [ ] ViewSet 작성
+- [ ] URL 라우팅 설정
+- [ ] API 문서화 (Swagger UI 확인)
+- [ ] 단위 테스트 작성
+- [ ] 테스트 실행 및 통과
+- [ ] 수동 테스트 (curl/HTTPie)
+- [ ] Git 커밋
+
+---
+
+## 트러블슈팅
+
+### 마이그레이션 충돌
+
+```bash
+# 마이그레이션 상태 확인
+python manage.py showmigrations
+
+# 마이그레이션 병합
+python manage.py makemigrations --merge
+```
+
+### 테스트 데이터베이스 오류
+
+```bash
+# 테스트 데이터베이스 재생성
+python manage.py test --keepdb=False
+```
+
+### Foreign Key 제약 조건 오류
+
+모델 간 관계를 확인하고 `on_delete` 설정이 올바른지 확인하세요.
+
+```python
+user = models.ForeignKey(
+    User,
+    on_delete=models.CASCADE,  # User 삭제 시 Profile도 삭제
+)
+```
+
+---
+
+## 추가 리소스
+
+- [Django 공식 문서](https://docs.djangoproject.com/)
+- [Django REST Framework 공식 문서](https://www.django-rest-framework.org/)
+- [drf-spectacular 문서](https://drf-spectacular.readthedocs.io/)
+- [Django Testing 가이드](https://docs.djangoproject.com/en/stable/topics/testing/)
+
+---
+
+## 다음 단계
+
+1. **인증 및 권한 추가**: Django REST Framework의 인증 시스템 적용
+2. **필터링 및 검색**: django-filter를 사용한 고급 필터링
+3. **페이지네이션**: 대량 데이터 처리를 위한 페이지네이션
+4. **캐싱**: Redis를 활용한 API 응답 캐싱
+5. **비동기 작업**: Celery를 사용한 백그라운드 작업
+
+---
+
+**문서 버전**: 1.0
+**최종 수정일**: 2026-01-12
+**작성자**: Claude Code
