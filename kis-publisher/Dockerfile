@@ -7,7 +7,7 @@ WORKDIR /app
 RUN apk add --no-cache gcc musl-dev
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir websockets redis aiohttp python-dotenv
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY main.py .
 COPY fetch_symbols.py .
