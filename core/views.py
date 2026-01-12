@@ -4,7 +4,9 @@ from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from django.db import connection
 from django.core.cache import cache
-
+#=-------------------------------------------------------------
+from companies.models import Company
+from companies.serializers import CompanySerializer
 
 @extend_schema(
     summary="헬스 체크",

@@ -16,12 +16,14 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-#from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/companies/', include('companies.urls')),
-    # # Swagger API 명세서 (테스트를 위해 필수)
-    # path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
-    # path('swagger/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
-]
+    path('api/core/', include('core.urls')),      # 기존 경로
+    path('api/companies/', include('companies.urls')), # 기존 경로
+
+    # 문서 데이터(Schema) 생성 엔진
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    # Swagger UI (위에서 만든 schema를 시각화)
+    path('api/schema/swagger-ui/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),]
