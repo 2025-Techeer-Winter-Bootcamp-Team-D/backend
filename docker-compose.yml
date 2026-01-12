@@ -133,6 +133,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      db:
+        condition: service_healthy
     networks:
       - django-network
     restart: always
