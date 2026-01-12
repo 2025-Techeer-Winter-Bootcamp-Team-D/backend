@@ -34,8 +34,16 @@ class Command(BaseCommand):
 
             if message["type"] == "pmessage":
                 message_count += 1
-                raw_json = message["data"].decode("utf-8") if isinstance(message["data"], bytes) else message["data"]
-                channel = message["channel"].decode("utf-8") if isinstance(message["channel"], bytes) else message["channel"]
+                raw_json = (
+                    message["data"].decode("utf-8")
+                    if isinstance(message["data"], bytes)
+                    else message["data"]
+                )
+                channel = (
+                    message["channel"].decode("utf-8")
+                    if isinstance(message["channel"], bytes)
+                    else message["channel"]
+                )
 
                 try:
                     # JSON 파싱
@@ -55,6 +63,6 @@ class Command(BaseCommand):
                         )
                     )
                 except json.JSONDecodeError:
-                    self.stdout.write(self.style.ERROR(f"[ERROR] Failed to parse JSON: {raw_json}"))
-                except KeyError as e:
-                    self.stdout.write(self.style.ERROR(f"[ERROR] Missing key in data: {e}, data: {data}"))
+                    self.stdout.write(
+                        self.style.ERROR(f"[ERROR] Failed to parse JSON: {raw_json}")
+                    )
