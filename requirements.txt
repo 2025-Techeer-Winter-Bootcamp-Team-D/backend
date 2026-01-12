@@ -6,3 +6,16 @@ psycopg2-binary==2.9.9
 redis==5.0.1
 opensearch-py==2.4.0
 drf-spectacular==0.27.0
+asgiref
+Django
+djangorestframework
+sqlparse
+psycopg2-binary
+opensearch-py
+drf-spectacular
+websockets
+redis
+aiohttp
+python-dotenv
+django-channels
+django-extensions
