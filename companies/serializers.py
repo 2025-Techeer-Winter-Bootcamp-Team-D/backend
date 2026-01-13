@@ -4,6 +4,11 @@ from rest_framework import serializers
 from .models import Company
 
 class CompanySerializer(serializers.ModelSerializer):
+    rank = serializers.SerializerMethodField()
     class Meta:
         model = Company
-        fields = ['ticker_symbol', 'company_name', 'description', 'rank_in_industry']
+        fields = ['ticker_symbol', 'company_name', 'description', 'rank']
+        
+ 
+    def get_rank(self, obj):
+        return self.context.get('rank_dict', {}).get(obj.ticker_symbol, None)
