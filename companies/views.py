@@ -51,7 +51,7 @@ def get_company_rankings(request):
     rankings = CompanyRanking.objects.filter(base_date=latest_date, is_deleted=False).select_related('stock_code').order_by('rank')
     # 데이터 직렬화
     serializer = CompanyRankingSerializer(rankings, many=True)
-    # 명세서 규격에 맞춘 최종 응당 반환
+    # 명세서 규격에 맞춘 최종 응답 반환
     return Response({
         "status": 200,
         "message": "전체 기업 순위 조회를 성공하였습니다.",

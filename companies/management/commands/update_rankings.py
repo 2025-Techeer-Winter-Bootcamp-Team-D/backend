@@ -5,7 +5,6 @@ from companies.models import Company, CompanyRanking
 
 
 class Command(BaseCommand):
-    ranking_type = "MARKET_CAP"
     
     help = '시가총액 기준으로 기업 순위를 계산하여 저장합니다.'
 
@@ -32,7 +31,6 @@ class Command(BaseCommand):
                 CompanyRanking(
                     ranking_id=unique_ranking_id,
                     stock_code=company,  # 실제 필드명 매칭
-                    ranking_type="MARKET_CAP",
                     rank=index,
                     base_date=today
                 )
@@ -42,7 +40,7 @@ class Command(BaseCommand):
         try:
             with transaction.atomic():
                 # 오늘 날짜의 기존 순위가 있다면 삭제 후 새로 생성 (덮어쓰기)
-                CompanyRanking.objects.filter(base_date=today, ranking_type=self.ranking_type).delete()
+                CompanyRanking.objects.filter(base_date=today).delete()
                 CompanyRanking.objects.bulk_create(ranking_instances)
                 
             self.stdout.write(self.style.SUCCESS(f"성공: {today} 기준 {len(ranking_instances)}개 기업 순위 저장 완료!"))

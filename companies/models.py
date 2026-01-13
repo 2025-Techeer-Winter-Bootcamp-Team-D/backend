@@ -5,7 +5,7 @@ from django.db import models
 
 
 class Company(models.Model):
-    stock_code = models.CharField(primary_key=True, max_length=10)  # 종목코드 (6자리)
+    stock_code = models.CharField(primary_key=True, max_length=6)  # 종목코드 (6자리)
     corp_code = models.CharField(max_length=8, unique=True, null=True)  # DART 고유번호 (8자리) - 신규
     industry = models.ForeignKey('industries.Industry', on_delete=models.CASCADE, related_name='companies', db_column='industry_id')
     company_name = models.CharField(max_length=255)
@@ -29,7 +29,6 @@ class Company(models.Model):
 class CompanyRanking(models.Model):
     ranking_id = models.BigIntegerField(primary_key=True) # 순위 아이디
     stock_code = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='rankings', db_column='stock_code') # 종목코드
-    ranking_type = models.CharField(max_length=50) # 순위 유형
     rank = models.IntegerField() # 순위
     base_date = models.DateField() # 기준 날짜
     created_at = models.DateTimeField(auto_now_add=True) # 생성 일시
