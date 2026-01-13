@@ -16,14 +16,36 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+from django.http import HttpResponse
+from drf_spectacular.views import (
+    SpectacularAPIView,
+    SpectacularRedocView,
+    SpectacularSwaggerView,
+)
+from core.views import health_check
+
+#임시 메인 페이지 함수수
+def main_page(request):
+    return HttpResponse("메인 페이지입니다.")
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    # Admin
+    path("admin/", admin.site.urls),
+    # Health Check
+    path("health/", health_check, name="health-check"),
+    # API Schema & Documentation
+    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    path(
+        "swagger/",
+        SpectacularSwaggerView.as_view(url_name="schema"),
+        name="swagger-ui",
+    ),
+    path(
+        "redoc/",
+        SpectacularRedocView.as_view(url_name="schema"),
+        name="redoc",
+    ),
+    path('api/users/', include('users.urls')),
     path('api/core/', include('core.urls')),      # 기존 경로
     path('api/companies/', include('companies.urls')), # 기존 경로
-
-    # 문서 데이터(Schema) 생성 엔진
-    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
-    # Swagger UI (위에서 만든 schema를 시각화)
-    path('api/schema/swagger-ui/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),]
+]
