@@ -49,8 +49,7 @@ urlpatterns = [
         name="redoc",
     ),
     path("api/users/", include("users.urls")),
-    path("api/core/", include("core.urls")),  # 기존 경로
-    path("api/companies/", include("companies.urls")),  # 기존 경로
-    # 산업
+    path("api/core/", include("core.urls")), 
+    path("api/", include("companies.urls")),
     path("api/industries/", include("industries.urls")),
 ]

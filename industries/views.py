@@ -63,7 +63,7 @@ class IndustryCompanyRankView(APIView):
             # 이전 기업과 시가총액이 다를 때만 현재 순위를 갱신
             if i > 0 and company.market_amount < companies[i-1].market_amount:
                 current_rank = i + 1
-            rank_dict[company.ticker_symbol] = current_rank
+            rank_dict[company.stock_code] = current_rank
 
         # 4. 시리얼라이징
         serializer = CompanySerializer(companies, many=True, context={'rank_dict': rank_dict})
