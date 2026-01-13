@@ -8,13 +8,13 @@ from .serializers import CompanySerializer, CompanyRankingSerializer
 #------------------------ 기업 기본 정보 조회--------------------------
 @extend_schema(
     summary="기업 기본 정보 조회",
-    description="티커 심볼(PK)을 통해 해당 기업의 정보를 가져옵니다.",
+    description="종목 코드(stock_code)를 통해 해당 기업의 정보를 가져옵니다.",
     parameters=[
         OpenApiParameter(
             name='stock_code',
             type=str,
             location=OpenApiParameter.PATH,
-            description='조회할 기업의 티커 심볼 (예: 005930)'
+            description='조회할 기업의 종목코드 (예: 005930)'
         ),
     ],
     responses={200: CompanySerializer, 404: OpenApiResponse(description="Not Found")},
