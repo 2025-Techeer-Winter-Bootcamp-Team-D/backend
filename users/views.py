@@ -9,10 +9,7 @@ from .serializers import RegisterSerializer, LoginSerializer
 from drf_spectacular.utils import extend_schema 
 # jwt 관련 
 from rest_framework_simplejwt.tokens import RefreshToken
-
-#from rest_framework.authtoken.models import Token 
-#from django.contrib.auth import logout
-
+from rest_framework_simplejwt.exceptions import TokenError
 
 # --회원가입--
 class SignupView(generics.CreateAPIView):
@@ -47,16 +44,39 @@ class LoginView(generics.GenericAPIView):
 
 
  # --로그아웃--
-@api_view(['POST'])
-@permission_classes([IsAuthenticated]) 
-@extend_schema(summary="로그아웃 (Refresh 토큰 필요)")
-def logout_account(request):
-    try:
-        # 클라이언트로부터 refresh 토큰을 전달받고 블렉리스트에 추가가
-        refresh_token = request.data.get("refresh")
-        token = RefreshToken(refresh_token)
-        token.blacklist()
+class LogoutView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
 
-        return Response({"message": "Successfully logged out."}, status=status.HTTP_205_RESET_CONTENT)
-    except Exception as e:
-        return Response({"message": "Invalid token or already logged out."}, status=status.HTTP_400_BAD_REQUEST)
+    @extend_schema(
+        summary="로그아웃 (Refresh 토큰 필요)",
+        request={
+            "application/json": {
+                "type": "object",
+                "properties": {
+                    "refresh": {"type": "string"}
+                },
+                "required": ["refresh"]
+            }
+        }
+    )
+    def post(self, request, *args, **kwargs):
+        refresh_token = request.data.get("refresh")
+        
+        if not refresh_token:
+            return Response(
+                {"message": "Refresh token is required."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        try:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+            return Response(
+                {"message": "Successfully logged out."}, 
+                status=status.HTTP_205_RESET_CONTENT
+            )
+        except TokenError:
+            return Response(
+                {"message": "Invalid token or already logged out."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )

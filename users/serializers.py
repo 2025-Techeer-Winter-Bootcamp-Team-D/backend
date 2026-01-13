@@ -3,7 +3,7 @@ from django.contrib.auth.password_validation import validate_password # Django�
 from django.contrib.auth import authenticate
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator # 이메일 중복 방지를 위한 검증 도구
-#from rest_framework.authtoken.models import Token # Token 모델
+
 
 # 회원가입 시리얼라이저
 class RegisterSerializer(serializers.ModelSerializer):
@@ -50,8 +50,12 @@ class LoginSerializer(serializers.Serializer):
         password = data.get('password')
 
         if email and password:
-            # backends.py 설정을 통해 이메일 인증 진행행
-            user = authenticate(username=email, password=password)
+            user = authenticate(
+                request=self.context.get("request"), 
+                username=email,                     
+                password=password
+            )
+
             if not user:
                 raise serializers.ValidationError("이메일 또는 비밀번호가 틀렸습니다.")
         else:
