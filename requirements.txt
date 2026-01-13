@@ -1,13 +1,46 @@
+# Django Core
 asgiref
-Django
+Django==6.0
 djangorestframework
 sqlparse
+
+# Database
 psycopg2-binary
+
+# Search Engine
 opensearch-py
+
+# API Documentation
 drf-spectacular
+
+# WebSocket
 websockets
+
+# Cache & Message Broker
 redis
+celery==5.3.4
+flower
+
+# HTTP & Async
 aiohttp
+requests==2.31.0
+
+# Environment
 python-dotenv
+
+# Django Extensions
 django-channels
 django-extensions
+
+# Web Scraping & Parsing
+beautifulsoup4==4.12.2
+lxml>=5.0.0
+trafilatura==2.0.0
+
+# Date Utilities
+python-dateutil
+
+# AI & ML
+google-generativeai==0.3.2
+scikit-learn
+numpy
