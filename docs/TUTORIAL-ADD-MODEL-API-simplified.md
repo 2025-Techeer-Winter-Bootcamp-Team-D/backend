@@ -195,8 +195,4 @@ class UserProfileAPITest(APITestCase):
 
 - [Django 공식 문서](https://docs.djangoproject.com/)
 - [Django REST Framework 문서](https://www.django-rest-framework.org/)
-<<<<<<< HEAD
 - [drf-spectacular 문서](https://drf-spectacular.readthedocs.io/)
-=======
-- [drf-spectacular 문서](https://drf-spectacular.readthedocs.io/)
->>>>>>> develop

@@ -26,14 +26,13 @@ class Command(BaseCommand):
         for index, company in enumerate(companies, start=1):
             # 현재 모델 설정이 BigIntegerField PK이므로, 중복되지 않는 ID를 임시로 생성합니다.
             # (만약 모델을 BigAutoField로 바꾸셨다면 ranking_id 필드는 제외해도 됩니다.)
-            temp_id = int(today.strftime('%Y%m%d')) * 10000 + index 
+            unique_ranking_id = int(today.strftime('%Y%m%d')) * 10000 + index 
             
             ranking_instances.append(
                 CompanyRanking(
-                    ranking_id=temp_id, # PK 직접 지정
-                    ticker_symbol=company,
-                    # market_cap : 시가총액(현재 주가 x 총 발행 주식 수), market_amount : 유통 시가총액(현재 주가 x 시장 유통 주식 수)
-                    ranking_type=self.ranking_type,  
+                    ranking_id=unique_ranking_id,
+                    stock_code=company,  # 실제 필드명 매칭
+                    ranking_type="MARKET_CAP",
                     rank=index,
                     base_date=today
                 )

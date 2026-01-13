@@ -7,18 +7,18 @@ class CompanySerializer(serializers.ModelSerializer):
     rank = serializers.SerializerMethodField()
     class Meta:
         model = Company
-        fields = ['ticker_symbol', 'company_name', 'description', 'rank']
+        fields = ['stock_code', 'company_name', 'description', 'rank']
         
  
     def get_rank(self, obj):
-        return self.context.get('rank_dict', {}).get(obj.ticker_symbol, None)
+        return self.context.get('rank_dict', {}).get(obj.stock_code, None)
     
 class CompanyRankingSerializer(serializers.ModelSerializer):
-    # ticker_symbol(FK)을 통해 Company 모델의 필드에 접근합니다.
-    companyId = serializers.CharField(source='ticker_symbol.ticker_symbol')
-    name = serializers.CharField(source='ticker_symbol.company_name')
-    logo = serializers.URLField(source='ticker_symbol.logo')
-    amount = serializers.IntegerField(source='ticker_symbol.market_amount')
+    # stock_code(FK)을 통해 Company 모델의 필드에 접근합니다.
+    companyId = serializers.CharField(source='stock_code.stock_code')
+    name = serializers.CharField(source='stock_code.company_name')
+    logo = serializers.URLField(source='stock_code.logo_url')
+    amount = serializers.IntegerField(source='stock_code.market_amount')
 
     class Meta:
         model = CompanyRanking
