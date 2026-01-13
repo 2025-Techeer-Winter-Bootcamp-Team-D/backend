@@ -14,4 +14,8 @@ class Migration(migrations.Migration):
             name='stocktick',
             options={'managed': False, 'ordering': ['-time']},
         ),
+<<<<<<< HEAD
     ]
+=======
+    ]
+>>>>>>> develop
