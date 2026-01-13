@@ -55,8 +55,15 @@ def create_single_embedding_task(
         return article
 
     except Exception as e:
-        # 예외 발생 시 None 반환 (다른 기사 처리는 계속 진행)
-        logger.error(f"[Embedding] 오류 ({article.get('link', '')[:50]}...): {str(e)}")
+        # 재시도 가능한 오류인 경우 재시도
+        if self.request.retries < self.max_retries:
+            logger.warning(
+                f"[Embedding] 임베딩 생성 실패 (재시도 {self.request.retries + 1}/{self.max_retries}): {article.get('link', '')[:50]}... - {str(e)}"
+            )
+            raise self.retry(exc=e, countdown=2 ** self.request.retries)
+        
+        # 최대 재시도 횟수 초과 시 None 반환
+        logger.error(f"[Embedding] 임베딩 생성 최종 실패: {article.get('link', '')[:50]}... - {str(e)}")
         return None
 
 

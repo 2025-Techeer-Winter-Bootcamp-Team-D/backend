@@ -42,43 +42,56 @@ def save_to_db_task(self, articles: List[Dict[str, Any]]) -> List[Dict[str, Any]
 
     saved_articles = []
 
-    for idx, article in enumerate(articles, 1):
-        try:
-            url = article.get("link")
+    try:
+        for idx, article in enumerate(articles, 1):
+            try:
+                url = article.get("link")
 
-            # PostgreSQL에 메타데이터만 저장 (요약 포함)
-            # 임베딩은 저장하지 않음 (OpenSearch에 저장)
-            news, created = News.objects.get_or_create(
-                url=url,
-                defaults={
-                    "title": article.get("title", ""),
-                    "summary": article.get("summary", ""),  # 요약만 저장
-                    "published_at": article.get("published_at"),
-                },
+                # PostgreSQL에 메타데이터만 저장 (요약 포함)
+                # 임베딩은 저장하지 않음 (OpenSearch에 저장)
+                news, created = News.objects.get_or_create(
+                    url=url,
+                    defaults={
+                        "title": article.get("title", ""),
+                        "summary": article.get("summary", ""),  # 요약만 저장
+                        "published_at": article.get("published_at"),
+                    },
+                )
+
+                if not created:
+                    # 기존 뉴스 업데이트
+                    news.title = article.get("title", "")
+                    news.summary = article.get("summary", "")
+                    news.published_at = article.get("published_at")
+                    news.is_deleted = False  # 소프트 삭제 복구
+                    news.save()
+                    logger.info(
+                        f"[DB Save] [{idx}/{len(articles)}] 기존 뉴스 업데이트: news_id={news.news_id}"
+                    )
+                else:
+                    logger.info(
+                        f"[DB Save] [{idx}/{len(articles)}] 신규 뉴스 저장: news_id={news.news_id}"
+                    )
+
+                # news_id 추가
+                article["news_id"] = news.news_id
+                saved_articles.append(article)
+
+            except Exception as e:
+                logger.error(f"[DB Save] [{idx}/{len(articles)}] 저장 실패: {str(e)}")
+                continue
+
+        logger.info(f"[DB Save] PostgreSQL 저장 완료: {len(saved_articles)}개 성공")
+        return saved_articles
+
+    except Exception as e:
+        # 재시도 가능한 오류인 경우 재시도
+        if self.request.retries < self.max_retries:
+            logger.warning(
+                f"[DB Save] PostgreSQL 저장 실패 (재시도 {self.request.retries + 1}/{self.max_retries}): {str(e)}"
             )
-
-            if not created:
-                # 기존 뉴스 업데이트
-                news.title = article.get("title", "")
-                news.summary = article.get("summary", "")
-                news.published_at = article.get("published_at")
-                news.is_deleted = False  # 소프트 삭제 복구
-                news.save()
-                logger.info(
-                    f"[DB Save] [{idx}/{len(articles)}] 기존 뉴스 업데이트: news_id={news.news_id}"
-                )
-            else:
-                logger.info(
-                    f"[DB Save] [{idx}/{len(articles)}] 신규 뉴스 저장: news_id={news.news_id}"
-                )
-
-            # news_id 추가
-            article["news_id"] = news.news_id
-            saved_articles.append(article)
-
-        except Exception as e:
-            logger.error(f"[DB Save] [{idx}/{len(articles)}] 저장 실패: {str(e)}")
-            continue
-
-    logger.info(f"[DB Save] PostgreSQL 저장 완료: {len(saved_articles)}개 성공")
-    return saved_articles
+            raise self.retry(exc=e, countdown=2 ** self.request.retries)
+        
+        # 최대 재시도 횟수 초과 시 부분 결과라도 반환
+        logger.error(f"[DB Save] PostgreSQL 저장 최종 실패: {str(e)}")
+        return saved_articles

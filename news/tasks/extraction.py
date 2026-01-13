@@ -56,8 +56,15 @@ def extract_single_article_task(self, article: Dict[str, Any]) -> Dict[str, Any]
         return article
 
     except Exception as e:
-        # 예외 발생 시 None 반환 (다른 기사 처리는 계속 진행)
-        logger.error(f"[Extract] 오류 ({url[:50]}...): {str(e)}")
+        # 재시도 가능한 오류인 경우 재시도
+        if self.request.retries < self.max_retries:
+            logger.warning(
+                f"[Extract] 본문 추출 실패 (재시도 {self.request.retries + 1}/{self.max_retries}): {url[:50]}... - {str(e)}"
+            )
+            raise self.retry(exc=e, countdown=2 ** self.request.retries)
+        
+        # 최대 재시도 횟수 초과 시 None 반환
+        logger.error(f"[Extract] 본문 추출 최종 실패: {url[:50]}... - {str(e)}")
         return None
 
 

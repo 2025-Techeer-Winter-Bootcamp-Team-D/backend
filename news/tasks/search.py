@@ -32,8 +32,15 @@ def search_single_keyword_task(
         logger.info(f"[Search] 키워드 '{keyword}': {len(results or [])}개 발견")
         return results or []
     except Exception as e:
-        # 검색 실패 시 빈 리스트 반환 (다른 키워드 검색은 계속 진행)
-        logger.error(f"[Search] 키워드 '{keyword}' 검색 실패: {str(e)}")
+        # 재시도 가능한 오류인 경우 재시도
+        if self.request.retries < self.max_retries:
+            logger.warning(
+                f"[Search] 키워드 '{keyword}' 검색 실패 (재시도 {self.request.retries + 1}/{self.max_retries}): {str(e)}"
+            )
+            raise self.retry(exc=e, countdown=2 ** self.request.retries)
+        
+        # 최대 재시도 횟수 초과 시 빈 리스트 반환
+        logger.error(f"[Search] 키워드 '{keyword}' 검색 최종 실패: {str(e)}")
         return []
 
 

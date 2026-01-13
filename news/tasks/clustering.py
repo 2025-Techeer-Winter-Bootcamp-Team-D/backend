@@ -80,40 +80,53 @@ def cluster_and_save_opensearch_task(
         duplicate_indices = []
         logger.info("[Clustering] 단일 기사: 클러스터링 건너뜀")
 
-    # 2. OpenSearch에 유지할 뉴스만 저장
-    news_to_save = [
-        {
-            "news_id": articles[idx]["news_id"],
-            "title": articles[idx].get("title", ""),
-            "content": articles[idx].get("refined_content", ""),
-            "content_vector": articles[idx]["embedding"],
-            "published_at": articles[idx].get("published_at"),
+    try:
+        # 2. OpenSearch에 유지할 뉴스만 저장
+        news_to_save = [
+            {
+                "news_id": articles[idx]["news_id"],
+                "title": articles[idx].get("title", ""),
+                "content": articles[idx].get("refined_content", ""),
+                "content_vector": articles[idx]["embedding"],
+                "published_at": articles[idx].get("published_at"),
+            }
+            for idx in keep_indices
+            if idx < len(articles)
+        ]
+
+        if news_to_save:
+            logger.info(f"[Clustering] OpenSearch 저장 시작: {len(news_to_save)}개")
+            opensearch_service.save_news_vectors_batch(news_to_save)
+            logger.info(f"[Clustering] OpenSearch 저장 완료")
+
+        # 3. 중복 뉴스 소프트 삭제
+        duplicate_news_ids = [
+            articles[idx]["news_id"] for idx in duplicate_indices if idx < len(articles)
+        ]
+
+        if duplicate_news_ids:
+            logger.info(f"[Clustering] 중복 뉴스 소프트 삭제: {len(duplicate_news_ids)}개")
+            News.objects.filter(news_id__in=duplicate_news_ids).update(
+                is_deleted=True, updated_at=timezone.now()
+            )
+
+        result = {
+            "total_saved": len(news_to_save),
+            "duplicates_removed": len(duplicate_indices),
+            "opensearch_indexed": len(news_to_save),
         }
-        for idx in keep_indices
-        if idx < len(articles)
-    ]
 
-    if news_to_save:
-        logger.info(f"[Clustering] OpenSearch 저장 시작: {len(news_to_save)}개")
-        opensearch_service.save_news_vectors_batch(news_to_save)
-        logger.info(f"[Clustering] OpenSearch 저장 완료")
+        logger.info(f"[Clustering] 완료: {result}")
+        return result
 
-    # 3. 중복 뉴스 소프트 삭제
-    duplicate_news_ids = [
-        articles[idx]["news_id"] for idx in duplicate_indices if idx < len(articles)
-    ]
-
-    if duplicate_news_ids:
-        logger.info(f"[Clustering] 중복 뉴스 소프트 삭제: {len(duplicate_news_ids)}개")
-        News.objects.filter(news_id__in=duplicate_news_ids).update(
-            is_deleted=True, updated_at=timezone.now()
-        )
-
-    result = {
-        "total_saved": len(news_to_save),
-        "duplicates_removed": len(duplicate_indices),
-        "opensearch_indexed": len(news_to_save),
-    }
-
-    logger.info(f"[Clustering] 완료: {result}")
-    return result
+    except Exception as e:
+        # 재시도 가능한 오류인 경우 재시도
+        if self.request.retries < self.max_retries:
+            logger.warning(
+                f"[Clustering] 클러스터링/저장 실패 (재시도 {self.request.retries + 1}/{self.max_retries}): {str(e)}"
+            )
+            raise self.retry(exc=e, countdown=2 ** self.request.retries)
+        
+        # 최대 재시도 횟수 초과 시 빈 결과 반환
+        logger.error(f"[Clustering] 클러스터링/저장 최종 실패: {str(e)}")
+        return {"total_saved": 0, "duplicates_removed": 0, "opensearch_indexed": 0}
