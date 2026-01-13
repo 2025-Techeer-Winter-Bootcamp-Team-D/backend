@@ -79,6 +79,7 @@ class Command(BaseCommand):
                 )
             )
 
+            crawl_job = None
             try:
                 # 동기 실행은 워크플로우를 직접 호출
                 result = scheduled_crawl_news(keywords, max_articles)
@@ -137,15 +138,17 @@ class Command(BaseCommand):
 
                 # CrawlJob 상태 확인
                 try:
-                    crawl_job.refresh_from_db()
-                    self.stdout.write(f"CrawlJob 상태: {crawl_job.status}")
+                    if crawl_job:
+                        crawl_job.refresh_from_db()
+                        self.stdout.write(f"CrawlJob 상태: {crawl_job.status}")
                     if crawl_job.error_message:
                         self.stdout.write(
                             self.style.ERROR(
                                 f"CrawlJob 오류 메시지: {crawl_job.error_message}"
                             )
                         )
-                except:
+                except Exception:
+                    # 오류 발생 시 무시
                     pass
 
                 raise

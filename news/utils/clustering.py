@@ -18,10 +18,14 @@ class NewsClusteringService:
     def cluster_news(self, embeddings):
         """
         embeddings: EmbeddingService에서 받은 벡터 리스트 (N, 768)
-        return: 클러스터 레이블 리스트 (-1은 노이즈)
+        return: 클러스터 레이블 리스트 (-1은 노이즈, 0 이상은 클러스터 ID)
         """
-        if not embeddings or len(embeddings) < 2:
-            return [0] * len(embeddings)
+        if not embeddings:
+            return []
+        
+        if len(embeddings) < 2:
+            # 단일 항목은 클러스터를 형성할 수 없으므로 노이즈(-1)로 처리
+            return [-1]
 
         # 1. 벡터 데이터셋 준비
         X = np.array(embeddings)
