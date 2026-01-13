@@ -11,4 +11,4 @@ class CompanySerializer(serializers.ModelSerializer):
         
  
     def get_rank(self, obj):
-        return self.context.get('rank_dict', {}).get(obj.ticker_symbol, 0)
+        return self.context.get('rank_dict', {}).get(obj.ticker_symbol, None)
