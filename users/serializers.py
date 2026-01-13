@@ -1,9 +1,9 @@
-from django.contrib.auth.models import User # User 모델
+from django.contrib.auth.models import User 
 from django.contrib.auth.password_validation import validate_password # Django의 기본 pw 검증 도구
-
+from django.contrib.auth import authenticate
 from rest_framework import serializers
-from rest_framework.authtoken.models import Token # Token 모델
 from rest_framework.validators import UniqueValidator # 이메일 중복 방지를 위한 검증 도구
+#from rest_framework.authtoken.models import Token # Token 모델
 
 # 회원가입 시리얼라이저
 class RegisterSerializer(serializers.ModelSerializer):
@@ -29,17 +29,33 @@ class RegisterSerializer(serializers.ModelSerializer):
         if data['password'] != data['password2']:
             raise serializers.ValidationError(
                 {"password": "Password fields didn't match."})
-        
         return data
 
     def create(self, validated_data):
-        # CREATE 요청에 대해 create 메서드를 오버라이딩하여, 유저를 생성하고 토큰도 생성하게 해준다.
         user = User.objects.create_user(
             username=validated_data['username'],
             email=validated_data['email'],
         )
-
         user.set_password(validated_data['password'])
         user.save()
-        token = Token.objects.create(user=user)
         return user
+
+# --- 로그인 시리얼라이저 ---
+class LoginSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
+
+    def validate(self, data):
+        email = data.get('email')
+        password = data.get('password')
+
+        if email and password:
+            # backends.py 설정을 통해 이메일 인증 진행행
+            user = authenticate(username=email, password=password)
+            if not user:
+                raise serializers.ValidationError("이메일 또는 비밀번호가 틀렸습니다.")
+        else:
+            raise serializers.ValidationError("이메일과 비밀번호를 모두 입력해주세요.")
+        
+        data['user'] = user
+        return data
