@@ -49,7 +49,7 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
-    # 만든 앱 등록    
+    # 만든 앱 등록
     "industries",
     "companies",
     "core",
@@ -111,7 +111,7 @@ SPECTACULAR_SETTINGS = {
     # 태그 정렬
     "TAGS": [
         {"name": "Health Check", "description": "서버 상태 확인"},
-    ],   
+    ],
 }
 
 # Database
@@ -199,10 +199,12 @@ CELERY_BEAT_SCHEDULE = {
 }
 
 # API Keys
-NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID", "")
-NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-JINA_API_KEY = os.getenv("JINA_API_KEY", "")
+# 필수 API 키: 빈 문자열도 None으로 처리하여 명시적 검증 가능하도록 함
+NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID") or None
+NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET") or None
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or None
+# 선택 API 키: Jina는 무료 티어로도 동작 가능
+JINA_API_KEY = os.getenv("JINA_API_KEY") or None
 
 
 # Password validation
@@ -248,13 +250,13 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
     "ROTATE_REFRESH_TOKENS": False,
     "ALGORITHM": "HS256",
-    "SIGNING_KEY": JWT_SIGNING_KEY, 
+    "SIGNING_KEY": JWT_SIGNING_KEY,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
 AUTHENTICATION_BACKENDS = [
-    'users.backends.EmailBackend',
-    'django.contrib.auth.backends.ModelBackend',
+    "users.backends.EmailBackend",
+    "django.contrib.auth.backends.ModelBackend",
 ]
 # Default primary key field type
 # https://docs.djangoproject.com/en/6.0/ref/settings/#default-auto-field

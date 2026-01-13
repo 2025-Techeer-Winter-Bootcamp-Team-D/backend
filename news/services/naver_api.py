@@ -20,7 +20,9 @@ class NaverSearchService:
         self.client_secret = settings.NAVER_CLIENT_SECRET
 
         if not self.client_id or not self.client_secret:
-            logger.error("Naver API credentials are missing in settings.")
+            error_msg = "Naver API credentials are missing or empty. Please set NAVER_CLIENT_ID and NAVER_CLIENT_SECRET in environment variables."
+            logger.error(error_msg)
+            raise ValueError(error_msg)
 
     def search(self, query, display_count=10, sort="sim"):
         """
@@ -75,9 +77,21 @@ class NaverSearchService:
         return clean_text
 
     def _parse_date(self, date_str):
-        """Naver의 RFC 822 날짜 형식을 Python datetime으로 변환"""
+        """
+        Naver의 RFC 822 날짜 형식을 Python datetime으로 변환
+        
+        Args:
+            date_str: RFC 822 형식의 날짜 문자열
+            
+        Returns:
+            datetime 객체 (파싱 성공 시) 또는 None (파싱 실패 시)
+        """
+        if not date_str:
+            return None
+            
         try:
             # Naver pubDate 예시: "Tue, 13 Jan 2026 09:00:00 +0900"
             return parser.parse(date_str)
-        except (ValueError, TypeError):
-            return datetime.now()
+        except (ValueError, TypeError) as e:
+            logger.warning(f"날짜 파싱 실패: {date_str} - {str(e)}")
+            return None
