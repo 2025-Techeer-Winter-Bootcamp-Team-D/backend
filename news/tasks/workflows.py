@@ -249,5 +249,11 @@ def finalize_crawl_job(result, job_id):
         try:
             crawl_job = CrawlJob.objects.get(id=job_id)
             crawl_job.mark_as_failed(str(e))
-        except:
-            pass
+        except CrawlJob.DoesNotExist:
+            logger.error(
+                f"[Workflow] CrawlJob {job_id} 실패 처리 중에도 찾을 수 없습니다."
+            )
+        except Exception as inner_e:
+            logger.exception(
+                f"[Workflow] CrawlJob {job_id} 실패 처리 중 오류 발생: {str(inner_e)}"
+            )
