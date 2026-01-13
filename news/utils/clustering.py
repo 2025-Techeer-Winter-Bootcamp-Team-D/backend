@@ -1,7 +1,7 @@
 from sklearn.cluster import DBSCAN
 import numpy as np
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ class NewsClusteringService:
         """
         if not embeddings:
             return []
-        
+
         if len(embeddings) < 2:
             # 단일 항목은 클러스터를 형성할 수 없으므로 노이즈(-1)로 처리
             return [-1]
@@ -139,7 +139,9 @@ class NewsClusteringService:
             # 최신 기사 중 가장 긴 본문 선택
             # 1단계: 최신 기사들 찾기
             dates = [(idx, self._get_published_at(news_items[idx])) for idx in indices]
-            dates.sort(key=lambda x: x[1] or datetime.min, reverse=True)
+            # None인 경우 가장 오래된 날짜로 처리
+            min_datetime = datetime.min.replace(tzinfo=timezone.utc)
+            dates.sort(key=lambda x: x[1] or min_datetime, reverse=True)
             latest_date = dates[0][1] if dates else None
 
             # 최신 기사들만 필터링

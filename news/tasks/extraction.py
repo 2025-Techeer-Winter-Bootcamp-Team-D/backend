@@ -32,7 +32,7 @@ def extract_single_article_task(self, article: Dict[str, Any]) -> Dict[str, Any]
 
     # URL 유효성 검증
     if not url:
-        logger.warning(f"[Extract] URL 없음: 건너뜀")
+        logger.warning("[Extract] URL 없음: 건너뜀")
         return None
 
     # DB 중복 체크: 이미 저장된 기사는 추출하지 않음
@@ -61,8 +61,8 @@ def extract_single_article_task(self, article: Dict[str, Any]) -> Dict[str, Any]
             logger.warning(
                 f"[Extract] 본문 추출 실패 (재시도 {self.request.retries + 1}/{self.max_retries}): {url[:50]}... - {str(e)}"
             )
-            raise self.retry(exc=e, countdown=2 ** self.request.retries)
-        
+            raise self.retry(exc=e, countdown=2**self.request.retries)
+
         # 최대 재시도 횟수 초과 시 None 반환
         logger.error(f"[Extract] 본문 추출 최종 실패: {url[:50]}... - {str(e)}")
         return None

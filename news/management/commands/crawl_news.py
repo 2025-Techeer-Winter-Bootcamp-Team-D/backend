@@ -141,12 +141,12 @@ class Command(BaseCommand):
                     if crawl_job:
                         crawl_job.refresh_from_db()
                         self.stdout.write(f"CrawlJob 상태: {crawl_job.status}")
-                    if crawl_job.error_message:
-                        self.stdout.write(
-                            self.style.ERROR(
-                                f"CrawlJob 오류 메시지: {crawl_job.error_message}"
+                        if crawl_job.error_message:
+                            self.stdout.write(
+                                self.style.ERROR(
+                                    f"CrawlJob 오류 메시지: {crawl_job.error_message}"
+                                )
                             )
-                        )
                 except Exception:
                     # 오류 발생 시 무시
                     pass
