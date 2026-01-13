@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from datetime import timedelta
 from dotenv import load_dotenv
+from celery.schedules import crontab
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -196,6 +197,16 @@ CELERY_BEAT_SCHEDULE = {
             "max_articles_per_keyword": 10,
         },
     },
+    # DART 기업 정보 동기화: 주 1회 (일요일 새벽 3시)
+    "sync-dart-company-info-weekly": {
+        "task": "companies.tasks.dart_sync.sync_all_company_info",
+        "schedule": crontab(day_of_week=0, hour=3, minute=0),
+    },
+    # DART 보고서 목록 동기화: 일 1회 (새벽 4시)
+    "sync-dart-reports-daily": {
+        "task": "companies.tasks.dart_sync.sync_all_reports",
+        "schedule": crontab(hour=4, minute=0),
+    },
 }
 
 # API Keys
@@ -205,7 +216,7 @@ NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET") or None
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or None
 # 선택 API 키: Jina는 무료 티어로도 동작 가능
 JINA_API_KEY = os.getenv("JINA_API_KEY") or None
-
+DART_API_KEY = os.getenv("DART_API_KEY") or None
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
