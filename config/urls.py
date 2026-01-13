@@ -22,7 +22,8 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/core/', include('core.urls')),      # 기존 경로
     path('api/companies/', include('companies.urls')), # 기존 경로
-
+    # 산업
+    path('api/industries/', include('industries.urls')),
     # 문서 데이터(Schema) 생성 엔진
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     # Swagger UI (위에서 만든 schema를 시각화)
