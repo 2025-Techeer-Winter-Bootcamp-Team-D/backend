@@ -10,7 +10,7 @@ from companies.serializers import CompanySerializer
 class IndustryCompanyRankView(APIView):
     @extend_schema(
         summary="산업 내 기업 순위 조회",
-        description="특정 산업 ID를 입력받아 해당 산업에 속한 기업들의 순위(시가총액 순)를 조회합니다.",
+        description="특정 산업 ID를 입력받아 해당 산업에 속한 기업들의 순위를 조회합니다.",
         responses={
             200: inline_serializer(
                 name='IndustryRankResponse',
@@ -45,7 +45,7 @@ class IndustryCompanyRankView(APIView):
                 "message": "항목을 찾을 수 없습니다."
             }, status=status.HTTP_404_NOT_FOUND)
 
-        # 2. 해당 산업의 기업들을 marketAmount 내림차순으로 조회
+        # 2. 해당 산업의 기업들을 오름차순으로 산업 내 기업 순위 조회
         companies = Company.objects.filter(industry=industry).order_by('rank_in_industry')
 
         if not companies.exists():

@@ -13,3 +13,17 @@ class Company(models.Model):
 
     class Meta:
         db_table = 'company'
+        
+class StockPrice(models.Model):
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='stock_prices', db_column='company_ticker_symbol') # 기업 티커 심볼
+    time = models.BigIntegerField(help_text="Unix Timestamp") # 시간 (타임스탬프)
+    open_price = models.FloatField() # 시가
+    close_price = models.FloatField() # 종가
+    high_price = models.FloatField() # 고가
+    low_price = models.FloatField() # 저가
+    volume = models.BigIntegerField() # 거래량
+    trans_amount = models.BigIntegerField() # 거래대금
+
+    class Meta:
+        db_table = 'stock_price'
+        unique_together = ('company', 'time')
