@@ -45,8 +45,8 @@ class IndustryCompanyRankView(APIView):
                 "message": "항목을 찾을 수 없습니다."
             }, status=status.HTTP_404_NOT_FOUND)
 
-        # 2. 해당 산업의 기업들을 오름차순으로 산업 내 기업 순위 조회
-        companies = Company.objects.filter(industry=industry).order_by('rank_in_industry')
+        # 2. 해당 산업의 기업들을 시가총액 내림차순으로 조회
+        companies = Company.objects.filter(industry=industry, is_deleted=False).order_by('-market_amount')
 
         if not companies.exists():
             return Response({
@@ -56,7 +56,14 @@ class IndustryCompanyRankView(APIView):
             }, status=status.HTTP_404_NOT_FOUND)
 
         # 3. 순위 계산 (리스트 인덱스 활용)
-        rank_dict = {company.ticker_symbol: i + 1 for i, company in enumerate(companies)}
+        rank_dict = {}
+        current_rank = 1
+
+        for i, company in enumerate(companies):
+            # 이전 기업과 시가총액이 다를 때만 현재 순위를 갱신
+            if i > 0 and company.market_amount < companies[i-1].market_amount:
+                current_rank = i + 1
+            rank_dict[company.ticker_symbol] = current_rank
 
         # 4. 시리얼라이징
         serializer = CompanySerializer(companies, many=True, context={'rank_dict': rank_dict})
