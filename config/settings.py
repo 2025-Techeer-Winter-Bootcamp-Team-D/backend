@@ -49,10 +49,11 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
-    # 만든 앱 등록    
+    # 만든 앱 등록
     "industries",
     "companies",
     "core",
+    "news",
     "users",
 ]
 
@@ -110,7 +111,7 @@ SPECTACULAR_SETTINGS = {
     # 태그 정렬
     "TAGS": [
         {"name": "Health Check", "description": "서버 상태 확인"},
-    ],   
+    ],
 }
 
 # Database
@@ -171,6 +172,40 @@ CHANNEL_LAYERS = {
     },
 }
 
+# Celery Configuration
+# Docker 환경에서는 redis 호스트명 사용, 로컬에서는 localhost 사용
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = "Asia/Seoul"
+CELERY_ENABLE_UTC = False
+# Celery 6.0+ 호환성을 위한 설정
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+
+# Celery Beat Schedule (주기적 작업 스케줄링)
+# 뉴스 크롤링: 매 3시간마다 실행 (오전 9시, 12시, 오후 3시, 6시, 9시, 자정)
+# 필요에 따라 주기를 조정할 수 있습니다 (예: 1시간, 6시간 등)
+CELERY_BEAT_SCHEDULE = {
+    "crawl-news-every-3-hours": {
+        "task": "news.tasks.workflows.scheduled_crawl_news",  # Canvas 워크플로우 사용
+        "schedule": 3 * 60 * 60,  # 3시간 (초 단위)
+        "kwargs": {
+            "keywords": ["AI", "반도체", "삼성전자", "SK하이닉스"],  # 기본 키워드
+            "max_articles_per_keyword": 10,
+        },
+    },
+}
+
+# API Keys
+# 필수 API 키: 빈 문자열도 None으로 처리하여 명시적 검증 가능하도록 함
+NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID") or None
+NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET") or None
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or None
+# 선택 API 키: Jina는 무료 티어로도 동작 가능
+JINA_API_KEY = os.getenv("JINA_API_KEY") or None
+
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
@@ -215,13 +250,13 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
     "ROTATE_REFRESH_TOKENS": False,
     "ALGORITHM": "HS256",
-    "SIGNING_KEY": JWT_SIGNING_KEY, 
+    "SIGNING_KEY": JWT_SIGNING_KEY,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
 AUTHENTICATION_BACKENDS = [
-    'users.backends.EmailBackend',
-    'django.contrib.auth.backends.ModelBackend',
+    "users.backends.EmailBackend",
+    "django.contrib.auth.backends.ModelBackend",
 ]
 # Default primary key field type
 # https://docs.djangoproject.com/en/6.0/ref/settings/#default-auto-field

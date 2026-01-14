@@ -1,4 +1,4 @@
-FROM python:3.11-alpine
+FROM python:3.12-alpine
 
 WORKDIR /app
 
@@ -8,6 +8,7 @@ RUN apk add --no-cache \
     curl \
     && apk add --no-cache --virtual .build-deps \
     gcc \
+    g++ \
     musl-dev \
     pkgconfig
 
