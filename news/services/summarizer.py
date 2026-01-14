@@ -1,4 +1,4 @@
-import google.generativeai as genai
+from google import genai
 from django.conf import settings
 import json
 import logging
@@ -17,39 +17,13 @@ class SummarizeService:
             error_msg = "GEMINI_API_KEY is missing or empty. Please set GEMINI_API_KEY in environment variables."
             logger.error(error_msg)
             raise ValueError(error_msg)
-        genai.configure(api_key=api_key)
-        # 모델 이름 시도 (가성비 좋은 모델 우선: Flash 모델이 빠르고 저렴)
-        # gemini-2.5-flash: 최신 Flash 모델, 빠르고 저렴하며 품질도 좋음
-        # gemini-flash-latest: 항상 최신 Flash 버전 (자동 업데이트)
-        model_names = [
-            "models/gemini-2.5-flash-lite",
-            "gemini-2.5-flash-lite",  # models/ 접두사 없는 버전
-        ]
-        self.model = None
-        for model_name in model_names:
-            try:
-                self.model = genai.GenerativeModel(model_name)
-                logger.info(f"Gemini 모델 초기화 성공: {model_name}")
-                break
-            except Exception as e:
-                logger.debug(f"모델 {model_name} 초기화 실패: {str(e)}")
-                continue
 
-        if self.model is None:
-            # 사용 가능한 모델 목록에서 찾기
-            try:
-                available_models = genai.list_models()
-                for model in available_models:
-                    if "generateContent" in model.supported_generation_methods:
-                        model_name = model.name.replace("models/", "")
-                        self.model = genai.GenerativeModel(model_name)
-                        logger.info(f"사용 가능한 모델로 초기화: {model_name}")
-                        break
-            except Exception as e:
-                logger.error(f"모델 목록 조회 실패: {str(e)}")
+        # 새 google.genai SDK 사용
+        self.client = genai.Client(api_key=api_key)
 
-        if self.model is None:
-            raise ValueError("사용 가능한 Gemini 모델을 찾을 수 없습니다.")
+        # 모델 이름 (가성비 좋은 모델 우선: Flash 모델이 빠르고 저렴)
+        self.model_name = "gemini-2.5-flash-lite"
+        logger.info(f"Gemini 클라이언트 초기화 성공: {self.model_name}")
 
     def get_summary_only(self, perfect_text):
         """
@@ -107,9 +81,12 @@ class SummarizeService:
             ]
 
             # response_mime_type은 최신 API에서만 지원되므로 일반 텍스트로 요청 후 파싱
-            response = self.model.generate_content(
-                prompt,
-                safety_settings=safety_settings,
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config={
+                    "safety_settings": safety_settings,
+                },
             )
             text = response.text.strip()
 
@@ -126,5 +103,11 @@ class SummarizeService:
             # JSON 형식이 아니면 그냥 텍스트로 반환
             return {"summary": text}
         except Exception as e:
-            logger.error(f"Summarization failed: {str(e)}")
-            return {"summary": "요약 생성 실패"}
+            error_message = str(e)
+            # 쿼터 초과(429) 에러 명시적 처리
+            if "429" in error_message or "quota" in error_message.lower():
+                logger.warning(f"Gemini API 쿼터 초과: 요약 생성 불가")
+                return {"summary": "Gemini API 토큰 부족으로 요약 생성 실패"}
+            else:
+                logger.error(f"Summarization failed: {error_message}")
+                return {"summary": "요약 생성 실패"}
