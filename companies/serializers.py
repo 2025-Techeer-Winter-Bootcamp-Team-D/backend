@@ -167,7 +167,7 @@ class CompanyRankingSerializer(serializers.ModelSerializer):
     companyId = serializers.CharField(source="stock_code.stock_code")
     name = serializers.CharField(source="stock_code.company_name")
     logo = serializers.URLField(source="stock_code.logo_url")
-    amount = serializers.BigIntegerField(source="stock_code.market_amount")
+    amount = serializers.IntegerField(source="stock_code.market_amount")
 
     class Meta:
         model = CompanyRanking
