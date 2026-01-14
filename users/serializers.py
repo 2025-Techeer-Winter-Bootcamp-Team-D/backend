@@ -68,12 +68,34 @@ class LoginSerializer(serializers.Serializer):
 
 # --- 즐겨찾기 시리얼라이저 ---
 class FavoriteSerializer(serializers.ModelSerializer):
-    # 읽기 전용 필드들 (응답용)
+    # 프론트엔드와 소통할 이름은 'companyId', 실제 DB 필드는 'company.stock_code'
+    companyId = serializers.CharField(source='company.stock_code')
+
     favoriteId = serializers.IntegerField(source='favorite_id', read_only=True)
-    companyId = serializers.CharField(source='company.stock_code', read_only=True)
     companyName = serializers.CharField(source='company.company_name', read_only=True)
     logoUrl = serializers.URLField(source='company.logo_url', read_only=True)
 
     class Meta:
         model = Favorite
         fields = ['favoriteId', 'companyId', 'companyName', 'logoUrl']
+    
+    def validate_companyId(self, value):
+        try:
+            company = Company.objects.get(stock_code=value)
+            return value  # 종목코드 문자열을 반환
+        except Company.DoesNotExist:
+            raise serializers.ValidationError("존재하지 않는 기업 종목코드입니다.")
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        stock_code = validated_data.pop('company')['stock_code']
+        company = Company.objects.get(stock_code=stock_code)
+
+        favorite, created = Favorite.objects.get_or_create(
+            user=user,
+            company=company
+        )
+        favorite.is_deleted = False
+        favorite.save()
+        return favorite
+

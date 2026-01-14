@@ -1,5 +1,6 @@
+import logging
 from django.contrib.auth.models import User
-from rest_framework import generics, status, viewsets
+from rest_framework import generics, status, viewsets, mixins
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -9,7 +10,7 @@ from companies.models import Company
 # 프로젝트 내부 모듈듈 
 from .serializers import RegisterSerializer, LoginSerializer
 # swagger 관련련
-from drf_spectacular.utils import extend_schema 
+from drf_spectacular.utils import extend_schema, extend_schema_view 
 # jwt 관련 
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
@@ -84,9 +85,21 @@ class LogoutView(generics.GenericAPIView):
                 {"message": "Invalid token or already logged out."}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
+ 
+ # --즐겨찾기--
 
-    # --즐겨찾기--
-class FavoriteViewSet(viewsets.ModelViewSet):
+#예외 로깅을 위한 설정
+logger = logging.getLogger(__name__)
+
+@extend_schema_view(
+    list=extend_schema(summary="즐겨찾기 목록 조회"),
+    create=extend_schema(summary="즐겨찾기 추가"),
+    destroy=extend_schema(summary="즐겨찾기 삭제"),
+)
+class FavoriteViewSet(mixins.ListModelMixin, 
+                      mixins.CreateModelMixin, 
+                      mixins.DestroyModelMixin, 
+                      viewsets.GenericViewSet):
     serializer_class = FavoriteSerializer
     permission_classes = [IsAuthenticated] # 로그인한 사용자만 접근 가능
    
@@ -94,44 +107,23 @@ class FavoriteViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return Favorite.objects.filter(user=self.request.user, is_deleted=False)
     #즐겨찾기 추가 
-    def create(self, request):
-        stock_code = request.data.get('companyId') # 프론트에서 보낸 종목코드
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True) 
+        self.perform_create(serializer)             
         
-        if not stock_code:
-            return Response({"message": "companyId(종목코드)가 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            "status": 201,
+            "message": "즐겨찾기 추가 성공",
+            "data": serializer.data
+        }, status=status.HTTP_201_CREATED)
 
+    def destroy(self, request, *args, **kwargs):
         try:
-            # 1. 기업 존재 확인
-            company = Company.objects.get(stock_code=stock_code)
-            
-            # 2. 유저와 기업 조합으로 기존 데이터가 있는지 확인 (없으면 생성)
-            favorite, created = Favorite.objects.get_or_create(
-                user=request.user,
-                company=company
-            )
-            
-            # 3. 상태 업데이트 (Soft delete 해제제)
-            favorite.is_deleted = False
-            favorite.save()
-            
-            serializer = self.get_serializer(favorite)
-            return Response({
-                "status": 201,
-                "message": "즐겨찾기 추가 성공",
-                "data": serializer.data
-            }, status=status.HTTP_201_CREATED)
-
-        except Company.DoesNotExist:
-            return Response({"message": "존재하지 않는 기업 종목코드입니다."}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response({"message": "서버 내부 오류가 발생했습니다."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    #즐겨찾기 삭제(is_deleted 를 True 로)
-    def destroy(self, request, pk=None):
-        try:
-            # favorite_id(pk)로 해당 유저의 즐겨찾기를 찾음
-            favorite = Favorite.objects.get(favorite_id=pk, user=request.user)
-            favorite.is_deleted = True
-            favorite.save()
+            # get_object()는 get_queryset()을 기반으로 하므로 is_deleted=False 조건이 자동 적용
+            instance = self.get_object() 
+            instance.is_deleted = True
+            instance.save()
             
             return Response({
                 "status": 200,
@@ -139,5 +131,9 @@ class FavoriteViewSet(viewsets.ModelViewSet):
                 "data": None
             }, status=status.HTTP_200_OK)
             
-        except Favorite.DoesNotExist:
-            return Response({"message": "해당 즐겨찾기 항목을 찾을 수 없습니다."}, status=status.HTTP_404_NOT_FOUND)
+        except Exception:
+            logger.exception("즐겨찾기 삭제 중 예외 발생")
+            return Response(
+                {"message": "해당 즐겨찾기 항목을 찾을 수 없거나 이미 삭제되었습니다."}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
