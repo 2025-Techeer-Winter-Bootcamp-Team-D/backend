@@ -14,6 +14,7 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+
 from django.contrib import admin
 from django.urls import path, include
 from django.http import HttpResponse
@@ -24,9 +25,11 @@ from drf_spectacular.views import (
 )
 from core.views import health_check
 
-#임시 메인 페이지 함수수
+
+# 임시 메인 페이지 함수수
 def main_page(request):
     return HttpResponse("메인 페이지입니다.")
+
 
 urlpatterns = [
     # Admin
@@ -45,7 +48,8 @@ urlpatterns = [
         SpectacularRedocView.as_view(url_name="schema"),
         name="redoc",
     ),
-    path('api/users/', include('users.urls')),
-    path('api/core/', include('core.urls')),      # 기존 경로
-    path('api/companies/', include('companies.urls')), # 기존 경로
+    path("api/users/", include("users.urls")),
+    path("api/core/", include("core.urls")), 
+    path("api/", include("companies.urls")),
+    path("api/industries/", include("industries.urls")),
 ]
