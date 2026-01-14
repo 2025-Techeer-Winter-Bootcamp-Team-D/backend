@@ -16,7 +16,7 @@ class Migration(migrations.Migration):
             fields=[
                 (
                     "stock_code",
-                    models.CharField(max_length=10, primary_key=True, serialize=False),
+                    models.CharField(max_length=6, primary_key=True, serialize=False),
                 ),
                 ("corp_code", models.CharField(max_length=8, null=True, unique=True)),
                 (
@@ -168,6 +168,32 @@ class Migration(migrations.Migration):
                 "db_table": "financial_statement",
                 "ordering": ["-fiscal_year", "-report_code"],
                 "unique_together": {("company", "fiscal_year", "report_code")},
+            },
+        ),
+        migrations.CreateModel(
+            name="CompanyRanking",
+            fields=[
+                (
+                    "ranking_id",
+                    models.BigIntegerField(primary_key=True, serialize=False),
+                ),
+                ("rank", models.IntegerField()),
+                ("base_date", models.DateField()),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("is_deleted", models.BooleanField(default=False)),
+                (
+                    "stock_code",
+                    models.ForeignKey(
+                        db_column="stock_code",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="rankings",
+                        to="companies.company",
+                    ),
+                ),
+            ],
+            options={
+                "db_table": "company_ranking",
             },
         ),
     ]
