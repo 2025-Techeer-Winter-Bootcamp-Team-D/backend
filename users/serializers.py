@@ -3,6 +3,8 @@ from django.contrib.auth.password_validation import validate_password # Django�
 from django.contrib.auth import authenticate
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator # 이메일 중복 방지를 위한 검증 도구
+from .models import Favorite
+from companies.models import Company
 
 
 # 회원가입 시리얼라이저
@@ -63,3 +65,15 @@ class LoginSerializer(serializers.Serializer):
         
         data['user'] = user
         return data
+
+# --- 즐겨찾기 시리얼라이저 ---
+class FavoriteSerializer(serializers.ModelSerializer):
+    # 읽기 전용 필드들 (응답용)
+    favoriteId = serializers.IntegerField(source='favorite_id', read_only=True)
+    companyId = serializers.CharField(source='company.stock_code', read_only=True)
+    companyName = serializers.CharField(source='company.company_name', read_only=True)
+    logoUrl = serializers.URLField(source='company.logo_url', read_only=True)
+
+    class Meta:
+        model = Favorite
+        fields = ['favoriteId', 'companyId', 'companyName', 'logoUrl']

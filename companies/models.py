@@ -2,11 +2,18 @@
 from django.db import models
 
 class Company(models.Model):
-    ticker_symbol = models.CharField(primary_key=True, max_length=255) # 티커 심볼
-    industry = models.ForeignKey('industries.Industry', on_delete=models.CASCADE, related_name='companies', db_column='industry_id') # 산업 아이디
-    company_name = models.CharField(max_length=255) # 기업 이름
-    description = models.TextField() # 설명
-    rank_in_industry = models.IntegerField() # 명세서의 rankInIndustry 산업 내 기업 순위
+    stock_code = models.CharField(primary_key=True, max_length=10)  # 종목코드 (6자리)
+    corp_code = models.CharField(max_length=8, unique=True, null=True)  # DART 고유번호 (8자리) - 신규
+    industry = models.ForeignKey('industries.Industry', on_delete=models.CASCADE, related_name='companies', db_column='industry_id')
+    company_name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default='')
+    logo_url = models.URLField(max_length=500, blank=True, null=True)  # 신규
+    market_amount = models.BigIntegerField(default=0)  # 시가총액
+    # DART 기업개황 추가 필드
+    ceo_name = models.CharField(max_length=100, blank=True, null=True)  # 대표자명
+    establishment_date = models.DateField(null=True)  # 설립일
+    homepage_url = models.URLField(max_length=500, blank=True, null=True)  # 홈페이지
+    address = models.TextField(blank=True, null=True)  # 본사 주소
     created_at = models.DateTimeField(auto_now_add=True) # 생성 일시
     updated_at = models.DateTimeField(auto_now=True) # 수정 일시
     is_deleted = models.BooleanField(default=False) # 삭제 여부
