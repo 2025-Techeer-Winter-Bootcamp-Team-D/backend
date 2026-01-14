@@ -47,9 +47,30 @@ def news_list(request):
     - page: 페이지 번호 (기본값: 1)
     - page_size: 페이지당 항목 수 (기본값: 20, 최대: 100)
     """
-    # 쿼리 파라미터 파싱
-    page = int(request.query_params.get("page", 1))
-    page_size = min(int(request.query_params.get("page_size", 20)), 100)
+    # 쿼리 파라미터 파싱 및 검증
+    try:
+        page = int(request.query_params.get("page", 1))
+        page_size = int(request.query_params.get("page_size", 20))
+    except (ValueError, TypeError):
+        return Response(
+            {"error": "page와 page_size는 정수여야 합니다."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    
+    # 유효 범위 검증
+    if page < 1:
+        return Response(
+            {"error": "page는 1 이상이어야 합니다."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if page_size < 1 or page_size > 100:
+        return Response(
+            {"error": "page_size는 1에서 100 사이여야 합니다."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    
+    # page_size 상한 적용
+    page_size = min(page_size, 100)
 
     # 기본 쿼리셋: 삭제되지 않은 뉴스만 조회
     queryset = News.objects.filter(is_deleted=False)

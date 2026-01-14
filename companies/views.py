@@ -563,7 +563,13 @@ def process_company_reports_view(request, stock_code):
 
         # limit 파라미터 처리
         try:
-            limit = min(int(request.query_params.get("limit", 20)), 100)
+            limit = int(request.query_params.get("limit", 20))
+            if limit <= 0:
+                return Response(
+                    {"status": 400, "error": "limit 파라미터는 1 이상의 정수여야 합니다."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            limit = min(limit, 100)
         except ValueError:
             return Response(
                 {"status": 400, "error": "limit 파라미터는 정수여야 합니다."},
