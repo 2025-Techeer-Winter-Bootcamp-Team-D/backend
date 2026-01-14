@@ -199,7 +199,8 @@ def extract_report_info_task(self, data: dict[str, Any]) -> dict[str, Any] | Non
         return data
     except Exception as e:
         logger.error(f"정보 추출 오류: {data.get('report_id')} - {e}")
-        raise
+        # Celery retry 호출 (지수 백오프)
+        raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
 
 
 @shared_task(bind=True, max_retries=3)
@@ -208,8 +209,8 @@ def create_report_embedding_task(self, data: dict[str, Any]) -> dict[str, Any] |
     if not data:
         return None
 
+    report_id = data.get("report_id")
     try:
-        report_id = data["report_id"]
         refined_content = data["refined_content"]
 
         embedding_service = EmbeddingService()
@@ -217,6 +218,7 @@ def create_report_embedding_task(self, data: dict[str, Any]) -> dict[str, Any] |
 
         if not embedding:
             logger.warning(f"임베딩 생성 실패: {report_id}")
+            # 임베딩 실패는 재시도 의미 없음 (서비스 문제), 파이프라인 계속 진행
             return data
 
         # DB 업데이트
@@ -225,8 +227,9 @@ def create_report_embedding_task(self, data: dict[str, Any]) -> dict[str, Any] |
         data["embedding"] = embedding
         return data
     except Exception as e:
-        logger.error(f"임베딩 생성 오류: {data.get('report_id')} - {e}")
-        return data  # 임베딩 실패해도 다른 작업은 완료됨
+        logger.error(f"임베딩 생성 오류: {report_id} - {e}")
+        # Celery retry 호출 (지수 백오프)
+        raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
 
 
 @shared_task
