@@ -1,4 +1,5 @@
 # companies/models.py
+
 from django.db import models
 
 
@@ -120,3 +121,21 @@ class Report(models.Model):
     class Meta:
         db_table = "report"
         ordering = ["-submitted_at"]
+
+        
+
+class CompanyRanking(models.Model):
+    ranking_id = models.BigIntegerField(primary_key=True) # 순위 아이디
+    stock_code = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='rankings', db_column='stock_code') # 종목코드
+    rank = models.IntegerField() # 순위
+    base_date = models.DateField() # 기준 날짜
+    created_at = models.DateTimeField(auto_now_add=True) # 생성 일시
+    updated_at = models.DateTimeField(auto_now=True) # 수정 일시
+    is_deleted = models.BooleanField(default=False) # 삭제 여부
+
+    class Meta:
+        db_table = 'company_ranking'
+
+        
+
+        

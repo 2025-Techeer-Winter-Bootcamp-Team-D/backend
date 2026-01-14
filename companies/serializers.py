@@ -1,7 +1,7 @@
 # companies/serializers.py ->  모델 데이터를 JSON 형식으로 변환해주는 도구
 
 from rest_framework import serializers
-from .models import Company, FinancialStatement, RevenueComposition, Report
+from .models import Company, FinancialStatement, RevenueComposition, Report, CompanyRanking
 from industries.models import Industry
 
 
@@ -154,3 +154,18 @@ class ReportListSerializer(serializers.Serializer):
     def to_representation(self, instance):
         """직접 딕셔너리를 반환하도록 오버라이드"""
         return instance
+        
+ 
+    def get_rank(self, obj):
+        return self.context.get('rank_dict', {}).get(obj.stock_code, None)
+    
+class CompanyRankingSerializer(serializers.ModelSerializer):
+    # stock_code(FK)을 통해 Company 모델의 필드에 접근합니다.
+    companyId = serializers.CharField(source='stock_code.stock_code')
+    name = serializers.CharField(source='stock_code.company_name')
+    logo = serializers.URLField(source='stock_code.logo_url')
+    amount = serializers.BigIntegerField(source='stock_code.market_amount')
+
+    class Meta:
+        model = CompanyRanking
+        fields = ['rank', 'companyId', 'name', 'logo', 'amount']

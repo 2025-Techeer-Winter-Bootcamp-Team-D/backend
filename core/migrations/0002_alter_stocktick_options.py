@@ -13,5 +13,4 @@ class Migration(migrations.Migration):
         migrations.AlterModelOptions(
             name='stocktick',
             options={'managed': False, 'ordering': ['-time']},
-        ),
-    ]
+        ),]
