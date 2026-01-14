@@ -18,8 +18,23 @@ class DartAPIClient:
         if not self.api_key:
             raise ValueError("DART_API_KEY가 설정되지 않았습니다.")
 
-    def _request(self, endpoint: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        """API 요청 공통 메서드"""
+    def _request(
+        self,
+        endpoint: str,
+        params: Dict[str, Any],
+        allow_empty: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        API 요청 공통 메서드
+
+        Args:
+            endpoint: API 엔드포인트
+            params: 요청 파라미터
+            allow_empty: True면 status=013(데이터 없음)을 정상으로 처리
+
+        Returns:
+            API 응답 데이터
+        """
         params["crtfc_key"] = self.api_key
 
         url = f"{self.BASE_URL}/{endpoint}"
@@ -39,12 +54,20 @@ class DartAPIClient:
 
         # DART API 응답 상태 코드 확인
         status = data.get("status", "000")
-        if status != "000":
-            error_message = data.get("message", "알 수 없는 오류")
-            logger.warning(f"DART API 오류: status={status}, message={error_message}")
-            raise DartAPIError(f"DART API 오류 (status: {status}): {error_message}")
 
-        return data
+        # 정상 응답
+        if status == "000":
+            return data
+
+        # 조회된 데이터가 없음 (status=013) - allow_empty면 빈 결과 반환
+        if status == "013" and allow_empty:
+            logger.info(f"DART API: 조회된 데이터 없음 ({endpoint})")
+            return {"status": "013", "message": "조회된 데이터가 없습니다.", "list": []}
+
+        # 그 외 오류
+        error_message = data.get("message", "알 수 없는 오류")
+        logger.warning(f"DART API 오류: status={status}, message={error_message}")
+        raise DartAPIError(f"DART API 오류 (status: {status}): {error_message}")
 
     def get_company_info(self, corp_code: str) -> Dict[str, Any]:
         """기업개황 조회"""
@@ -87,7 +110,8 @@ class DartAPIClient:
         if pblntf_ty:
             params["pblntf_ty"] = pblntf_ty
 
-        return self._request("list.json", params)
+        # allow_empty=True: 새 보고서가 없는 경우 빈 리스트 반환 (오류 아님)
+        return self._request("list.json", params, allow_empty=True)
 
     def get_corp_code_list(self) -> bytes:
         """

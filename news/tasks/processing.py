@@ -23,10 +23,14 @@ def refine_and_summarize_single_article_task(
 
     처리 흐름:
     1. raw_content 유효성 검증
-    2. 본문 정제 (광고, 메뉴 등 제거)
-    3. 정제된 본문 길이 검증 (최소 30자)
-    4. Gemini로 요약 생성
-    5. 결과 추가 및 반환
+    2. 본문 정제 완료 (광고, 메뉴 등 제거)
+    3. 정제 결과 검증 (정제 실패 시 요약하지 않음)
+    4. 정제된 본문 길이 검증 (최소 30자)
+    5. 정제가 완료된 텍스트(refined_content)로만 요약 생성
+    6. 결과 추가 및 반환
+
+    중요: 요약은 반드시 정제가 완료된 텍스트(refined_content)를 사용합니다.
+          정제가 실패하거나 완료되지 않으면 요약을 수행하지 않습니다.
 
     Returns:
         refined_content와 summary가 추가된 기사 딕셔너리 (실패 시 None)
@@ -42,19 +46,33 @@ def refine_and_summarize_single_article_task(
             return None
 
         refiner_service = RefineService()
-        summarizer_service = SummarizeService()
 
         # 1단계: 본문 정제 (Trafilatura + Gemini)
+        # 정제가 완전히 끝난 후에만 다음 단계로 진행
         refined_content = refiner_service.get_refined_body(raw_content)
 
-        # 정제된 본문 길이 검증 (너무 짧으면 요약 의미 없음)
-        if not refined_content or len(refined_content.strip()) < 30:
+        # 정제 결과 검증: 정제가 실패하거나 결과가 없으면 요약하지 않음
+        if not refined_content:
             logger.warning(
-                f"[Process] 본문이 너무 짧음 (30자 미만): {article.get('link', '')[:50]}..."
+                f"[Process] 본문 정제 실패: {article.get('link', '')[:50]}..."
             )
             return None
 
-        # 2단계: Gemini로 요약 생성
+        # 정제된 본문 길이 검증 (너무 짧으면 요약 의미 없음)
+        if len(refined_content.strip()) < 30:
+            logger.warning(
+                f"[Process] 정제된 본문이 너무 짧음 (30자 미만): {article.get('link', '')[:50]}..."
+            )
+            return None
+
+        # 정제 완료 확인 로그
+        logger.debug(
+            f"[Process] 본문 정제 완료: {len(refined_content)}자 - {article.get('link', '')[:50]}..."
+        )
+
+        # 2단계: 정제가 완료된 텍스트로만 요약 생성
+        # 정제된 텍스트(refined_content)를 사용하여 요약 진행
+        summarizer_service = SummarizeService()
         summary_result = summarizer_service.get_summary_only(refined_content)
         summary_text = summary_result.get("summary", "")
 
@@ -62,7 +80,7 @@ def refine_and_summarize_single_article_task(
         article["refined_content"] = refined_content
         article["summary"] = summary_text
 
-        logger.debug(f"[Process] 성공: {article.get('link', '')[:50]}...")
+        logger.debug(f"[Process] 정제 및 요약 성공: {article.get('link', '')[:50]}...")
         return article
 
     except Exception as e:
@@ -71,10 +89,12 @@ def refine_and_summarize_single_article_task(
             logger.warning(
                 f"[Process] 정제/요약 실패 (재시도 {self.request.retries + 1}/{self.max_retries}): {article.get('link', '')[:50]}... - {str(e)}"
             )
-            raise self.retry(exc=e, countdown=2 ** self.request.retries)
-        
+            raise self.retry(exc=e, countdown=2**self.request.retries)
+
         # 최대 재시도 횟수 초과 시 None 반환
-        logger.error(f"[Process] 정제/요약 최종 실패: {article.get('link', '')[:50]}... - {str(e)}")
+        logger.error(
+            f"[Process] 정제/요약 최종 실패: {article.get('link', '')[:50]}... - {str(e)}"
+        )
         return None
 
 
