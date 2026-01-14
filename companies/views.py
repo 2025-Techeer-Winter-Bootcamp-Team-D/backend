@@ -362,19 +362,27 @@ def sync_company_from_dart(request, stock_code):
         results = {}
         errors = []
 
+        # 파라미터 사전 파싱
+        try:
+            year = int(request.query_params.get("year", datetime.now().year))
+            days = int(request.query_params.get("days", 365))
+        except ValueError:
+            return Response(
+                {"status": 400, "error": "year와 days는 정수여야 합니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # 비동기 실행
         if use_async:
             if sync_info:
                 sync_company_info_from_dart.delay(stock_code)
                 results["info"] = "동기화 작업이 큐에 등록되었습니다."
             if sync_financials:
-                year = int(request.query_params.get("year", datetime.now().year))
                 sync_financial_statements.delay(stock_code, year)
                 results["financials"] = (
                     f"{year}년 재무제표 동기화 작업이 큐에 등록되었습니다."
                 )
             if sync_reports:
-                days = int(request.query_params.get("days", 365))
                 sync_company_reports.delay(stock_code, days)
                 results["reports"] = (
                     f"최근 {days}일 보고서 동기화 작업이 큐에 등록되었습니다."

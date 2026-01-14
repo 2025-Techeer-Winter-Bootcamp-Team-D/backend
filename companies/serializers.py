@@ -161,9 +161,6 @@ class ReportListSerializer(serializers.Serializer):
         """직접 딕셔너리를 반환하도록 오버라이드"""
         return instance
 
-    def get_rank(self, obj):
-        return self.context.get("rank_dict", {}).get(obj.stock_code, None)
-
 
 class CompanyRankingSerializer(serializers.ModelSerializer):
     # stock_code(FK)을 통해 Company 모델의 필드에 접근합니다.
