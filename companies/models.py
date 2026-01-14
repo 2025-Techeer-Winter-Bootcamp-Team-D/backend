@@ -5,7 +5,7 @@ from django.db import models
 
 
 class Company(models.Model):
-    stock_code = models.CharField(primary_key=True, max_length=6)  # 종목코드 (6자리)
+    stock_code = models.CharField(primary_key=True, max_length=10)  # 종목코드 (6자리)
     corp_code = models.CharField(max_length=8, unique=True, null=True)  # DART 고유번호 (8자리) - 신규
     industry = models.ForeignKey('industries.Industry', on_delete=models.CASCADE, related_name='companies', db_column='industry_id')
     company_name = models.CharField(max_length=255)
