@@ -8,6 +8,8 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-postgres}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - TZ=Asia/Seoul
+    command: ["postgres", "-c", "timezone=Asia/Seoul"]
     networks:
       - django-network
     ports:
@@ -105,6 +107,23 @@ services:
         - path: ./requirements.txt
           action: rebuild
 
+  kis-mock-server:
+    build: ./kis-publisher
+    container_name: kis-mock-server
+    command: python mock_server.py
+    ports:
+      - "8080:8080"
+    environment:
+      - TZ=Asia/Seoul
+    networks:
+      - django-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.socket(); s.connect(('localhost', 8080)); s.close()"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
   kis-publisher:
     build: ./kis-publisher
     container_name: kis-publisher
@@ -114,14 +133,22 @@ services:
       - REDIS_HOST=redis
       - PYTHONUNBUFFERED=1
       - KRX_SYMBOLS_CSV_PATH=/app/companies_data.csv
-      - KIS_SYMBOL_LIMIT=500
-      - KIS_USE_TEST_MODE=false
+      - KIS_SYMBOL_LIMIT=10
+      - KIS_USE_TEST_MODE=true
+      - KIS_TEST_WS_URL=ws://kis-mock-server:8080
+      - KIS_MAX_RECONNECT=3
     depends_on:
       redis:
         condition: service_healthy
+      kis-mock-server:
+        condition: service_healthy
     networks:
       - django-network
-    restart: always
+    restart: on-failure
+    deploy:
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
 
   persistence-worker:
     build: ./persistence-worker
@@ -132,6 +159,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-postgres}
       - PYTHONUNBUFFERED=1
+      - TZ=Asia/Seoul
     depends_on:
       redis:
         condition: service_healthy

@@ -12,5 +12,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY main.py .
 COPY fetch_symbols.py .
 COPY companies_data.csv .
+COPY mock_server.py .
 
 CMD ["python", "main.py"]
