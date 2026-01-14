@@ -24,6 +24,7 @@ from .tasks.dart_sync import (
     sync_financial_statements,
     sync_company_reports,
 )
+from .tasks.report_processing import process_company_reports
 
 
 # ------------------------ 기업 기본 정보 조회--------------------------
@@ -526,3 +527,89 @@ def get_company_rankings(request):
         },
         status=status.HTTP_200_OK,
     )
+
+
+# ------------------------ 보고서 처리 ----------------------------------
+@extend_schema(
+    summary="보고서 처리 시작 (관리자용)",
+    description="기업의 미처리 보고서를 일괄 처리합니다 (본문 추출, 정제, 구조화된 정보 추출, OpenSearch 적재).",
+    parameters=[
+        OpenApiParameter(
+            name="stock_code",
+            type=str,
+            location=OpenApiParameter.PATH,
+            description="처리할 기업의 종목코드 (예: 005930)",
+        ),
+        OpenApiParameter(
+            name="limit",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            description="처리할 보고서 수 (기본값: 20, 최대: 100)",
+            required=False,
+        ),
+    ],
+    responses={
+        202: OpenApiResponse(description="처리 시작됨"),
+        404: OpenApiResponse(description="Company not found"),
+    },
+    tags=["Reports"],
+)
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def process_company_reports_view(request, stock_code):
+    """보고서 처리 API (관리자용)"""
+    try:
+        company = Company.objects.get(pk=stock_code, is_deleted=False)
+
+        # limit 파라미터 처리
+        try:
+            limit = min(int(request.query_params.get("limit", 20)), 100)
+        except ValueError:
+            return Response(
+                {"status": 400, "error": "limit 파라미터는 정수여야 합니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 미처리 보고서 수 확인
+        from .models import Report
+
+        pending_count = Report.objects.filter(
+            company_id=stock_code,
+            processing_status="pending",
+        ).count()
+
+        if pending_count == 0:
+            return Response(
+                {
+                    "status": 200,
+                    "message": "처리할 보고서가 없습니다.",
+                    "data": {
+                        "stock_code": stock_code,
+                        "pending_count": 0,
+                    },
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        # Celery 태스크 실행
+        task = process_company_reports.delay(stock_code, limit)
+
+        return Response(
+            {
+                "status": 202,
+                "message": "보고서 처리가 시작되었습니다.",
+                "data": {
+                    "stock_code": stock_code,
+                    "company_name": company.company_name,
+                    "task_id": task.id,
+                    "limit": limit,
+                    "pending_count": pending_count,
+                },
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+    except Company.DoesNotExist:
+        return Response(
+            {"status": 404, "error": "Company not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
