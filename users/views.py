@@ -4,10 +4,10 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 
-# 프로젝트 내부 모듈듈
+# 프로젝트 내부 모듈
 from .serializers import RegisterSerializer, LoginSerializer
 
-# swagger 관련련
+# swagger 관련
 from drf_spectacular.utils import extend_schema
 
 # jwt 관련

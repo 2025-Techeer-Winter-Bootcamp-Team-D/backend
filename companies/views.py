@@ -200,8 +200,14 @@ def get_company_reports(request, stock_code):
 
         # 쿼리 파라미터 처리
         report_type = request.query_params.get("type")
-        page = int(request.query_params.get("page", 1))
-        size = min(int(request.query_params.get("size", 20)), 100)
+        try:
+            page = int(request.query_params.get("page", 1))
+            size = min(int(request.query_params.get("size", 20)), 100)
+        except ValueError:
+            return Response(
+                {"status": 400, "error": "Invalid page or size parameter"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         logger.info(
             f"쿼리 파라미터: report_type={report_type}, page={page}, size={size}"
         )
@@ -454,11 +460,6 @@ def sync_company_from_dart(request, stock_code):
             status=status.HTTP_200_OK if not errors else status.HTTP_207_MULTI_STATUS,
         )
 
-    except Company.DoesNotExist:
-        return Response(
-            {"status": 404, "error": "Company not found"},
-            status=status.HTTP_404_NOT_FOUND,
-        )
     except ValueError as e:
         return Response(
             {"status": 400, "error": str(e)},

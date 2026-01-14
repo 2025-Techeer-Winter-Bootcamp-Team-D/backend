@@ -65,8 +65,13 @@ class CompanyDetailSerializer(serializers.ModelSerializer):
 
             if industry:
                 return IndustrySerializer(industry).data
-        except Exception:
-            pass
+        except Industry.DoesNotExist:
+            return None
+        except Exception as e:
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Industry 조회 실패 (induty_code: {obj.induty_code}): {e}")
 
         return None
 
