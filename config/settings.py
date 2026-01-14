@@ -112,6 +112,8 @@ SPECTACULAR_SETTINGS = {
     # 태그 정렬
     "TAGS": [
         {"name": "Health Check", "description": "서버 상태 확인"},
+        {"name": "Company", "description": "기업 정보 및 재무 데이터 조회"},
+        {"name": "Industry", "description": "산업별 기업 정보 조회"},
     ],
 }
 
