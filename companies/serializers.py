@@ -1,7 +1,13 @@
 # companies/serializers.py ->  모델 데이터를 JSON 형식으로 변환해주는 도구
 
 from rest_framework import serializers
-from .models import Company, FinancialStatement, RevenueComposition, Report, CompanyRanking
+from .models import (
+    Company,
+    FinancialStatement,
+    RevenueComposition,
+    Report,
+    CompanyRanking,
+)
 from industries.models import Industry
 
 
@@ -118,7 +124,7 @@ class CompanyFinancialsSerializer(serializers.Serializer):
 
     stock_code = serializers.CharField()
     company_name = serializers.CharField()
-    market_amount = serializers.IntegerField()
+    market_amount = serializers.IntegerField(max_value=2**63 - 1)
     financial_statements = FinancialStatementSerializer(many=True)
     revenue_composition = RevenueCompositionSerializer(many=True)
 
@@ -154,18 +160,18 @@ class ReportListSerializer(serializers.Serializer):
     def to_representation(self, instance):
         """직접 딕셔너리를 반환하도록 오버라이드"""
         return instance
-        
- 
+
     def get_rank(self, obj):
-        return self.context.get('rank_dict', {}).get(obj.stock_code, None)
-    
+        return self.context.get("rank_dict", {}).get(obj.stock_code, None)
+
+
 class CompanyRankingSerializer(serializers.ModelSerializer):
     # stock_code(FK)을 통해 Company 모델의 필드에 접근합니다.
-    companyId = serializers.CharField(source='stock_code.stock_code')
-    name = serializers.CharField(source='stock_code.company_name')
-    logo = serializers.URLField(source='stock_code.logo_url')
-    amount = serializers.BigIntegerField(source='stock_code.market_amount')
+    companyId = serializers.CharField(source="stock_code.stock_code")
+    name = serializers.CharField(source="stock_code.company_name")
+    logo = serializers.URLField(source="stock_code.logo_url")
+    amount = serializers.BigIntegerField(source="stock_code.market_amount")
 
     class Meta:
         model = CompanyRanking
-        fields = ['rank', 'companyId', 'name', 'logo', 'amount']
+        fields = ["rank", "companyId", "name", "logo", "amount"]
