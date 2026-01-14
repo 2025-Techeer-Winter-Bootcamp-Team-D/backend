@@ -187,29 +187,62 @@ CELERY_ENABLE_UTC = False
 # Celery 6.0+ 호환성을 위한 설정
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
+# =============================================================================
+# 배치 작업 활성화 설정 (개발 환경에서 토큰 사용 절감)
+# =============================================================================
+# 환경변수로 개별 배치 작업을 활성화/비활성화할 수 있습니다.
+# 기본값은 모두 비활성화 (개발 환경 기본)
+# 프로덕션에서는 .env 파일에서 true로 설정하세요.
+
+# 뉴스 크롤링 배치 (Gemini 토큰 사용: 정제, 요약, 임베딩)
+NEWS_BATCH_ENABLED = os.getenv("NEWS_BATCH_ENABLED", "false").lower() == "true"
+
+# DART 동기화 배치 (DART OpenAPI - 무료, 기본 활성화)
+DART_SYNC_ENABLED = os.getenv("DART_SYNC_ENABLED", "true").lower() == "true"
+
+# 보고서 처리 배치 (Gemini 토큰 사용: 정제, 정보추출, 임베딩)
+REPORT_PROCESSING_ENABLED = (
+    os.getenv("REPORT_PROCESSING_ENABLED", "false").lower() == "true"
+)
+
+# =============================================================================
 # Celery Beat Schedule (주기적 작업 스케줄링)
-# 뉴스 크롤링: 매 3시간마다 실행 (오전 9시, 12시, 오후 3시, 6시, 9시, 자정)
-# 필요에 따라 주기를 조정할 수 있습니다 (예: 1시간, 6시간 등)
-CELERY_BEAT_SCHEDULE = {
-    "crawl-news-every-3-hours": {
-        "task": "news.tasks.workflows.scheduled_crawl_news",  # Canvas 워크플로우 사용
+# =============================================================================
+# 배치 작업은 위의 활성화 설정에 따라 조건부로 등록됩니다.
+
+CELERY_BEAT_SCHEDULE = {}
+
+# 뉴스 크롤링: 매 3시간마다 실행
+if NEWS_BATCH_ENABLED:
+    CELERY_BEAT_SCHEDULE["crawl-news-every-3-hours"] = {
+        "task": "news.tasks.workflows.scheduled_crawl_news",
         "schedule": 3 * 60 * 60,  # 3시간 (초 단위)
         "kwargs": {
-            "keywords": ["AI", "반도체", "삼성전자", "SK하이닉스"],  # 기본 키워드
+            "keywords": [
+                "경제",
+                "증권",
+                "기업",
+                "IT",
+                "기술",
+                "산업",
+                "무역",
+                "금융",
+            ],
             "max_articles_per_keyword": 10,
         },
-    },
-    # DART 기업 정보 동기화: 주 1회 (일요일 새벽 3시)
-    "sync-dart-company-info-weekly": {
+    }
+
+# DART 기업 정보 동기화: 주 1회 (일요일 새벽 3시)
+if DART_SYNC_ENABLED:
+    CELERY_BEAT_SCHEDULE["sync-dart-company-info-weekly"] = {
         "task": "companies.tasks.dart_sync.sync_all_company_info",
         "schedule": crontab(day_of_week=0, hour=3, minute=0),
-    },
+    }
     # DART 보고서 목록 동기화: 일 1회 (새벽 4시)
-    "sync-dart-reports-daily": {
+    CELERY_BEAT_SCHEDULE["sync-dart-reports-daily"] = {
         "task": "companies.tasks.dart_sync.sync_all_reports",
         "schedule": crontab(hour=4, minute=0),
-    },
-}
+    }
 
 # API Keys
 # 필수 API 키: 빈 문자열도 None으로 처리하여 명시적 검증 가능하도록 함
