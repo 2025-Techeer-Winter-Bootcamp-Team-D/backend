@@ -170,18 +170,29 @@ def test_full_pipeline(report_id: int = None, rcept_no: str = None):
     print("=" * 60)
 
     # 보고서 조회
-    if report_id:
-        report = Report.objects.select_related("company").get(id=report_id)
-    elif rcept_no:
-        report = Report.objects.select_related("company").get(rcept_no=rcept_no)
-    else:
-        # 최신 pending 보고서 가져오기
-        report = (
-            Report.objects.select_related("company")
-            .filter(processing_status="pending")
-            .order_by("-submitted_at")
-            .first()
-        )
+    report = None
+    try:
+        if report_id:
+            report = Report.objects.select_related("company").filter(id=report_id).first()
+            if not report:
+                print(f"❌ 보고서를 찾을 수 없습니다: report_id={report_id}")
+                return
+        elif rcept_no:
+            report = Report.objects.select_related("company").filter(rcept_no=rcept_no).first()
+            if not report:
+                print(f"❌ 보고서를 찾을 수 없습니다: rcept_no={rcept_no}")
+                return
+        else:
+            # 최신 pending 보고서 가져오기
+            report = (
+                Report.objects.select_related("company")
+                .filter(processing_status="pending")
+                .order_by("-submitted_at")
+                .first()
+            )
+    except Exception as e:
+        print(f"❌ 보고서 조회 중 오류 발생: {e}")
+        return
 
     if not report:
         print("❌ 테스트할 보고서가 없습니다.")

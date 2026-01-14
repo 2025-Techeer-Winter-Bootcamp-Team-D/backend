@@ -52,13 +52,10 @@ def test_jina_extraction(url: str = None, check_duplicate: bool = True):
                 print(f"\n[알림] 이미 저장된 기사입니다 (DB 중복).")
                 existing_news = News.objects.filter(url=url).first()
                 if existing_news:
-                    print(f"  저장된 기사 ID: {existing_news.id}")
+                    print(f"  저장된 기사 ID: {existing_news.news_id}")
                     print(f"  저장된 기사 제목: {existing_news.title}")
-                    print(f"  저장된 본문 길이: {len(existing_news.raw_content) if existing_news.raw_content else 0}자")
-                    print(f"\n[저장된 본문 내용]")
-                    print("-" * 80)
-                    print(existing_news.raw_content)
-                    print("-" * 80)
+                    print(f"  저장된 요약: {existing_news.summary[:200] if existing_news.summary else '(요약 없음)'}...")
+                    print(f"\n[참고] 본문은 OpenSearch에 저장되어 있습니다. news_id={existing_news.news_id}")
                 return
 
         # Jina.ai API로 본문 추출
