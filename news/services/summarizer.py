@@ -1,4 +1,5 @@
 from google import genai
+from google.genai.types import GenerateContentConfig
 from django.conf import settings
 import json
 import logging
@@ -84,9 +85,7 @@ class SummarizeService:
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=prompt,
-                config={
-                    "safety_settings": safety_settings,
-                },
+                config=GenerateContentConfig(safety_settings=safety_settings),
             )
             text = response.text.strip()
 
