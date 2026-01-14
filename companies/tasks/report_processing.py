@@ -66,8 +66,8 @@ def refine_report_content_task(self, data: dict[str, Any]) -> dict[str, Any] | N
     if not data:
         return None
 
+    report_id = data.get("report_id")
     try:
-        report_id = data["report_id"]
         raw_content = data["raw_content"]
 
         refiner = RefineService()
@@ -76,6 +76,7 @@ def refine_report_content_task(self, data: dict[str, Any]) -> dict[str, Any] | N
         if not refined_content or len(refined_content.strip()) < 100:
             logger.warning(f"보고서 정제 결과가 너무 짧음: {report_id}")
             Report.objects.filter(id=report_id).update(processing_status="failed")
+            # 정제 결과가 너무 짧은 경우는 재시도해도 의미 없으므로 None 반환
             return None
 
         # DB 업데이트
@@ -84,8 +85,9 @@ def refine_report_content_task(self, data: dict[str, Any]) -> dict[str, Any] | N
         data["refined_content"] = refined_content
         return data
     except Exception as e:
-        logger.error(f"보고서 정제 오류: {data.get('report_id')} - {e}")
-        raise
+        logger.error(f"보고서 정제 오류: {report_id} - {e}")
+        # Celery retry 호출 (지수 백오프)
+        raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
 
 
 @shared_task(bind=True, max_retries=3)
@@ -114,19 +116,83 @@ def extract_report_info_task(self, data: dict[str, Any]) -> dict[str, Any] | Non
         # 매출 구성이 있으면 별도 테이블에도 저장
         revenue_composition = extracted_info.get("revenue_composition", [])
         if revenue_composition:
-            fiscal_year = int(submitted_at[:4]) if submitted_at else timezone.now().year
+            # fiscal_year 추출: submitted_at을 여러 형식으로 파싱 시도
+            fiscal_year = None
+            if submitted_at:
+                try:
+                    # ISO/datetime 형식 파싱 시도
+                    from datetime import datetime
+                    from dateutil import parser as date_parser
+                    parsed_date = date_parser.parse(submitted_at)
+                    fiscal_year = parsed_date.year
+                except (ValueError, TypeError, AttributeError):
+                    try:
+                        # 순수 숫자 4자리 연도 시도
+                        if len(submitted_at) >= 4 and submitted_at[:4].isdigit():
+                            fiscal_year = int(submitted_at[:4])
+                    except (ValueError, TypeError):
+                        pass
+            
+            if fiscal_year is None:
+                fiscal_year = timezone.now().year
+                logger.warning(
+                    f"submitted_at 파싱 실패, 현재 연도 사용: report_id={report_id}, "
+                    f"company={company_stock_code}, submitted_at={submitted_at}"
+                )
+            
+            saved_count = 0
             for segment in revenue_composition:
+                # 필수 키 검증: segment 필드가 있고 비어있지 않은지 확인
+                segment_name = segment.get("segment") if isinstance(segment, dict) else None
+                if not segment_name or not str(segment_name).strip():
+                    logger.warning(
+                        f"매출 구성 항목 건너뜀 (segment 누락/비어있음): report_id={report_id}, "
+                        f"company={company_stock_code}, segment_data={segment}"
+                    )
+                    continue
+                
+                # revenue를 int/Decimal로 안전하게 변환
+                try:
+                    revenue_value = segment.get("revenue", 0)
+                    if revenue_value is None:
+                        revenue_value = 0
+                    revenue_value = int(revenue_value)
+                except (ValueError, TypeError):
+                    logger.warning(
+                        f"매출 구성 항목 revenue 변환 실패, 기본값 0 사용: report_id={report_id}, "
+                        f"company={company_stock_code}, revenue={segment.get('revenue')}"
+                    )
+                    revenue_value = 0
+                
+                # ratio가 숫자 또는 None인지 검증
+                ratio_value = segment.get("ratio")
+                if ratio_value is not None:
+                    try:
+                        # 문자열 "58.1%" 형태 처리
+                        if isinstance(ratio_value, str):
+                            ratio_value = ratio_value.replace("%", "").strip()
+                        ratio_value = float(ratio_value)
+                    except (ValueError, TypeError):
+                        logger.warning(
+                            f"매출 구성 항목 ratio 변환 실패, None 사용: report_id={report_id}, "
+                            f"company={company_stock_code}, ratio={segment.get('ratio')}"
+                        )
+                        ratio_value = None
+                
                 RevenueComposition.objects.update_or_create(
                     company_id=company_stock_code,
                     fiscal_year=fiscal_year,
-                    segment_name=segment.get("segment", ""),
+                    segment_name=str(segment_name).strip(),
                     defaults={
-                        "revenue": segment.get("revenue", 0),
-                        "ratio": segment.get("ratio"),
+                        "revenue": revenue_value,
+                        "ratio": ratio_value,
                     },
                 )
+                saved_count += 1
+            
             logger.info(
-                f"매출 구성 저장 완료: {report_id} - {len(revenue_composition)}개 부문"
+                f"매출 구성 저장 완료: {report_id} - {saved_count}개 부문 저장 "
+                f"(총 {len(revenue_composition)}개 중)"
             )
 
         data["extracted_info"] = extracted_info
@@ -169,6 +235,7 @@ def save_report_to_opensearch_task(data: dict[str, Any]) -> bool:
     if not data or not data.get("embedding"):
         return False
 
+    report_id = data.get("report_id")
     try:
         # extracted_info에서 요약 추출
         extracted_info = data.get("extracted_info", {})
@@ -176,7 +243,7 @@ def save_report_to_opensearch_task(data: dict[str, Any]) -> bool:
 
         opensearch = ReportOpenSearchService()
         success = opensearch.save_report_vector(
-            report_id=data["report_id"],
+            report_id=report_id,
             company_stock_code=data["company_stock_code"],
             company_name=data["company_name"],
             report_name=data["report_name"],
@@ -188,15 +255,28 @@ def save_report_to_opensearch_task(data: dict[str, Any]) -> bool:
         )
 
         if success:
-            Report.objects.filter(id=data["report_id"]).update(
+            Report.objects.filter(id=report_id).update(
                 processing_status="completed",
                 processed_at=timezone.now(),
             )
-            logger.info(f"OpenSearch 저장 성공: {data['report_id']}")
+            logger.info(f"OpenSearch 저장 성공: {report_id}")
+        else:
+            # save_report_vector가 False를 반환한 경우 실패 상태로 업데이트
+            Report.objects.filter(id=report_id).update(
+                processing_status="failed",
+                processed_at=timezone.now(),
+            )
+            logger.error(f"OpenSearch 저장 실패: report_id={report_id}")
 
         return success
     except Exception as e:
-        logger.error(f"OpenSearch 저장 오류: {data.get('report_id')} - {e}")
+        logger.error(f"OpenSearch 저장 오류: report_id={report_id} - {e}")
+        # 예외 발생 시 실패 상태로 업데이트
+        if report_id:
+            Report.objects.filter(id=report_id).update(
+                processing_status="failed",
+                processed_at=timezone.now(),
+            )
         return False
 
 
