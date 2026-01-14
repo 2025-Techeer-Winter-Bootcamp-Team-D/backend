@@ -15,14 +15,14 @@ class CorpCodeParser:
     @staticmethod
     def parse_corp_code_xml(xml_content: str) -> List[Dict[str, Any]]:
         """
-        DART 고유번호 목록 XML을 파싱하여 상장기업 정보 리스트 반환
-        (stock_code가 있는 기업만 포함)
+        DART 고유번호 목록 XML을 파싱하여 코스피/코스닥 기업 정보 리스트 반환
+        (종목코드 000001~005999, 010000~099999 범위만 포함)
 
         Args:
             xml_content: XML 파일 내용
 
         Returns:
-            상장기업 정보 딕셔너리 리스트 (stock_code가 있는 기업만)
+            코스피/코스닥 기업 정보 딕셔너리 리스트 (종목코드 000001~005999, 010000~099999 범위만)
             [
                 {
                     'corp_code': '00126380',
@@ -63,6 +63,17 @@ class CorpCodeParser:
                     # 빈 문자열이 아닌 경우만 포함
                     if not stock_code:
                         continue
+
+                    # 코스피/코스닥 필터링: 종목코드 범위만 포함
+                    # 코스피: 000001~005999, 코스닥: 010000~099999
+                    try:
+                        stock_code_int = int(stock_code)
+                        is_kospi = 1 <= stock_code_int <= 5999
+                        is_kosdaq = 10000 <= stock_code_int <= 99999
+                        if not (is_kospi or is_kosdaq):
+                            continue  # 코스피/코스닥 범위가 아니면 건너뜀
+                    except ValueError:
+                        continue  # 숫자로 변환 불가능하면 건너뜀
                 else:
                     continue  # 종목코드가 없으면 비상장기업이므로 건너뜀
 
@@ -82,7 +93,7 @@ class CorpCodeParser:
                         }
                     )
 
-            logger.info(f"파싱된 기업 수: {len(companies)}")
+            logger.info(f"파싱된 기업 수: {len(companies)} (코스피/코스닥 필터링)")
             return companies
 
         except Exception as e:

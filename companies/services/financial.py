@@ -130,19 +130,33 @@ class FinancialService:
 
             financial_data = self._extract_financial_data(data.get("list", []))
 
+            # 추출된 데이터 로깅
+            logger.debug(
+                f"추출된 재무 데이터: {company.stock_code} ({year}년, {report_code}) - {financial_data}"
+            )
+
             # FinancialStatement 저장 또는 업데이트
+            # update_or_create의 defaults에는 None도 명시적으로 포함해야 업데이트됨
+            defaults_dict = {}
+            for key in [
+                "revenue",
+                "operating_profit",
+                "net_income",
+                "total_assets",
+                "total_liabilities",
+                "total_equity",
+            ]:
+                if key in financial_data:
+                    defaults_dict[key] = financial_data[key]
+                # None도 명시적으로 포함 (null로 업데이트하기 위해)
+                else:
+                    defaults_dict[key] = None
+
             financial_statement, created = FinancialStatement.objects.update_or_create(
                 company=company,
                 fiscal_year=year,
                 report_code=report_code,
-                defaults={
-                    "revenue": financial_data.get("revenue"),
-                    "operating_profit": financial_data.get("operating_profit"),
-                    "net_income": financial_data.get("net_income"),
-                    "total_assets": financial_data.get("total_assets"),
-                    "total_liabilities": financial_data.get("total_liabilities"),
-                    "total_equity": financial_data.get("total_equity"),
-                },
+                defaults=defaults_dict,
             )
 
             action = "생성" if created else "업데이트"
@@ -174,9 +188,12 @@ class FinancialService:
         financial_data = {}
 
         # 계정과목 코드 매핑
+        # 실제 DART API에서 사용하는 계정과목 코드 (test_dart_financial.py로 확인)
+        # 보고서 타입이나 기업에 따라 다른 코드를 사용할 수 있으므로 여러 코드 지원
         account_code_map = {
             "ifrs-full_Revenue": "revenue",  # 매출액
             "ifrs-full_ProfitLossFromOperatingActivities": "operating_profit",  # 영업이익
+            "dart_OperatingIncomeLoss": "operating_profit",  # 영업이익 (DART 코드)
             "ifrs-full_ProfitLoss": "net_income",  # 당기순이익
             "ifrs-full_Assets": "total_assets",  # 총자산
             "ifrs-full_Liabilities": "total_liabilities",  # 총부채
@@ -191,13 +208,22 @@ class FinancialService:
             # 계정과목 코드로 매핑
             if account_id in account_code_map:
                 key = account_code_map[account_id]
+                # 이미 값이 있으면 건너뛰기 (첫 번째 유효한 값만 사용)
+                if key in financial_data:
+                    continue
                 # 금액 문자열을 정수로 변환 (예: "302231000000000" -> 302231000000000)
                 try:
                     if thstrm_amount and thstrm_amount != "":
-                        financial_data[key] = int(thstrm_amount)
-                except (ValueError, TypeError):
+                        value = int(thstrm_amount)
+                        # 0이 아닌 값만 저장 (0 값은 무시)
+                        if value != 0:
+                            financial_data[key] = value
+                            logger.debug(
+                                f"재무 지표 추출: {key} = {value} ({account_nm}, {account_id})"
+                            )
+                except (ValueError, TypeError) as e:
                     logger.warning(
-                        f"Invalid amount format: {account_nm} = {thstrm_amount}"
+                        f"Invalid amount format: {account_nm} ({account_id}) = {thstrm_amount}, error: {e}"
                     )
 
         return financial_data

@@ -162,13 +162,6 @@ def get_company_financials(request, stock_code):
             description="조회할 기업의 종목코드 (예: 005930)",
         ),
         OpenApiParameter(
-            name="type",
-            type=str,
-            location=OpenApiParameter.QUERY,
-            description="공시유형 (A: 정기공시, B: 주요사항보고 등)",
-            required=False,
-        ),
-        OpenApiParameter(
             name="page",
             type=int,
             location=OpenApiParameter.QUERY,

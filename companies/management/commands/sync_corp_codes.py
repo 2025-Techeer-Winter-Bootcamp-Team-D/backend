@@ -77,13 +77,15 @@ class Command(BaseCommand):
             xml_content = dart_client.extract_corp_code_xml(zip_data)
             self.stdout.write(self.style.SUCCESS("XML 추출 완료"))
 
-            # XML 파싱 (상장기업만 필터링)
-            self.stdout.write("XML 파싱 중 (상장기업만 필터링)...")
+            # XML 파싱 (코스피/코스닥 필터링)
+            self.stdout.write(
+                "XML 파싱 중 (코스피/코스닥 필터링: 종목코드 000001~005999, 010000~099999)..."
+            )
             parser = CorpCodeParser()
             companies_data = parser.parse_corp_code_xml(xml_content)
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"파싱 완료: {len(companies_data)}개 상장기업 (비상장기업 제외)"
+                    f"파싱 완료: {len(companies_data)}개 기업 (코스피/코스닥, 종목코드 000001~005999, 010000~099999)"
                 )
             )
 
