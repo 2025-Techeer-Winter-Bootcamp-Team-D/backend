@@ -93,7 +93,8 @@ def test_extract_info(refined_content: str, report_name: str, company_name: str)
         print("--- 끝 ---\n")
         return info
     else:
-        print(f"❌ 정보 추출 실패: {info.get('error', 'Unknown error')}")
+        error_msg = info.get("error", "Unknown error") if info else "응답이 None입니다"
+        print(f"❌ 정보 추출 실패: {error_msg}")
         return None
 
 

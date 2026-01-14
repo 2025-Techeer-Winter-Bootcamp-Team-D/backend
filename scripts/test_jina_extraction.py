@@ -41,11 +41,6 @@ def test_jina_extraction(url: str = None, check_duplicate: bool = True):
         print(f"  {url}")
         print("-" * 80)
 
-        # URL 유효성 검증
-        if not url:
-            print("[오류] URL이 제공되지 않았습니다.")
-            return
-
         # DB 중복 체크 (옵션)
         if check_duplicate:
             if News.objects.filter(url=url).exists():
