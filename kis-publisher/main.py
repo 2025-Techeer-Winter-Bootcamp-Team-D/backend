@@ -10,10 +10,20 @@ APP_KEY = os.getenv("KIS_APP_KEY")
 APP_SECRET = os.getenv("KIS_APP_SECRET")
 KIS_URL = "https://openapivts.koreainvestment.com:29443"
 WS_URL = "ws://ops.koreainvestment.com:31000"
-TEST_URL = "ws://host.docker.internal:8080"
+TEST_URL = os.getenv("KIS_TEST_WS_URL", "ws://host.docker.internal:8080")
 
-# 구독할 종목 코드 목록 (동적으로 로드)
-SUBSCRIBE_SYMBOLS = get_all_listed_symbols()
+# 구독 설정 (모의투자 환경에서는 동시 구독 수 제한 있음)
+# KIS_SYMBOL_LIMIT (docker-compose) 또는 KIS_MAX_SYMBOLS 환경변수 지원
+MAX_SUBSCRIBE_SYMBOLS = int(os.getenv("KIS_SYMBOL_LIMIT", os.getenv("KIS_MAX_SYMBOLS", "5")))  # 기본 5개
+SUBSCRIPTION_DELAY = float(os.getenv("KIS_SUBSCRIPTION_DELAY", "0.5"))  # 기본 500ms
+BATCH_DELAY = float(os.getenv("KIS_BATCH_DELAY", "1.0"))  # 배치 간 딜레이 1초
+BATCH_SIZE = int(os.getenv("KIS_BATCH_SIZE", "5"))  # 배치 크기
+
+# 구독할 종목 코드 목록 (동적으로 로드, 제한 적용)
+ALL_SYMBOLS = get_all_listed_symbols()
+SUBSCRIBE_SYMBOLS = ALL_SYMBOLS[:MAX_SUBSCRIBE_SYMBOLS]
+print(f"[INIT] Total symbols available: {len(ALL_SYMBOLS)}, subscribing to: {len(SUBSCRIBE_SYMBOLS)}")
+print(f"[INIT] First symbols to subscribe: {SUBSCRIBE_SYMBOLS[:5]}")
 
 
 class KISParser:
@@ -102,87 +112,184 @@ async def run_publisher():
         print(f"[TEST MODE] Using test WebSocket server: {uri}")
     print(f"Connecting to WebSocket: {uri}")
 
-    async for ws in websockets.connect(uri):
+    reconnect_delay = 5
+    max_reconnect_delay = 300  # 최대 5분
+    reconnect_count = 0
+    max_reconnect_attempts = int(os.getenv("KIS_MAX_RECONNECT", "10"))  # 최대 재연결 시도 횟수
+
+    while reconnect_count < max_reconnect_attempts:
         try:
-            print(f"WebSocket connected: {uri}")
+            print(f"Connecting to WebSocket: {uri} (attempt {reconnect_count + 1})")
+            async with websockets.connect(uri) as ws:
+                print(f"WebSocket connected: {uri}")
 
-            # 테스트 환경에서는 approval_key 없이도 동작
-            # 실제 KIS API를 사용할 때만 approval_key가 필요
-            approval_key = os.getenv("KIS_APPROVAL_KEY")
-            if not approval_key and uri != TEST_URL:
-                approval_key = await get_approval_key()
-                if not approval_key:
-                    raise Exception("Failed to get approval key")
+                # 테스트 환경에서는 approval_key 없이도 동작
+                # 실제 KIS API를 사용할 때만 approval_key가 필요
+                is_test_mode = (uri == TEST_URL)
+                approval_key = os.getenv("KIS_APPROVAL_KEY")
 
-            if approval_key:
-                # 여러 종목 구독 (각 종목마다 개별 구독 메시지 전송)
-                symbols = [s.strip() for s in SUBSCRIBE_SYMBOLS if s.strip()]
-                print(f"[WS] Subscribing to {len(symbols)} symbols: {symbols}")
+                if not approval_key and not is_test_mode:
+                    approval_key = await get_approval_key()
+                    if not approval_key:
+                        raise Exception("Failed to get approval key")
 
-                for symbol in symbols:
-                    subscribe_msg = {
-                        "header": {
-                            "approval_key": approval_key,
-                            "appkey": APP_KEY,
-                            "secretkey": APP_SECRET,
-                            "custtype": "P",
-                            "tr_type": "1",
-                            "content-type": "utf-8",
-                        },
-                        "body": {"input": {"tr_id": "H0STCNT0", "tr_key": symbol}},
-                    }
-                    await ws.send(json.dumps(subscribe_msg))
-                    print(f"[WS] Subscription sent for symbol: {symbol}")
+                # 테스트 모드이거나 approval_key가 있으면 구독 진행
+                if is_test_mode or approval_key:
+                    # 여러 종목 구독 (배치 단위로 처리)
+                    symbols = [s.strip() for s in SUBSCRIBE_SYMBOLS if s.strip()]
+                    print(f"[WS] Subscribing to {len(symbols)} symbols (batch_size={BATCH_SIZE}, delay={SUBSCRIPTION_DELAY}s)")
 
-                print(f"[WS] All subscription messages sent ({len(symbols)} symbols)")
+                    subscription_count = 0
 
-            async for message in ws:
-                print(f"Raw Message Received: {message}")
+                    for symbol in symbols:
+                        try:
+                            # 테스트 모드에서는 간소화된 메시지 사용
+                            if is_test_mode:
+                                subscribe_msg = {
+                                    "header": {"tr_type": "1"},
+                                    "body": {"input": {"tr_id": "H0STCNT0", "tr_key": symbol}}
+                                }
+                            else:
+                                subscribe_msg = {
+                                    "header": {
+                                        "approval_key": approval_key,
+                                        "appkey": APP_KEY,
+                                        "secretkey": APP_SECRET,
+                                        "custtype": "P",
+                                        "tr_type": "1",
+                                        "content-type": "utf-8",
+                                    },
+                                    "body": {
+                                        "input": {"tr_id": "H0STCNT0", "tr_key": symbol}
+                                    },
+                                }
+                            print(f"[WS DEBUG] Sending subscribe for {symbol}...")
+                            await ws.send(json.dumps(subscribe_msg))
 
-                # 테스트 환경: 메시지를 파싱해서 실제 형식으로 발행
-                if uri == TEST_URL:
-                    print(f"[TEST MODE] Received message: {message}")
-                    # 테스트 메시지도 실제 KIS API 형식으로 파싱
-                    if message and len(message) > 0 and message[0] in ["0", "1"]:
-                        parsed_data = KISParser.parse_trade_data(message)
-                        if parsed_data:
-                            channel = f"stock:realtime:{parsed_data['symbol']}"
-                            payload = json.dumps(parsed_data)
-                            num_subscribers = await redis_client.publish(
-                                channel, payload
-                            )
+                            # 서버 응답 대기 (타임아웃 3초)
+                            try:
+                                response = await asyncio.wait_for(ws.recv(), timeout=3.0)
+                                print(f"[WS DEBUG] Response for {symbol}: {response[:200] if len(response) > 200 else response}")
+
+                                # 에러 응답 체크
+                                try:
+                                    resp_json = json.loads(response)
+                                    rt_cd = resp_json.get("body", {}).get("rt_cd", "0")
+                                    msg1 = resp_json.get("body", {}).get("msg1", "")
+
+                                    if rt_cd != "0":  # 0이 아니면 에러
+                                        if "ALREADY IN USE" in msg1:
+                                            print(f"[WS ERROR] APP_KEY already in use. Waiting 30s before retry...")
+                                            raise Exception("APP_KEY_IN_USE")
+                                        else:
+                                            print(f"[WS WARNING] Server returned error: {msg1}")
+                                except json.JSONDecodeError:
+                                    pass  # JSON이 아닌 응답은 실시간 데이터일 수 있음
+
+                            except asyncio.TimeoutError:
+                                print(f"[WS DEBUG] No response for {symbol} (timeout)")
+
+                            subscription_count += 1
+
+                            # 배치 단위로 딜레이 적용
+                            if subscription_count % BATCH_SIZE == 0:
+                                print(
+                                    f"[WS] Subscribed {subscription_count}/{len(symbols)} symbols..."
+                                )
+                                # 배치 완료 후 더 긴 딜레이 (서버 처리 시간 확보)
+                                await asyncio.sleep(BATCH_DELAY)
+                            else:
+                                # 일반 구독 메시지 사이 딜레이
+                                await asyncio.sleep(SUBSCRIPTION_DELAY)
+
+                        except websockets.ConnectionClosed as e:
                             print(
-                                f"[TEST MODE] Published to Redis: channel={channel}, data={parsed_data}, subscribers={num_subscribers}"
+                                f"[WS ERROR] Connection closed while subscribing {symbol}: {e}"
                             )
-                        else:
-                            print(f"[TEST MODE] Failed to parse message: {message}")
-                    else:
-                        # 파싱할 수 없는 메시지는 무시
-                        print(f"[TEST MODE] Skipping non-parseable message: {message}")
-                elif message and len(message) > 0 and message[0] in ["0", "1"]:
-                    # 실제 KIS API 형식 메시지 처리
-                    parsed_data = KISParser.parse_trade_data(message)
-                    if parsed_data:
-                        channel = f"stock:realtime:{parsed_data['symbol']}"
-                        payload = json.dumps(parsed_data)
-                        num_subscribers = await redis_client.publish(channel, payload)
-                        print(
-                            f"[PROD MODE] Published to Redis: channel={channel}, data={parsed_data}, subscribers={num_subscribers}"
-                        )
-                    else:
-                        print(f"Failed to parse message: {message}")
+                            raise
+                        except Exception as e:
+                            print(f"[WS ERROR] Failed to subscribe {symbol}: {e}")
+                            # APP_KEY_IN_USE 또는 연결 끊김 에러는 상위로 전파
+                            if "APP_KEY_IN_USE" in str(e) or "no close frame" in str(e) or "Connection closed" in str(e):
+                                raise
+                            continue
+
+                    print(
+                        f"[WS] All subscription messages sent ({subscription_count}/{len(symbols)} symbols)"
+                    )
+                    # 구독 완료 후 재연결 카운터 리셋
+                    reconnect_count = 0
+                    reconnect_delay = 5
+
+                async for message in ws:
+                    try:
+                        # 테스트 환경: 메시지를 파싱해서 실제 형식으로 발행
+                        if uri == TEST_URL:
+                            # 테스트 메시지도 실제 KIS API 형식으로 파싱
+                            if (
+                                message
+                                and len(message) > 0
+                                and message[0] in ["0", "1"]
+                            ):
+                                parsed_data = KISParser.parse_trade_data(message)
+                                if parsed_data:
+                                    channel = (
+                                        f"stock:realtime:{parsed_data['stock_code']}"
+                                    )
+                                    payload = json.dumps(parsed_data)
+                                    num_subscribers = await redis_client.publish(
+                                        channel, payload
+                                    )
+                                    if num_subscribers > 0:
+                                        print(
+                                            f"[TEST] Published: {channel}, price={parsed_data.get('price')}, subscribers={num_subscribers}"
+                                        )
+                        elif message and len(message) > 0 and message[0] in ["0", "1"]:
+                            # 실제 KIS API 형식 메시지 처리
+                            parsed_data = KISParser.parse_trade_data(message)
+                            if parsed_data:
+                                channel = f"stock:realtime:{parsed_data['stock_code']}"
+                                payload = json.dumps(parsed_data)
+                                num_subscribers = await redis_client.publish(
+                                    channel, payload
+                                )
+                                if num_subscribers > 0:
+                                    print(
+                                        f"[PROD] Published: {channel}, price={parsed_data.get('price')}, subscribers={num_subscribers}"
+                                    )
+                    except Exception as e:
+                        print(f"[ERROR] Error processing message: {e}")
+                        continue
 
         except websockets.ConnectionClosed as e:
-            print(f"WebSocket connection closed: {e}")
-            await asyncio.sleep(1)
-            continue
-        except Exception as e:
-            print(f"Error in WebSocket loop: {e}")
-            import traceback
+            reconnect_count += 1
+            print(
+                f"[RECONNECT] WebSocket connection closed: {e}. Attempt {reconnect_count}/{max_reconnect_attempts}. Reconnecting in {reconnect_delay}s..."
+            )
+            await asyncio.sleep(reconnect_delay)
+            reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
 
+        except websockets.InvalidURI as e:
+            print(f"[ERROR] Invalid WebSocket URI: {e}")
+            raise
+        except Exception as e:
+            # APP_KEY 중복 사용 에러 시 즉시 종료 (재시도 무의미)
+            if "APP_KEY_IN_USE" in str(e):
+                print(f"[FATAL] APP_KEY already in use. Please wait a few minutes and restart the container.")
+                print(f"[FATAL] Or use a different APP_KEY.")
+                raise SystemExit(1)
+
+            reconnect_count += 1
+            print(f"[ERROR] Error in WebSocket loop: {e}")
+            import traceback
             traceback.print_exc()
-            await asyncio.sleep(1)
-            continue
+            print(f"[RECONNECT] Attempt {reconnect_count}/{max_reconnect_attempts}. Reconnecting in {reconnect_delay}s...")
+            await asyncio.sleep(reconnect_delay)
+            reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
+
+    # 최대 재연결 횟수 초과 시 종료
+    print(f"[FATAL] Maximum reconnection attempts ({max_reconnect_attempts}) exceeded. Exiting.")
+    raise SystemExit(1)
 
 
 if __name__ == "__main__":
