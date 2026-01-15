@@ -244,6 +244,36 @@ if DART_SYNC_ENABLED:
         "schedule": crontab(hour=4, minute=0),
     }
 
+# =============================================================================
+# 주가 데이터 동기화 스케줄 (Continuous Aggregate → 통합 테이블)
+# =============================================================================
+# 장중(09:00~15:30)에만 실행되도록 설정
+STOCK_PRICE_SYNC_ENABLED = (
+    os.getenv("STOCK_PRICE_SYNC_ENABLED", "true").lower() == "true"
+)
+
+if STOCK_PRICE_SYNC_ENABLED:
+    # 1분봉: 30초마다 동기화
+    CELERY_BEAT_SCHEDULE["sync-stock-prices-1m"] = {
+        "task": "core.tasks.price_sync.sync_cagg_to_prices_1m",
+        "schedule": 30.0,  # 30초
+    }
+    # 15분봉: 5분마다 동기화
+    CELERY_BEAT_SCHEDULE["sync-stock-prices-15m"] = {
+        "task": "core.tasks.price_sync.sync_cagg_to_prices_15m",
+        "schedule": crontab(minute="*/5"),
+    }
+    # 1시간봉: 15분마다 동기화
+    CELERY_BEAT_SCHEDULE["sync-stock-prices-1h"] = {
+        "task": "core.tasks.price_sync.sync_cagg_to_prices_1h",
+        "schedule": crontab(minute="*/15"),
+    }
+    # 1일봉: 1시간마다 동기화
+    CELERY_BEAT_SCHEDULE["sync-stock-prices-1d"] = {
+        "task": "core.tasks.price_sync.sync_cagg_to_prices_1d",
+        "schedule": crontab(minute=0),
+    }
+
 # API Keys
 # 필수 API 키: 빈 문자열도 None으로 처리하여 명시적 검증 가능하도록 함
 NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID") or None

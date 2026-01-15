@@ -47,5 +47,9 @@ google-genai>=1.57.0
 scikit-learn
 numpy
 
+# Stock Data
+yfinance>=0.2.36
+pandas>=2.0.0
+
 # DART API
 opendartreader>=0.2.3

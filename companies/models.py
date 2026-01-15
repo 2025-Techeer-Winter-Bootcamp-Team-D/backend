@@ -5,6 +5,12 @@ from industries.models import Industry
 
 
 class Company(models.Model):
+    # 시장 구분 선택지 (DART API corp_cls 매핑)
+    MARKET_CHOICES = [
+        ("KOSPI", "유가증권"),  # corp_cls: Y
+        ("KOSDAQ", "코스닥"),  # corp_cls: K
+    ]
+
     stock_code = models.CharField(primary_key=True, max_length=6)  # 종목코드 (6자리)
     corp_code = models.CharField(
         max_length=8, unique=True, null=True
@@ -20,6 +26,13 @@ class Company(models.Model):
     induty_code = models.CharField(
         max_length=20, null=True, blank=True, db_index=True
     )  # 업종코드 (KSIC 코드, 예: "264", "26", "C26")
+    market = models.CharField(
+        max_length=10,
+        choices=MARKET_CHOICES,
+        null=True,
+        blank=True,
+        db_index=True,
+    )  # 시장 구분 (DART API corp_cls로부터 매핑)
     company_name = models.CharField(max_length=255)
     description = models.TextField(blank=True, default="")
     logo_url = models.URLField(max_length=500, blank=True, null=True)  # 신규

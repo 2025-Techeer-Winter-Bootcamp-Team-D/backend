@@ -21,6 +21,7 @@ class CompanyDetailSerializer(serializers.ModelSerializer):
             "stock_code",
             "corp_code",
             "company_name",
+            "market",
             "induty_code",
             "industry",
             "description",
