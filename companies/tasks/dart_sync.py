@@ -176,6 +176,6 @@ def sync_all_rankings():
     from companies.tasks.rankings import update_all_rankings_task
     try:
         update_all_rankings_task.delay()
-        logger.info("산업 시가총액 순위 동기화 완료")
+        logger.info("산업 시가총액 순위 동기화 작업 등록 완료")
     except Exception as e:
-        logger.error(f"산업 시가총액 순위 동기화 실패: {e}")
+        logger.exception("산업 시가총액 순위 동기화 작업 등록 실패")

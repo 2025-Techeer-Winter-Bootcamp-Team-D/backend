@@ -107,7 +107,14 @@ class IndustryCompanyRankView(APIView):
     summary="전체 산업 순위 조회",
     description="최신 기준 날짜의 산업별 성과(시가총액 합계) 순위를 조회합니다.",
     responses={
-        200: IndustryRankingSerializer(many=True),
+        200: inline_serializer(
+            name="IndustryRankingsResponse",
+            fields={
+                "status": serializers.IntegerField(),
+                "message": serializers.CharField(default="전체 산업 순위 조회를 성공하였습니다."),
+                "data": IndustryRankingSerializer(many=True),
+            },
+        ),
         404: OpenApiResponse(description="industry_rankings Not Found")
     },
     tags=["Ranking"]

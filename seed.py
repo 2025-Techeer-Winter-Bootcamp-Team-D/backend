@@ -21,8 +21,12 @@ def run():
             
             # 3. 시퀀스 리셋 (auto_increment 초기화)
             print("시퀀스 리셋 중...")
-            with connection.cursor() as cursor:
-                cursor.execute("ALTER SEQUENCE industry_industry_id_seq RESTART WITH 1")
+            # PostgreSQL 전용 - 필요시 DB 벤더 체크 추가
+            if connection.vendor == 'postgresql':
+                with connection.cursor() as cursor:
+                    cursor.execute("ALTER SEQUENCE industry_industry_id_seq RESTART WITH 1")
+            else:
+                print("⚠️ 시퀀스 리셋은 PostgreSQL에서만 지원됩니다.")
             print("✅ 시퀀스 리셋 완료")
 
             # 3. 산업군(Industry) 생성

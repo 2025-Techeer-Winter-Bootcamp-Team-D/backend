@@ -1,4 +1,4 @@
-# companies/serializers.py
+# industries/serializers.py
 from rest_framework import serializers
 from .models import IndustryRanking, Industry
 

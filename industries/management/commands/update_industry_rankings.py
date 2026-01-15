@@ -1,5 +1,6 @@
 from django.core.management.base import BaseCommand
 from django.db.models import Sum
+from django.db import models
 from django.db import transaction
 from datetime import date
 from industries.models import Industry
@@ -14,7 +15,7 @@ class Command(BaseCommand):
         # 1. 산업별 시가총액 합계 계산
         # related_name='companies'를 활용해 역참조 집계
         industry_data = Industry.objects.annotate(
-            total_amount=Sum('companies__market_amount')
+            total_amount=Sum('companies__market_amount', filter=models.Q(companies__is_deleted=False))
         ).filter(total_amount__gt=0).order_by('-total_amount')
 
         if not industry_data.exists():
