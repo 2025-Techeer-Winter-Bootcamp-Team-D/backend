@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     "core",
     "news",
     "users",
+    "comparisons"
 ]
 
 MIDDLEWARE = [

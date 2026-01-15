@@ -53,4 +53,5 @@ urlpatterns = [
     path("api/companies/", include("companies.urls")),  # 기존 경로
     # 산업
     path("api/industries/", include("industries.urls")),
+    path("api/comparisons/", include("comparisons.urls")),
 ]
