@@ -52,5 +52,6 @@ urlpatterns = [
     path("api/core/", include("core.urls")),
     path("api/companies/", include("companies.urls")),
     path("api/industries/", include("industries.urls")),
+    path("api/comparisons/", include("comparisons.urls")),
     path("api/news/", include("news.urls")),
 ]
