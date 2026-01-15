@@ -25,21 +25,20 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('username', 'email', 'password', 'password2')
+        fields = ('email', 'password', 'password2')
 
     def validate(self, data): # password과 password2의 일치 여부 확인
         if data['password'] != data['password2']:
             raise serializers.ValidationError(
-                {"password": "Password fields didn't match."})
+                {"password": "비밀번호가 일치하지 않습니다."})
         return data
 
     def create(self, validated_data):
         user = User.objects.create_user(
-            username=validated_data['username'],
+            username=validated_data['email'], 
             email=validated_data['email'],
+            password=validated_data['password']
         )
-        user.set_password(validated_data['password'])
-        user.save()
         return user
 
 # --- 로그인 시리얼라이저 ---

@@ -49,7 +49,6 @@ class LoginView(generics.GenericAPIView):
                 "refresh": str(refresh),
                 "access": str(refresh.access_token),
                 "email": user.email,
-                "username": user.username,
             },
             status=status.HTTP_200_OK,
         )
@@ -81,10 +80,7 @@ class LogoutView(generics.GenericAPIView):
         try:
             token = RefreshToken(refresh_token)
             token.blacklist()
-            return Response(
-                {"message": "Successfully logged out."},
-                status=status.HTTP_205_RESET_CONTENT,
-            )
+            return Response({"detail": "Successfully logged out."}, status=status.HTTP_200_OK) # 메시지 수정
         except TokenError:
             return Response(
                 {"message": "Invalid token or already logged out."},
