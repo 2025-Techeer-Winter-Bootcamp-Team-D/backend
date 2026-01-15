@@ -1,11 +1,13 @@
-# industries/views.py 혹은 별도 위치
+# industries/views.py
 from rest_framework.views import APIView
+from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status, serializers
 from drf_spectacular.utils import extend_schema, OpenApiResponse, inline_serializer
 from companies.models import Company
-from .models import Industry
+from .models import Industry, IndustryRanking
 from companies.serializers import CompanySerializer
+from industries.serializers import IndustryRankingSerializer
 
 
 class IndustryCompanyRankView(APIView):
@@ -92,3 +94,32 @@ class IndustryCompanyRankView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+#------------산업 순위 조회--------------------------
+@extend_schema(
+    summary="전체 산업 순위 조회",
+    description="최신 기준 날짜의 산업별 성과(시가총액 합계) 순위를 조회합니다.",
+    responses={
+        200: IndustryRankingSerializer(many=True),
+        404: OpenApiResponse(description="industry_rankings Not Found")
+    },
+    tags=["Ranking"]
+)
+@api_view(["GET"])
+def get_industry_rankings(request):
+    # 최신 기준 날짜 가져오기
+    latest_date = IndustryRanking.objects.filter(is_deleted=False).order_by('-base_date').values_list('base_date', flat=True).first()
+    if not latest_date:
+        return Response({"status" : 404,
+                         "message": "industry_rankings not found"}, status=status.HTTP_404_NOT_FOUND)
+    # 해당 날짜의 산업 순위 데이터 조회 (N + 1 문제 방지를 위해 select_related 사용)
+    rankings = IndustryRanking.objects.filter(base_date=latest_date, is_deleted=False).select_related('industry').order_by('rank')
+    # 시리얼라이징
+    serializer = IndustryRankingSerializer(rankings, many=True)
+    # 최종 응답 반환
+    return Response({
+        "status": 200,
+        "message": "전체 산업 순위 조회를 성공하였습니다.",
+        "data": serializer.data
+    }, status=status.HTTP_200_OK)
