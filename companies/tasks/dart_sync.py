@@ -167,3 +167,15 @@ def sync_all_reports():
             logger.error(f"보고서 동기화 작업 등록 실패: {company.stock_code} - {e}")
 
     logger.info(f"전체 기업 보고서 동기화 작업 등록 완료: {total}개")
+
+@shared_task
+def sync_all_rankings():
+    """
+    모든 산업의 시가총액 순위 동기화 (주기적 실행용)
+    """
+    from companies.tasks.rankings import update_all_rankings_task
+    try:
+        update_all_rankings_task.delay()
+        logger.info("산업 시가총액 순위 동기화 작업 등록 완료")
+    except Exception as e:
+        logger.exception("산업 시가총액 순위 동기화 작업 등록 실패")

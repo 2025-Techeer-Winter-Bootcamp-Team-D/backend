@@ -76,6 +76,8 @@ services:
       - .env
     ports:
       - 8000:8000
+    volumes:
+      - .:/app
     depends_on:
       db:
         condition: service_healthy
@@ -103,6 +105,12 @@ services:
           action: sync+restart
         - path: ./core
           target: core/
+          action: sync+restart
+        - path: ./companies
+          target: /app/companies/
+          action: sync+restart
+        - path: ./industries
+          target: /app/industries/
           action: sync+restart
         - path: ./requirements.txt
           action: rebuild
@@ -205,6 +213,11 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - PYTHONUNBUFFERED=1
+      # 배치 작업 활성화 설정
+      # Gemini 토큰 사용하는 작업은 기본 비활성화
+      - NEWS_BATCH_ENABLED=${NEWS_BATCH_ENABLED:-false}
+      - DART_SYNC_ENABLED=${DART_SYNC_ENABLED:-true}
+      - REPORT_PROCESSING_ENABLED=${REPORT_PROCESSING_ENABLED:-false}
     depends_on:
       db:
         condition: service_healthy

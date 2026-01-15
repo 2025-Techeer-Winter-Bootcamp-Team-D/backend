@@ -101,19 +101,22 @@ class Command(BaseCommand):
             created_count = 0
             updated_count = 0
             skipped_count = 0
+            error_count = 0
 
             if dry_run:
                 self.stdout.write(
                     self.style.WARNING("DRY RUN 모드: 실제로 저장하지 않습니다.")
                 )
 
-            with transaction.atomic():
-                for company_data in companies_data:
-                    stock_code = company_data["stock_code"]
-                    corp_code = company_data["corp_code"]
-                    corp_name = company_data["corp_name"]
+            # 각 기업을 개별 트랜잭션으로 처리하여 한 기업의 에러가 다른 기업에 영향을 주지 않도록 함
+            for company_data in companies_data:
+                stock_code = company_data["stock_code"]
+                corp_code = company_data["corp_code"]
+                corp_name = company_data["corp_name"]
 
-                    try:
+                try:
+                    # 각 기업을 개별 트랜잭션으로 처리
+                    with transaction.atomic():
                         # 업종코드 조회 (옵션)
                         industry_code = None
                         if not skip_industry_mapping:
@@ -193,13 +196,14 @@ class Command(BaseCommand):
                             else:
                                 skipped_count += 1
 
-                    except Exception as e:
-                        self.stdout.write(
-                            self.style.ERROR(
-                                f"기업 처리 실패: {stock_code} - {corp_name} - {e}"
-                            )
+                except Exception as e:
+                    error_count += 1
+                    self.stdout.write(
+                        self.style.ERROR(
+                            f"기업 처리 실패: {stock_code} - {corp_name} - {e}"
                         )
-                        logger.error(f"기업 처리 실패: {stock_code} - {e}")
+                    )
+                    logger.error(f"기업 처리 실패: {stock_code} - {e}", exc_info=True)
 
             # 결과 출력
             self.stdout.write("")
@@ -209,6 +213,8 @@ class Command(BaseCommand):
             if update_existing:
                 self.stdout.write(f"  업데이트: {updated_count}개")
             self.stdout.write(f"  건너뜀: {skipped_count}개")
+            if error_count > 0:
+                self.stdout.write(self.style.ERROR(f"  실패: {error_count}개"))
             self.stdout.write(f"  전체: {len(companies_data)}개")
             self.stdout.write(self.style.SUCCESS("=" * 50))
 
