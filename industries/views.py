@@ -6,7 +6,7 @@ from rest_framework import status, serializers
 from drf_spectacular.utils import extend_schema, OpenApiResponse, inline_serializer
 from companies.models import Company
 from .models import Industry, IndustryRanking
-from companies.serializers import CompanySerializer
+from companies.serializers import CompanyRankingSerializer
 from industries.serializers import IndustryRankingSerializer
 
 
@@ -22,7 +22,7 @@ class IndustryCompanyRankView(APIView):
                     "message": serializers.CharField(
                         default="해당 산업 내 기업 순위 조회를 성공하였습니다."
                     ),
-                    "data": CompanySerializer(many=True),  # 리스트 형태임을 명시
+                    "data": CompanyRankingSerializer(many=True),  # 리스트 형태임을 명시
                 },
             ),
             404: OpenApiResponse(
@@ -80,17 +80,23 @@ class IndustryCompanyRankView(APIView):
                 current_rank = i + 1
             rank_dict[company.stock_code] = current_rank
 
-        # 4. 시리얼라이징
-        serializer = CompanySerializer(
-            companies, many=True, context={"rank_dict": rank_dict}
-        )
+        # 4. 시리얼라이징 - rank 데이터를 함께 전달
+        serializer_data = []
+        for company in companies:
+            serializer_data.append({
+                'rank': rank_dict[company.stock_code],
+                'name': company.company_name,
+                'stock_code': company.stock_code,
+                'amount': company.market_amount,
+                'logo': company.logo_url
+            })
 
         # 5. 최종 응답 형식 맞추기
         return Response(
             {
                 "status": 200,
                 "message": "해당 산업 내 기업 순위 조회를 성공하였습니다.",
-                "data": serializer.data,
+                "data": serializer_data,
             },
             status=status.HTTP_200_OK,
         )

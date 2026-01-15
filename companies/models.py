@@ -1,6 +1,7 @@
 # companies/models.py
 
 from django.db import models
+from industries.models import Industry
 
 
 class Company(models.Model):
@@ -8,6 +9,14 @@ class Company(models.Model):
     corp_code = models.CharField(
         max_length=8, unique=True, null=True
     )  # DART 고유번호 (8자리) - 신규
+    industry = models.ForeignKey(
+        Industry,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="companies",
+        db_column="industry_id",
+    )  # Industry와의 관계
     induty_code = models.CharField(
         max_length=20, null=True, blank=True, db_index=True
     )  # 업종코드 (KSIC 코드, 예: "264", "26", "C26")
@@ -20,7 +29,7 @@ class Company(models.Model):
     establishment_date = models.DateField(null=True)  # 설립일
     homepage_url = models.URLField(max_length=500, blank=True, null=True)  # 홈페이지
     address = models.TextField(blank=True, null=True)  # 본사 주소
-
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_deleted = models.BooleanField(default=False)

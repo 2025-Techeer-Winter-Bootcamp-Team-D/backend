@@ -1,7 +1,7 @@
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
-from industries.models import Industry
+from industries.models import Industry, IndustryRanking
 from companies.models import Company
 from django.core.management import call_command # 명령어를 실행하기 위해 필수
 from datetime import date
@@ -58,3 +58,55 @@ class IndustryRankingLogicTestCase(APITestCase):
         # 3위: 바이오 (50조)
         self.assertEqual(data[2]['name'], "바이오")
         self.assertEqual(data[2]['rank'], 3)
+        
+class IndustryRankingExceptionTestCase(APITestCase):
+    def setUp(self):
+        self.url = reverse('industry-rankings')
+
+    def test_api_returns_404_when_no_rankings_exist(self):
+        """
+        예외 상황 1: IndustryRanking 테이블이 비어있을 때 API 응답 확인
+        """
+        response = self.client.get(self.url)
+        
+        # 데이터가 없으므로 404를 반환해야 함
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.data['message'], "industry_rankings not found")
+
+    def test_ranking_ignores_deleted_companies(self):
+        """
+        예외 상황 2: 삭제 처리된(is_deleted=True) 기업은 합산에서 제외되는가?
+        """
+        # 1. 산업 생성
+        semi = Industry.objects.create(name="반도체")
+        
+        # 2. 기업 생성 (하나는 정상, 하나는 삭제됨)
+        # 정상 기업: 100조
+        Company.objects.create(stock_code="S1", company_name="정상기업", industry=semi, market_amount=100_000_000_000_000, is_deleted=False)
+        # 삭제된 기업: 200조 (합산되면 안 됨)
+        Company.objects.create(stock_code="S2", company_name="삭제기업", industry=semi, market_amount=200_000_000_000_000, is_deleted=True)
+
+        # 3. 명령어 실행
+        call_command('update_industry_rankings')
+
+        # 4. 검증
+        ranking = IndustryRanking.objects.get(industry=semi)
+        # 삭제된 기업의 200조는 제외되고 100조만 기록되어야 함
+        self.assertEqual(ranking.amount, 100_000_000_000_000)
+
+    def test_ranking_ignores_zero_amount_industries(self):
+        """
+        예외 상황 3: 기업은 있으나 시가총액 합계가 0인 산업은 순위에서 제외되는가?
+        """
+        # 1. 산업 생성
+        zero_industry = Industry.objects.create(name="유령산업")
+        
+        # 2. 시가총액이 0원인 기업 생성
+        Company.objects.create(stock_code="Z1", company_name="빵원기업", industry=zero_industry, market_amount=0)
+
+        # 3. 명령어 실행
+        call_command('update_industry_rankings')
+
+        # 4. 검증: IndustryRanking에 해당 산업 데이터가 없어야 함
+        exists = IndustryRanking.objects.filter(industry=zero_industry).exists()
+        self.assertFalse(exists)

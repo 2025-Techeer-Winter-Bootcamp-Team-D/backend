@@ -1,6 +1,13 @@
 # companies/serializers.py
 from rest_framework import serializers
-from .models import IndustryRanking
+from .models import IndustryRanking, Industry
+
+
+class IndustrySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Industry
+        fields = ["industry_id", "name", "induty_code"]
+
 
 class IndustryRankingSerializer(serializers.ModelSerializer):
     # 명세서의 industryId는 Industry 모델의 industry_id값을 가져옵니다.
