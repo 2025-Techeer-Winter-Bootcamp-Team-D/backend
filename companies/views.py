@@ -6,7 +6,6 @@ from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter
 from .models import Company, CompanyRanking
 from .serializers import (
-    CompanySerializer,
     CompanyDetailSerializer,
     CompanyFinancialsSerializer,
     FinancialStatementSerializer,

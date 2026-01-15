@@ -9,23 +9,7 @@ from .models import (
     CompanyRanking,
 )
 from industries.models import Industry
-
-
-class CompanySerializer(serializers.ModelSerializer):
-    rank = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Company
-        fields = ["stock_code", "company_name", "description", "rank"]
-
-    def get_rank(self, obj):
-        return self.context.get("rank_dict", {}).get(obj.stock_code, None)
-
-
-class IndustrySerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Industry
-        fields = ["industry_id", "name", "induty_code"]
+from industries.serializers import IndustrySerializer
 
 
 class CompanyDetailSerializer(serializers.ModelSerializer):
@@ -164,11 +148,12 @@ class ReportListSerializer(serializers.Serializer):
 
 class CompanyRankingSerializer(serializers.ModelSerializer):
     # stock_code(FK)을 통해 Company 모델의 필드에 접근합니다.
-    companyId = serializers.CharField(source="stock_code.stock_code")
+    stock_code = serializers.CharField(source="stock_code.stock_code")
     name = serializers.CharField(source="stock_code.company_name")
     logo = serializers.URLField(source="stock_code.logo_url")
     amount = serializers.IntegerField(source="stock_code.market_amount")
+    rank = serializers.IntegerField(required=False, allow_null=True)
 
     class Meta:
         model = CompanyRanking
-        fields = ["rank", "companyId", "name", "logo", "amount"]
+        fields = ["rank", "name", "stock_code", "amount", "logo"]

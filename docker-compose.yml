@@ -76,6 +76,8 @@ services:
       - .env
     ports:
       - 8000:8000
+    volumes:
+      - .:/app
     depends_on:
       db:
         condition: service_healthy
@@ -103,6 +105,12 @@ services:
           action: sync+restart
         - path: ./core
           target: core/
+          action: sync+restart
+        - path: ./companies
+          target: /app/companies/
+          action: sync+restart
+        - path: ./industries
+          target: /app/industries/
           action: sync+restart
         - path: ./requirements.txt
           action: rebuild
