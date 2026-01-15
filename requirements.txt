@@ -43,6 +43,13 @@ xmltodict>=0.13.0  # DART API XML 파싱용
 python-dateutil
 
 # AI & ML
-google-generativeai>=0.4.0
+google-genai>=1.57.0
 scikit-learn
 numpy
+
+# Stock Data
+yfinance>=0.2.36
+pandas>=2.0.0
+
+# DART API
+opendartreader>=0.2.3

@@ -1,16 +1,38 @@
 # companies/models.py
 
 from django.db import models
+from industries.models import Industry
 
 
 class Company(models.Model):
+    # 시장 구분 선택지 (DART API corp_cls 매핑)
+    MARKET_CHOICES = [
+        ("KOSPI", "유가증권"),  # corp_cls: Y
+        ("KOSDAQ", "코스닥"),  # corp_cls: K
+    ]
+
     stock_code = models.CharField(primary_key=True, max_length=6)  # 종목코드 (6자리)
     corp_code = models.CharField(
         max_length=8, unique=True, null=True
     )  # DART 고유번호 (8자리) - 신규
+    industry = models.ForeignKey(
+        Industry,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="companies",
+        db_column="industry_id",
+    )  # Industry와의 관계
     induty_code = models.CharField(
         max_length=20, null=True, blank=True, db_index=True
     )  # 업종코드 (KSIC 코드, 예: "264", "26", "C26")
+    market = models.CharField(
+        max_length=10,
+        choices=MARKET_CHOICES,
+        null=True,
+        blank=True,
+        db_index=True,
+    )  # 시장 구분 (DART API corp_cls로부터 매핑)
     company_name = models.CharField(max_length=255)
     description = models.TextField(blank=True, default="")
     logo_url = models.URLField(max_length=500, blank=True, null=True)  # 신규
@@ -20,7 +42,7 @@ class Company(models.Model):
     establishment_date = models.DateField(null=True)  # 설립일
     homepage_url = models.URLField(max_length=500, blank=True, null=True)  # 홈페이지
     address = models.TextField(blank=True, null=True)  # 본사 주소
-
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_deleted = models.BooleanField(default=False)
@@ -101,6 +123,13 @@ class Report(models.Model):
         ("J", "공정위공시"),
     ]
 
+    PROCESSING_STATUS_CHOICES = [
+        ("pending", "대기"),
+        ("processing", "처리중"),
+        ("completed", "완료"),
+        ("failed", "실패"),
+    ]
+
     company = models.ForeignKey(
         Company,
         on_delete=models.CASCADE,
@@ -115,6 +144,25 @@ class Report(models.Model):
     )  # 공시유형
     submitted_at = models.DateField()  # 접수일자
     report_url = models.URLField(max_length=500)  # 보고서 URL
+
+    # 보고서 처리 관련 필드 (신규)
+    raw_content = models.TextField(null=True, blank=True, verbose_name="원본 본문")
+    refined_content = models.TextField(
+        null=True, blank=True, verbose_name="정제된 본문"
+    )
+    extracted_info = models.JSONField(
+        null=True, blank=True, verbose_name="구조화된 추출 정보"
+    )
+    embedding = models.JSONField(null=True, blank=True, verbose_name="벡터 임베딩")
+    processed_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="처리 완료 시간"
+    )
+    processing_status = models.CharField(
+        max_length=20,
+        choices=PROCESSING_STATUS_CHOICES,
+        default="pending",
+        verbose_name="처리 상태",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
 

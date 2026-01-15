@@ -1,14 +1,14 @@
-import trafilatura
-import google.generativeai as genai
+from google import genai
 from django.conf import settings
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
 
 class RefineService:
     """
-    로컬(Trafilatura) + AI(Gemini) 하이브리드 정제 서비스
+    AI(Gemini) 정제 서비스
     """
 
     def __init__(self):
@@ -17,56 +17,47 @@ class RefineService:
             error_msg = "GEMINI_API_KEY is missing or empty. Please set GEMINI_API_KEY in environment variables."
             logger.error(error_msg)
             raise ValueError(error_msg)
-        genai.configure(api_key=api_key)
-        # 모델 이름 시도 (가성비 좋은 모델 우선: Flash 모델이 빠르고 저렴)
-        # gemini-2.5-flash: 최신 Flash 모델, 빠르고 저렴하며 품질도 좋음
-        # gemini-flash-latest: 항상 최신 Flash 버전 (자동 업데이트)
-        model_names = [
-            "models/gemini-2.5-flash-lite",
-            "gemini-2.5-flash-lite",
-        ]
-        self.model = None
-        for model_name in model_names:
-            try:
-                self.model = genai.GenerativeModel(model_name)
-                logger.info(f"Gemini 모델 초기화 성공: {model_name}")
-                break
-            except Exception as e:
-                logger.debug(f"모델 {model_name} 초기화 실패: {str(e)}")
-                continue
 
-        if self.model is None:
-            # 사용 가능한 모델 목록에서 찾기
-            try:
-                available_models = genai.list_models()
-                for model in available_models:
-                    if "generateContent" in model.supported_generation_methods:
-                        model_name = model.name.replace("models/", "")
-                        self.model = genai.GenerativeModel(model_name)
-                        logger.info(f"사용 가능한 모델로 초기화: {model_name}")
-                        break
-            except Exception as e:
-                logger.error(f"모델 목록 조회 실패: {str(e)}")
+        # 새 google.genai SDK 사용
+        self.client = genai.Client(api_key=api_key)
 
-        if self.model is None:
-            raise ValueError("사용 가능한 Gemini 모델을 찾을 수 없습니다.")
+        # 모델 이름 (가성비 좋은 모델 우선: Flash 모델이 빠르고 저렴)
+        self.model_name = "gemini-2.5-flash-lite"
+        logger.info(f"Gemini 클라이언트 초기화 성공: {self.model_name}")
 
     def get_refined_body(self, raw_data):
         """
-        1차 로컬 정제 후 2차 Gemini 정제를 통해 완벽한 본문 추출
+        Markdown에서 메타데이터 제거 후 Gemini 정제를 통해 완벽한 본문 추출
 
         프롬프트 인젝션 방지를 위해:
         - 입력 텍스트를 명확한 구분자로 분리
         - 입력 길이 제한
         - safety_settings 적용
         """
-        # 1. 로컬 1차 정제 (토큰 절감용)
-        local_text = trafilatura.extract(raw_data, include_comments=False)
+        # 1. Markdown 메타데이터 제거 (raw_data는 Jina Reader의 Markdown 출력)
+        # 형식: "Title: ...\n\nURL Source: ...\n\nPublished Time: ...\n\nMarkdown Content:\n실제내용"
+        local_text = raw_data
+
+        # "Markdown Content:" 이후의 내용만 추출
+        if "Markdown Content:" in raw_data:
+            parts = raw_data.split("Markdown Content:", 1)
+            if len(parts) == 2:
+                local_text = parts[1].strip()
+
+        # 메타데이터가 없는 경우 전체 내용 사용
         if not local_text:
-            local_text = raw_data[:5000]
+            local_text = raw_data
+
+        # 2. HTML 태그 제거 (Markdown에 남아있을 수 있는 HTML 태그)
+        # <tag>, </tag>, <tag/>, <tag attr="value"> 등 모든 형태 제거
+        local_text = re.sub(r"<[^>]+>", "", local_text)
+
+        # 3. 이미지 참조 텍스트 정리 (예: "Image 2: 로그인", "Image 3: 아이콘" 등)
+        local_text = re.sub(r"Image\s+\d+:\s*[^\n]*", "", local_text)
 
         # 입력 길이 제한 (프롬프트 인젝션 방지 및 토큰 절감)
-        max_input_length = 10000
+        # 뉴스: ~10,000자, 보고서: ~50,000자 허용
+        max_input_length = 50000
         if len(local_text) > max_input_length:
             local_text = local_text[:max_input_length]
             logger.warning(f"입력 텍스트가 {max_input_length}자를 초과하여 잘랐습니다.")
@@ -109,11 +100,19 @@ class RefineService:
                 },
             ]
 
-            response = self.model.generate_content(
-                prompt,
-                safety_settings=safety_settings,
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config={
+                    "safety_settings": safety_settings,
+                },
             )
             return response.text.strip()
         except Exception as e:
-            logger.error(f"Gemini Refinement failed: {str(e)}")
+            error_message = str(e)
+            # 쿼터 초과(429) 에러 명시적 처리
+            if "429" in error_message or "quota" in error_message.lower():
+                logger.warning(f"Gemini API 쿼터 초과: 로컬 정제본 사용")
+            else:
+                logger.error(f"Gemini Refinement failed: {error_message}")
             return local_text  # AI 실패 시 로컬 정제본이라도 반환

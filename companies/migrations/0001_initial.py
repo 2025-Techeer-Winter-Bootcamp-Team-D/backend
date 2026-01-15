@@ -36,6 +36,16 @@ class Migration(migrations.Migration):
                     models.URLField(blank=True, max_length=500, null=True),
                 ),
                 ("address", models.TextField(blank=True, null=True)),
+                (
+                    "market",
+                    models.CharField(
+                        blank=True,
+                        choices=[("KOSPI", "유가증권"), ("KOSDAQ", "코스닥")],
+                        db_index=True,
+                        max_length=10,
+                        null=True,
+                    ),
+                ),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 ("is_deleted", models.BooleanField(default=False)),
@@ -78,6 +88,44 @@ class Migration(migrations.Migration):
                 ),
                 ("submitted_at", models.DateField()),
                 ("report_url", models.URLField(max_length=500)),
+                (
+                    "raw_content",
+                    models.TextField(blank=True, null=True, verbose_name="원본 본문"),
+                ),
+                (
+                    "refined_content",
+                    models.TextField(blank=True, null=True, verbose_name="정제된 본문"),
+                ),
+                (
+                    "extracted_info",
+                    models.JSONField(
+                        blank=True, null=True, verbose_name="구조화된 추출 정보"
+                    ),
+                ),
+                (
+                    "embedding",
+                    models.JSONField(blank=True, null=True, verbose_name="벡터 임베딩"),
+                ),
+                (
+                    "processed_at",
+                    models.DateTimeField(
+                        blank=True, null=True, verbose_name="처리 완료 시간"
+                    ),
+                ),
+                (
+                    "processing_status",
+                    models.CharField(
+                        choices=[
+                            ("pending", "대기"),
+                            ("processing", "처리중"),
+                            ("completed", "완료"),
+                            ("failed", "실패"),
+                        ],
+                        default="pending",
+                        max_length=20,
+                        verbose_name="처리 상태",
+                    ),
+                ),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 (
                     "company",

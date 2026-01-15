@@ -1,12 +1,13 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter
+from drf_spectacular.types import OpenApiTypes
 from .models import Company, CompanyRanking
+from core.models import StockPrice1m, StockPrice15m, StockPrice1h, StockPrice1d
 from .serializers import (
-    CompanySerializer,
     CompanyDetailSerializer,
     CompanyFinancialsSerializer,
     FinancialStatementSerializer,
@@ -24,6 +25,7 @@ from .tasks.dart_sync import (
     sync_financial_statements,
     sync_company_reports,
 )
+from .tasks.report_processing import process_company_reports
 
 
 # ------------------------ 기업 기본 정보 조회--------------------------
@@ -526,3 +528,259 @@ def get_company_rankings(request):
         },
         status=status.HTTP_200_OK,
     )
+
+
+# ------------------------ 보고서 처리 ----------------------------------
+@extend_schema(
+    summary="보고서 처리 시작 (관리자용)",
+    description="기업의 미처리 보고서를 일괄 처리합니다 (본문 추출, 정제, 구조화된 정보 추출, OpenSearch 적재).",
+    parameters=[
+        OpenApiParameter(
+            name="stock_code",
+            type=str,
+            location=OpenApiParameter.PATH,
+            description="처리할 기업의 종목코드 (예: 005930)",
+        ),
+        OpenApiParameter(
+            name="limit",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            description="처리할 보고서 수 (기본값: 20, 최대: 100)",
+            required=False,
+        ),
+    ],
+    responses={
+        202: OpenApiResponse(description="처리 시작됨"),
+        404: OpenApiResponse(description="Company not found"),
+    },
+    tags=["Reports"],
+)
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def process_company_reports_view(request, stock_code):
+    """보고서 처리 API (관리자용)"""
+    try:
+        company = Company.objects.get(pk=stock_code, is_deleted=False)
+
+        # limit 파라미터 처리
+        try:
+            limit = int(request.query_params.get("limit", 20))
+            if limit <= 0:
+                return Response(
+                    {
+                        "status": 400,
+                        "error": "limit 파라미터는 1 이상의 정수여야 합니다.",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            limit = min(limit, 100)
+        except ValueError:
+            return Response(
+                {"status": 400, "error": "limit 파라미터는 정수여야 합니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 미처리 보고서 수 확인
+        from .models import Report
+
+        pending_count = Report.objects.filter(
+            company_id=stock_code,
+            processing_status="pending",
+        ).count()
+
+        if pending_count == 0:
+            return Response(
+                {
+                    "status": 200,
+                    "message": "처리할 보고서가 없습니다.",
+                    "data": {
+                        "stock_code": stock_code,
+                        "pending_count": 0,
+                    },
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        # Celery 태스크 실행
+        task = process_company_reports.delay(stock_code, limit)
+
+        return Response(
+            {
+                "status": 202,
+                "message": "보고서 처리가 시작되었습니다.",
+                "data": {
+                    "stock_code": stock_code,
+                    "company_name": company.company_name,
+                    "task_id": task.id,
+                    "limit": limit,
+                    "pending_count": pending_count,
+                },
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+    except Company.DoesNotExist:
+        return Response(
+            {"status": 404, "error": "Company not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+
+# ------------------------ 기업 주가 데이터 조회--------------------------
+@extend_schema(
+    summary="기업 주가 데이터 조회",
+    description="""
+    특정 종목의 OHLCV 주가 데이터를 조회합니다.
+    
+    **지원하는 시간 단위 및 조회 기간:**
+    - `1m`: 1분봉 - 최근 1일치 데이터
+    - `15m`: 15분봉 - 최근 5일치(일주일) 데이터
+    - `1h`: 1시간봉 - 최근 1달치 데이터
+    - `1d`: 1일봉 - 최근 1년치 데이터
+    
+    **쿼리 파라미터:**
+    - `interval`: 조회할 시간 단위 (1m, 15m, 1h, 1d). 없으면 모든 interval 반환
+    
+    **참고:**
+    - DB에 저장된 모든 데이터를 최신순으로 반환합니다.
+    """,
+    parameters=[
+        OpenApiParameter(
+            name="stock_code",
+            type=str,
+            location=OpenApiParameter.PATH,
+            description="종목코드 (6자리, 예: 005930)",
+        ),
+        OpenApiParameter(
+            name="interval",
+            type=str,
+            location=OpenApiParameter.QUERY,
+            description="시간 단위 (1m, 15m, 1h, 1d). 없으면 모든 interval 반환",
+            required=False,
+        ),
+    ],
+    responses={
+        200: OpenApiResponse(description="주가 데이터 조회 성공"),
+        400: OpenApiResponse(description="잘못된 요청"),
+        404: OpenApiResponse(description="종목을 찾을 수 없음"),
+    },
+    tags=["Company"],
+)
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def get_company_prices(request, stock_code: str):
+    """
+    기업 주가 데이터 조회 API
+
+    특정 종목의 OHLCV 데이터를 조회합니다.
+    DB에 저장된 모든 데이터를 최신순으로 반환합니다.
+    """
+    # 종목 존재 확인
+    try:
+        company = Company.objects.get(stock_code=stock_code, is_deleted=False)
+    except Company.DoesNotExist:
+        return Response(
+            {"status": 404, "error": f"종목 {stock_code}을(를) 찾을 수 없습니다."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    # 쿼리 파라미터 파싱
+    interval = request.query_params.get("interval", None)
+
+    # interval 유효성 검사
+    valid_intervals = ["1m", "15m", "1h", "1d"]
+    if interval and interval not in valid_intervals:
+        return Response(
+            {
+                "status": 400,
+                "error": f"Invalid interval: {interval}",
+                "valid_intervals": valid_intervals,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # 조회할 interval 목록 결정
+    intervals_to_query = [interval] if interval else valid_intervals
+
+    # 모델 매핑
+    model_map = {
+        "1m": StockPrice1m,
+        "15m": StockPrice15m,
+        "1h": StockPrice1h,
+        "1d": StockPrice1d,
+    }
+
+    # 결과 저장
+    results = {}
+
+    for interval_key in intervals_to_query:
+        model = model_map[interval_key]
+
+        # values()를 사용하여 필요한 필드만 선택 (id 필드 제외)
+        queryset = (
+            model.objects.filter(stock_code=stock_code)
+            .values(
+                "bucket",
+                "stock_code",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "amount",
+                "trade_count",
+                "source",
+            )
+            .order_by("-bucket")
+        )
+
+        # 데이터 변환
+        data = []
+        for item in queryset:
+            data.append(
+                {
+                    "bucket": item["bucket"],
+                    "stock_code": item["stock_code"],
+                    "open": float(item["open"]) if item["open"] else None,
+                    "high": float(item["high"]) if item["high"] else None,
+                    "low": float(item["low"]) if item["low"] else None,
+                    "close": float(item["close"]) if item["close"] else None,
+                    "volume": int(item["volume"]) if item["volume"] else 0,
+                    "amount": float(item["amount"]) if item["amount"] else None,
+                    "trade_count": (
+                        int(item["trade_count"]) if item["trade_count"] else None
+                    ),
+                    "source": item["source"],
+                }
+            )
+
+        # 전체 개수
+        total_count = len(data)
+
+        results[interval_key] = {
+            "stock_code": stock_code,
+            "interval": interval_key,
+            "total_count": total_count,
+            "data": data,
+        }
+
+    # 응답 생성
+    if interval:
+        # 단일 interval 응답
+        return Response(
+            {
+                "status": 200,
+                "message": "주가 데이터 조회 성공",
+                "data": results[interval],
+            },
+            status=status.HTTP_200_OK,
+        )
+    else:
+        # 모든 interval 응답
+        return Response(
+            {
+                "status": 200,
+                "message": "주가 데이터 조회 성공",
+                "data": results,
+            },
+            status=status.HTTP_200_OK,
+        )

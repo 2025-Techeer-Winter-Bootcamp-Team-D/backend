@@ -64,6 +64,25 @@ class CompanyInfoService:
             if data.get("adres"):
                 company.address = data["adres"]
 
+            # 시장 구분 매핑 (corp_cls → market)
+            # DART API corp_cls: Y(유가증권/KOSPI), K(코스닥/KOSDAQ)
+            corp_cls = data.get("corp_cls")
+            if corp_cls:
+                market_mapping = {
+                    "Y": "KOSPI",
+                    "K": "KOSDAQ",
+                }
+                market = market_mapping.get(corp_cls)
+                if market:
+                    company.market = market
+                    logger.info(
+                        f"시장 구분 매핑: {company.stock_code} → {corp_cls} → {market}"
+                    )
+                else:
+                    logger.warning(
+                        f"지원하지 않는 시장 구분: {company.stock_code} → corp_cls={corp_cls}"
+                    )
+
             # 업종코드 저장 및 Industry 매핑
             # DART API 응답 필드: induty_code
             industry_code = data.get("induty_code")
@@ -110,6 +129,7 @@ class CompanyInfoService:
             "stock_code": company.stock_code,
             "corp_code": company.corp_code,
             "company_name": company.company_name,
+            "market": company.market,
             "description": company.description,
             "logo_url": company.logo_url,
             "market_amount": company.market_amount,

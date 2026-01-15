@@ -62,8 +62,7 @@ def start_search_phase(keywords, max_articles_per_keyword, job_id):
         aggregate_search_results.s() | start_extraction_phase.s(job_id)
     )
 
-    workflow.apply_async()
-    return f"검색 단계 시작: {len(keywords)}개 키워드"
+    return workflow
 
 
 @shared_task
@@ -93,8 +92,7 @@ def start_extraction_phase(articles, job_id):
         aggregate_extraction_results.s() | start_processing_phase.s(job_id)
     )
 
-    workflow.apply_async()
-    return f"추출 단계 시작: {len(articles)}개 기사"
+    return workflow
 
 
 @shared_task
@@ -117,8 +115,7 @@ def start_processing_phase(articles, job_id):
         aggregate_processing_results.s() | start_embedding_phase.s(job_id)
     )
 
-    workflow.apply_async()
-    return f"정제+요약 단계 시작: {len(articles)}개 기사"
+    return workflow
 
 
 @shared_task
@@ -141,8 +138,7 @@ def start_embedding_phase(articles, job_id):
         aggregate_embedding_results.s() | start_storage_phase.s(job_id)
     )
 
-    workflow.apply_async()
-    return f"임베딩 단계 시작: {len(articles)}개 기사"
+    return workflow
 
 
 @shared_task
@@ -196,9 +192,22 @@ def scheduled_crawl_news(keywords=None, max_articles_per_keyword=10):
     뉴스 크롤링 메인 워크플로우
 
     Celery Beat에서 주기적으로 호출되거나 수동으로 실행할 수 있습니다.
+
+    일반 크롤링 모드: 넓은 범위의 카테고리 키워드를 사용하여
+    특정 키워드에 편향되지 않은 일반적인 뉴스를 수집합니다.
     """
     if keywords is None:
-        keywords = ["AI", "반도체", "삼성전자", "SK하이닉스"]
+        # 기본값: 일반 크롤링용 넓은 범위 카테고리
+        keywords = [
+            "경제",  # 경제 일반
+            "증권",  # 증권/주식
+            "기업",  # 기업 뉴스
+            "IT",  # IT/기술
+            "기술",  # 기술 일반
+            "산업",  # 산업 전반
+            "무역",  # 무역/수출입
+            "금융",  # 금융
+        ]
 
     # CrawlJob 생성
     crawl_job = CrawlJob.objects.create(
