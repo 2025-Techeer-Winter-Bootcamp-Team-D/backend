@@ -34,28 +34,38 @@ class PersistenceWorker:
             self.buffer = []
 
         try:
-            # COPY FROM buffer to database
             async with pool.acquire() as conn:
+                # ON CONFLICT를 사용하여 중복 시 volume 누적, price 업데이트
+                # 기본 키: (stock_code, time)
+                insert_query = """
+                    INSERT INTO stock_ticks (stock_code, symbol, time, price, volume)
+                    VALUES ($1, $2, $3, $4, $5)
+                    ON CONFLICT (stock_code, time) DO UPDATE SET
+                        price = EXCLUDED.price,
+                        volume = stock_ticks.volume + EXCLUDED.volume,
+                        symbol = COALESCE(EXCLUDED.symbol, stock_ticks.symbol)
+                """
                 records = [
                     (
+                        r.get("stock_code"),  # 실제 종목코드 (6자리) - PK
+                        r.get("symbol"),  # KIS 내부 식별자 (optional)
                         (
                             self.parse_time(time_str=r["time"])
                             if isinstance(r["time"], str)
                             else r["time"]
                         ),
-                        r["symbol"],  # KIS 내부 식별자
-                        r.get("stock_code"),  # 실제 종목코드 (6자리)
                         r["price"],
                         r["volume"],
                     )
                     for r in current_batch
+                    if r.get("stock_code")  # stock_code가 있는 것만 저장
                 ]
-                await conn.copy_records_to_table(
-                    "stock_ticks",
-                    columns=("time", "symbol", "stock_code", "price", "volume"),
-                    records=records,
-                )
-            print(f"Saved {len(current_batch)} rows to database")
+
+                if records:
+                    await conn.executemany(insert_query, records)
+                    print(f"Saved {len(records)} rows to database (with upsert)")
+                else:
+                    print("No valid records to save (missing stock_code)")
         except Exception as e:
             print(f"Error saving to database: {e}")
             # 실패 시 버퍼 복구

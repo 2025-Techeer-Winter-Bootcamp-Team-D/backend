@@ -12,10 +12,13 @@ RUN apk add --no-cache \
     musl-dev \
     pkgconfig
 
+# Copy uv from official image (much faster than pip install)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
 COPY requirements.txt /app/
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies using uv (much faster than pip)
+RUN uv pip install --system --no-cache -r requirements.txt
 
 # Remove build dependencies
 RUN apk del .build-deps
