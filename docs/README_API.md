@@ -287,6 +287,42 @@
 }
 ```
 
+### 기업 주가 데이터 조회
+- **URL**: `GET /api/companies/{stock_code}/prices/`
+- **설명**: 특정 종목의 OHLCV 주가 데이터를 조회합니다.
+- **Path Parameters**:
+  - `stock_code`: 종목코드 (6자리, 예: 005930)
+- **Query Parameters**:
+  - `interval` (optional): 시간 단위 (1m, 15m, 1h, 1d). 미지정 시 모든 interval 반환
+- **응답 예시**:
+```json
+{
+  "status": 200,
+  "message": "주가 데이터 조회 성공",
+  "data": {
+    "1d": {
+      "stock_code": "005930",
+      "interval": "1d",
+      "total_count": 365,
+      "data": [
+        {
+          "bucket": "2024-01-15T00:00:00Z",
+          "stock_code": "005930",
+          "open": 75000.0,
+          "high": 76000.0,
+          "low": 74500.0,
+          "close": 75500.0,
+          "volume": 1000000,
+          "amount": 75500000000.0,
+          "trade_count": 5000,
+          "source": "yfinance"
+        }
+      ]
+    }
+  }
+}
+```
+
 ### 전체 기업 순위 조회
 - **URL**: `GET /api/companies/rankings/companies/`
 - **설명**: 최신 기준 날짜의 기업 순위 리스트를 가져옵니다.
@@ -420,6 +456,85 @@ docker-compose logs -f app
 - `DELETE /api/users/favorites/{id}/`
 - `POST /api/companies/{stock_code}/sync/`
 - `POST /api/companies/{stock_code}/reports/process/`
+- `POST /api/core/admin/stocks/{stock_code}/sync-history/` (관리자 전용)
+- `POST /api/core/admin/stocks/sync-history/` (관리자 전용)
+- `POST /api/core/admin/stocks/sync-realtime/` (관리자 전용)
+
+---
+
+## 관리자 API (Admin)
+
+### 주가 히스토리 동기화 (단일 종목)
+- **URL**: `POST /api/core/admin/stocks/{stock_code}/sync-history/`
+- **설명**: yfinance API를 통해 특정 종목의 과거 OHLCV 데이터를 동기화합니다.
+- **인증**: 필요 (관리자 권한, Bearer Token)
+- **Path Parameters**:
+  - `stock_code`: 종목코드 (6자리, 예: 005930)
+- **Query Parameters**:
+  - `intervals` (optional): 동기화할 시간 단위 (콤마 구분: 1m,15m,1h,1d). 기본값: 전체
+  - `async` (optional): 비동기 실행 여부. 기본값: true
+- **수집 범위**:
+  - 1분봉: 최근 1일
+  - 15분봉: 최근 5일
+  - 1시간봉: 최근 1달
+  - 1일봉: 최근 1년
+- **응답 예시** (비동기 실행):
+```json
+{
+  "status": "accepted",
+  "message": "동기화 작업이 시작되었습니다.",
+  "data": {
+    "task_id": "abc123-def456",
+    "stock_code": "005930",
+    "market": "KOSPI",
+    "intervals": ["1m", "15m", "1h", "1d"]
+  }
+}
+```
+
+### 주가 히스토리 동기화 (여러 종목)
+- **URL**: `POST /api/core/admin/stocks/sync-history/`
+- **설명**: yfinance API를 통해 여러 종목의 과거 OHLCV 데이터를 동기화합니다.
+- **인증**: 필요 (관리자 권한, Bearer Token)
+- **Request Body**:
+```json
+{
+  "stock_codes": ["005930", "000660", "035720"],
+  "intervals": ["1d"]
+}
+```
+- **응답 예시**:
+```json
+{
+  "status": "accepted",
+  "message": "3개 종목의 동기화 작업이 시작되었습니다.",
+  "data": {
+    "total_stocks": 3,
+    "intervals": ["1d"],
+    "tasks": [
+      {"stock_code": "005930", "task_id": "task-001"},
+      {"stock_code": "000660", "task_id": "task-002"},
+      {"stock_code": "035720", "task_id": "task-003"}
+    ]
+  }
+}
+```
+
+### 실시간 주가 데이터 동기화
+- **URL**: `POST /api/core/admin/stocks/sync-realtime/`
+- **설명**: Continuous Aggregate 데이터를 통합 테이블로 즉시 동기화합니다. 일반적으로 Celery Beat이 자동으로 실행하지만, 수동으로 실행할 때 사용합니다.
+- **인증**: 필요 (관리자 권한, Bearer Token)
+- **응답 예시**:
+```json
+{
+  "status": "completed",
+  "message": "실시간 데이터 동기화가 완료되었습니다.",
+  "data": {
+    "synced_count": 150,
+    "timestamp": "2024-01-15T10:00:00Z"
+  }
+}
+```
 
 ---
 

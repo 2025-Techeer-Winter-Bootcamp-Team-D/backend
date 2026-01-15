@@ -144,7 +144,7 @@ def health_check(request):
     tags=["Admin - Stock Data"],
 )
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdminUser])
 def sync_stock_history(request, stock_code: str):
     """
     단일 종목 주가 히스토리 동기화 API
@@ -275,7 +275,7 @@ def sync_stock_history(request, stock_code: str):
     tags=["Admin - Stock Data"],
 )
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdminUser])
 def sync_multiple_stocks_history(request):
     """
     여러 종목 주가 히스토리 동기화 API
@@ -334,7 +334,7 @@ def sync_multiple_stocks_history(request):
     tags=["Admin - Stock Data"],
 )
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdminUser])
 def sync_realtime_prices(request):
     """
     Continuous Aggregate → 통합 테이블 수동 동기화 API

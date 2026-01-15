@@ -49,9 +49,8 @@ def sync_stock_history_task(
         raise self.retry(exc=e)
 
 
-@shared_task(bind=True, max_retries=1)
+@shared_task
 def sync_multiple_stocks_task(
-    self,
     stock_codes: list[str],
     intervals: list[str] | None = None,
 ):
@@ -84,4 +83,3 @@ def sync_multiple_stocks_task(
     except Exception as e:
         logger.exception(f"Error syncing multiple stocks: {e}")
         raise
-
