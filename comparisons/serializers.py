@@ -41,7 +41,7 @@ class ComparisonCreateSerializer(serializers.ModelSerializer):
         comparison = Comparison.objects.create(**validated_data)
 
         unique_codes = list(dict.fromkeys(company_codes))
-        for code in company_codes:
+        for code in unique_codes:
             try:
                 company = Company.objects.get(stock_code=code)
                 ComparisonCompany.objects.create(comparison=comparison, company=company)
