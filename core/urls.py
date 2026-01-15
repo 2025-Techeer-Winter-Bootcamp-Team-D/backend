@@ -3,7 +3,6 @@ from .views import (
     health_check,
     sync_stock_history,
     sync_multiple_stocks_history,
-    sync_favorites_history,
     sync_realtime_prices,
 )
 
@@ -20,11 +19,6 @@ urlpatterns = [
         "admin/stocks/sync-history/",
         sync_multiple_stocks_history,
         name="sync_multiple_stocks_history",
-    ),
-    path(
-        "admin/stocks/sync-favorites/",
-        sync_favorites_history,
-        name="sync_favorites_history",
     ),
     path(
         "admin/stocks/sync-realtime/",

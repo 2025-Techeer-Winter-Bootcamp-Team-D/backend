@@ -322,58 +322,6 @@ def sync_multiple_stocks_history(request):
 
 
 @extend_schema(
-    summary="즐겨찾기 종목 주가 히스토리 동기화 (관리자용)",
-    description="""
-    사용자들이 즐겨찾기한 모든 종목의 과거 OHLCV 데이터를 동기화합니다.
-    우선순위가 높은 종목들을 먼저 동기화할 때 사용합니다.
-    """,
-    parameters=[
-        OpenApiParameter(
-            name="intervals",
-            type=str,
-            location=OpenApiParameter.QUERY,
-            description="동기화할 시간 단위 (콤마 구분)",
-            required=False,
-        ),
-    ],
-    responses={
-        202: OpenApiResponse(description="동기화 작업 시작됨"),
-        401: OpenApiResponse(description="인증 필요"),
-    },
-    tags=["Admin - Stock Data"],
-)
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def sync_favorites_history(request):
-    """
-    즐겨찾기 종목 주가 히스토리 동기화 API
-
-    yfinance 데이터는 항상 기존 데이터를 덮어씁니다.
-    """
-    intervals_param = request.query_params.get("intervals", None)
-    if intervals_param:
-        intervals = [i.strip() for i in intervals_param.split(",")]
-    else:
-        intervals = None
-
-    from core.tasks.yfinance_sync import sync_all_favorites_history_task
-
-    task = sync_all_favorites_history_task.delay(intervals=intervals)
-
-    return Response(
-        {
-            "status": "accepted",
-            "message": "즐겨찾기 종목 동기화 작업이 시작되었습니다.",
-            "data": {
-                "task_id": task.id,
-                "intervals": intervals or ["1m", "15m", "1h", "1d"],
-            },
-        },
-        status=status.HTTP_202_ACCEPTED,
-    )
-
-
-@extend_schema(
     summary="Continuous Aggregate 수동 동기화 (관리자용)",
     description="""
     Continuous Aggregate 데이터를 통합 테이블로 즉시 동기화합니다.
