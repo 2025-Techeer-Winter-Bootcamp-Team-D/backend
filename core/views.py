@@ -295,6 +295,32 @@ def sync_multiple_stocks_history(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    valid_intervals = ["1m", "15m", "1h", "1d"]
+    if intervals is not None:
+        if not isinstance(intervals, list):
+            return Response(
+                {
+                    "error": "intervals must be a list",
+                    "valid_intervals": valid_intervals,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(intervals) == 0:
+            intervals = None
+        else:
+            invalid_intervals = [
+                interval for interval in intervals if interval not in valid_intervals
+            ]
+            if invalid_intervals:
+                return Response(
+                    {
+                        "error": f"Invalid interval: {invalid_intervals[0]}",
+                        "invalid_intervals": invalid_intervals,
+                        "valid_intervals": valid_intervals,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
     # 각 종목별로 개별 태스크 실행 (병렬 처리)
     # 시장 정보는 Company.market에서 자동으로 조회됩니다
     from core.tasks.yfinance_sync import sync_stock_history_task
