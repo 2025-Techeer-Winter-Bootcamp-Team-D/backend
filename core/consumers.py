@@ -35,11 +35,28 @@ class StockPriceConsumer(AsyncWebsocketConsumer):
         """WebSocket 연결 해제 시 그룹에서 제거"""
         await self.channel_layer.group_discard(self.group_name, self.channel_name)
 
-    async def receive(self, text_data):
+    async def receive(self, text_data=None, bytes_data=None):
         """
         클라이언트로부터 메시지 수신 (선택적)
         - 특정 종목 구독/해제 등 확장 가능
         """
+        # text_data와 bytes_data가 모두 None이면 무시
+        if text_data is None and bytes_data is None:
+            return
+
+        # bytes_data가 있으면 UTF-8로 디코딩
+        if bytes_data is not None:
+            try:
+                text_data = bytes_data.decode("utf-8")
+            except UnicodeDecodeError as e:
+                await self.send(
+                    text_data=json.dumps(
+                        {"type": "error", "message": "Invalid encoding"}
+                    )
+                )
+                return
+
+        # JSON 파싱
         try:
             data = json.loads(text_data)
             action = data.get("action")
@@ -47,7 +64,7 @@ class StockPriceConsumer(AsyncWebsocketConsumer):
             if action == "ping":
                 await self.send(text_data=json.dumps({"type": "pong"}))
 
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, TypeError) as e:
             await self.send(
                 text_data=json.dumps({"type": "error", "message": "Invalid JSON"})
             )

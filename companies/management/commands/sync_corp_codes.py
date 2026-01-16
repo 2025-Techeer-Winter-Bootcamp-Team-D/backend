@@ -177,16 +177,15 @@ class Command(BaseCommand):
             )
 
             # 기업 필터링 (--top-companies 또는 --limit 옵션)
-            original_count = len(companies_data)
+            before_count = len(companies_data)
             if top_companies:
                 # 시가총액 상위 50개 기업만 필터링
                 companies_data = [
-                    c for c in companies_data
-                    if c["stock_code"] in TOP_50_STOCK_CODES
+                    c for c in companies_data if c["stock_code"] in TOP_50_STOCK_CODES
                 ]
                 self.stdout.write(
                     self.style.SUCCESS(
-                        f"필터링 완료: {len(companies_data)}개 기업 "
+                        f"필터링 완료: {before_count}개 → {len(companies_data)}개 기업 "
                         f"(시가총액 상위 50개 중 DART에 존재하는 기업)"
                     )
                 )
@@ -195,7 +194,7 @@ class Command(BaseCommand):
                 companies_data = companies_data[:limit]
                 self.stdout.write(
                     self.style.SUCCESS(
-                        f"필터링 완료: {len(companies_data)}개 기업 (상위 {limit}개 제한)"
+                        f"필터링 완료: {before_count}개 → {len(companies_data)}개 기업 (상위 {limit}개 제한)"
                     )
                 )
 
