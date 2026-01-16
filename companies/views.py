@@ -1461,13 +1461,8 @@ def get_company_news_list(request, stock_code):
     total_count = paginator.count
     total_pages = paginator.num_pages
 
-    try:
-        news_page = paginator.page(page)
-    except EmptyPage:
-        return Response(
-            {"status": 400, "error": "Invalid page number"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    # get_page는 안전하게 빈 페이지 객체를 반환 (EmptyPage 예외 없음)
+    news_page = paginator.get_page(page)
 
     # Serializer로 변환
     serializer = CompanyNewsSerializer(news_page.object_list, many=True)
