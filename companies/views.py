@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import logging
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
@@ -6,6 +7,8 @@ from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 from celery import group
+
+logger = logging.getLogger(__name__)
 from .models import Company, CompanyRanking, Report
 from core.models import StockPrice1m, StockPrice15m, StockPrice1h, StockPrice1d
 from .serializers import (
@@ -240,9 +243,6 @@ def get_company_financials(request, stock_code):
 @permission_classes([AllowAny])
 def get_company_reports(request, stock_code):
     """기업 보고서 목록 조회 API"""
-    import logging
-
-    logger = logging.getLogger(__name__)
 
     try:
         logger.info(f"보고서 조회 API 호출: stock_code={stock_code}")
@@ -372,9 +372,6 @@ def get_report_detail(request, stock_code, rcept_no):
             status=status.HTTP_404_NOT_FOUND,
         )
     except Exception as e:
-        import logging
-
-        logger = logging.getLogger(__name__)
         logger.exception(
             f"보고서 분석 결과 조회 오류: stock_code={stock_code}, rcept_no={rcept_no}"
         )
@@ -809,9 +806,6 @@ def sync_all_companies_from_dart(request):
         # 동기 실행은 시간이 오래 걸릴 수 있으므로 최대 처리 개수 제한
         max_sync_count = min(total_count, 50)  # 최대 50개 기업만 동기 처리
         if total_count > max_sync_count:
-            import logging
-
-            logger = logging.getLogger(__name__)
             logger.warning(
                 f"동기 실행은 최대 {max_sync_count}개 기업만 처리합니다. "
                 f"전체 {total_count}개 기업을 처리하려면 async=true를 사용하세요."
@@ -1179,15 +1173,12 @@ def process_single_report_view(request, stock_code, rcept_no):
                 status=status.HTTP_200_OK,
             )
         except Exception as e:
-            import logging
-
-            logger = logging.getLogger(__name__)
-            logger.error(f"보고서 분석 중 오류 발생: {e}")
+            logger.exception("보고서 분석 중 오류 발생")
 
             return Response(
                 {
                     "status": 500,
-                    "error": f"보고서 분석 중 오류가 발생했습니다: {str(e)}",
+                    "error": "보고서 분석 중 오류가 발생했습니다",
                     "data": {
                         "stock_code": stock_code,
                         "rcept_no": rcept_no,
@@ -1203,13 +1194,10 @@ def process_single_report_view(request, stock_code, rcept_no):
             status=status.HTTP_404_NOT_FOUND,
         )
     except Exception as e:
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.error(f"보고서 분석 API 오류: {e}")
+        logger.exception("보고서 분석 API 오류")
 
         return Response(
-            {"status": 500, "error": f"서버 오류가 발생했습니다: {str(e)}"},
+            {"status": 500, "error": "서버 오류가 발생했습니다"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -1649,13 +1637,7 @@ def sync_company_news(request, stock_code):
             status=status.HTTP_200_OK,
         )
     except Exception as e:
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.exception(
-            f"뉴스 동기화 중 오류 발생: stock_code={stock_code}, "
-            f"company_name={company.company_name if 'company' in locals() else 'N/A'}"
-        )
+        logger.exception("뉴스 동기화 중 오류 발생")
         return Response(
             {
                 "status": 500,
