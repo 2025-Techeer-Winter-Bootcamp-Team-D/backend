@@ -29,6 +29,7 @@ class MetadataExtractorService:
     PRESS_DOMAIN_MAP = {
         # 종합 일간지
         "www.chosun.com": "조선일보",
+        "chosun.com": "조선일보",
         "www.joongang.co.kr": "중앙일보",
         "www.donga.com": "동아일보",
         "www.hani.co.kr": "한겨레",
