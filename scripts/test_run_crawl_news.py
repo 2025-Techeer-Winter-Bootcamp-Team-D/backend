@@ -11,8 +11,21 @@ sys.path.insert(0, str(BASE_DIR))
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
-from news.tasks.workflows import scheduled_crawl_news
+from news.tasks.workflows import start_search_phase
+from news.models import CrawlJob
+from django.utils import timezone
 
-keywords = ["경제", "증권"]
-result = scheduled_crawl_news.delay(keywords, max_articles_per_keyword=2)
-print(f"Task ID: {result.id}")
+# CrawlJob 생성
+job = CrawlJob.objects.create(
+    status="pending",
+    keywords=["경제", "증권"],
+    max_articles_per_keyword=2,
+)
+
+# Celery 태스크 실행
+task = start_search_phase.delay(
+    keywords=["경제", "증권"],
+    max_articles_per_keyword=2,
+    job_id=job.id,
+)
+print(f"Task ID: {task.id}, Job ID: {job.id}")

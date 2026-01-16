@@ -248,12 +248,14 @@ if DART_SYNC_ENABLED:
         "task": "companies.tasks.dart_sync.sync_all_reports",
         "schedule": crontab(hour=4, minute=0),
     }
-    # 시가총액 갱신: 평일 장 마감 후 (16:10)
-    # KIS REST API를 통해 전체 기업의 시가총액 배치 갱신
-    CELERY_BEAT_SCHEDULE["sync-market-amount-daily"] = {
-        "task": "companies.tasks.kis_market_amount.sync_all_market_amount",
-        "schedule": crontab(day_of_week="1-5", hour=16, minute=10),
-    }
+
+# 시가총액 갱신: 평일 장 마감 후 (16:10)
+# KIS REST API를 통해 전체 기업의 시가총액 배치 갱신
+# DART 동기화와 독립적으로 실행
+CELERY_BEAT_SCHEDULE["sync-market-amount-daily"] = {
+    "task": "companies.tasks.kis_market_amount.sync_all_market_amount",
+    "schedule": crontab(day_of_week="1-5", hour=16, minute=10),
+}
 
 # =============================================================================
 # 주가 데이터 동기화 스케줄 (Continuous Aggregate → 통합 테이블)
