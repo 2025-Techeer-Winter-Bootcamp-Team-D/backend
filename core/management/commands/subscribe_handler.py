@@ -77,6 +77,34 @@ class Command(BaseCommand):
                     count=100,
                     block=2000,
                 )
+            except redis.ResponseError as e:
+                # NOGROUP 에러 처리: Consumer Group이 없으면 재생성
+                if "NOGROUP" in str(e):
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"[WARN] Consumer group not found, recreating: {CONSUMER_GROUP}"
+                        )
+                    )
+                    await self.ensure_consumer_group(r)
+                    continue  # 재시도
+                else:
+                    raise
+            except redis.ConnectionError as e:
+                self.stdout.write(
+                    self.style.ERROR(f"[ERROR] Redis connection error: {e}. Reconnecting...")
+                )
+                await asyncio.sleep(5)
+                r = redis.from_url(settings.REDIS_URL)
+                # 재연결 후 Consumer Group 복원
+                await self.ensure_consumer_group(r)
+                continue  # 재시도
+            except Exception as e:
+                self.stdout.write(
+                    self.style.ERROR(f"[ERROR] Unexpected error: {e}")
+                )
+                await asyncio.sleep(5)
+                continue
+            try:
 
                 if messages:
                     for stream_name, entries in messages:

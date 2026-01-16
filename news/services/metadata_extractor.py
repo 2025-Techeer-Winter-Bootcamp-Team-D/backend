@@ -240,12 +240,13 @@ class MetadataExtractorService:
 
     def _extract_author_from_email(self, content: str) -> str | None:
         """이메일 근처에서 저자명 추출"""
-        # 주요 언론사 도메인의 이메일 패턴
+        # 주요 언론사 도메인의 이메일 패턴 (대소문자 구분 없이 검색)
         email_pattern = r"([a-zA-Z]+(?:\.[a-zA-Z]+)?)\s*@\s*(?:chosun|joongang|donga|hankyung|mk|sedaily|yna|ytn|sbs|kbs|mbc|etnews|mt|edaily)"
-        match = re.search(email_pattern, content.lower())
+        # 원본 content에서 대소문자 구분 없이 검색 (IGNORECASE 플래그 사용)
+        match = re.search(email_pattern, content, re.IGNORECASE)
 
         if match:
-            # 이메일 근처에서 한글 이름 찾기
+            # 이메일 근처에서 한글 이름 찾기 (원본 content의 인덱스 사용)
             start = max(0, match.start() - 30)
             end = min(len(content), match.end() + 10)
             nearby = content[start:end]

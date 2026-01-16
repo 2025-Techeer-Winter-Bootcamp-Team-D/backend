@@ -22,6 +22,7 @@ class PersistenceWorker:
         self.batch_size = 200
         self.flush_interval = 5  # 5초마다 버퍼 비우기
         self.pending_ids = []  # ACK 대기 중인 메시지 ID
+        self._flush_task = None  # auto_flush 태스크 저장용
 
     def parse_time(self, time_str: str) -> datetime:
         """HHMMSS 형식의 시간 문자열을 datetime으로 변환"""
@@ -183,8 +184,10 @@ class PersistenceWorker:
             # PENDING 메시지 먼저 처리
             await self.process_pending_messages(redis_client, pool)
 
-            # 주기적 flush 태스크
-            asyncio.create_task(self.auto_flush(pool, redis_client))
+            # 주기적 flush 태스크 생성 및 저장
+            self._flush_task = asyncio.create_task(
+                self.auto_flush(pool, redis_client)
+            )
             print("[INIT] Listening for stream messages...")
 
             message_count = 0
@@ -198,6 +201,23 @@ class PersistenceWorker:
                         count=200,
                         block=2000,  # 2초 대기
                     )
+                except redis.ResponseError as e:
+                    # NOGROUP 에러 처리: Consumer Group이 없으면 재생성
+                    if "NOGROUP" in str(e):
+                        print(
+                            f"[WARN] Consumer group not found, recreating: {CONSUMER_GROUP}"
+                        )
+                        await self.ensure_consumer_group(redis_client)
+                        continue  # 재시도
+                    else:
+                        print(f"[ERROR] Redis response error: {e}")
+                        await asyncio.sleep(5)
+                        continue
+                except Exception as e:
+                    print(f"[ERROR] Error reading messages: {e}")
+                    await asyncio.sleep(5)
+                    continue
+                try:
 
                     if messages:
                         for stream_name, entries in messages:
@@ -216,14 +236,35 @@ class PersistenceWorker:
 
                 except redis.ConnectionError as e:
                     print(f"[ERROR] Redis connection error: {e}. Reconnecting...")
+                    # flush 태스크 취소 및 정리
+                    if self._flush_task:
+                        self._flush_task.cancel()
+                        try:
+                            await self._flush_task
+                        except asyncio.CancelledError:
+                            pass
+                        self._flush_task = None
                     await asyncio.sleep(5)
                     redis_client = redis.from_url(REDIS_URL)
+                    # Consumer Group 복원
+                    await self.ensure_consumer_group(redis_client)
+                    # flush 태스크 재생성
+                    self._flush_task = asyncio.create_task(
+                        self.auto_flush(pool, redis_client)
+                    )
 
         except Exception as e:
             print(f"[FATAL] Error in run(): {e}")
             import traceback
 
             traceback.print_exc()
+            # flush 태스크 정리
+            if self._flush_task:
+                self._flush_task.cancel()
+                try:
+                    await self._flush_task
+                except asyncio.CancelledError:
+                    pass
             raise
 
     async def auto_flush(self, pool, redis_client):

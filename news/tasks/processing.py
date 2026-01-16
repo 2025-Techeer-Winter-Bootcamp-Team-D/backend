@@ -80,8 +80,17 @@ def refine_and_summarize_single_article_task(
         summary_text = summary_result.get("summary", "")
 
         # 3단계: 메타데이터 추출 (저자, 언론사, 키워드)
-        metadata_extractor = MetadataExtractorService()
-        metadata = metadata_extractor.extract_all(url, refined_content)
+        # 예외 발생 시에도 기사 처리를 계속 진행하도록 안전한 기본값 사용
+        metadata = {}
+        try:
+            metadata_extractor = MetadataExtractorService()
+            metadata = metadata_extractor.extract_all(url, refined_content)
+        except Exception as e:
+            logger.warning(
+                f"메타데이터 추출 실패 (기사 처리는 계속 진행): {url} - {e}"
+            )
+            # 안전한 기본값 설정
+            metadata = {"author": None, "press": None, "keywords": []}
 
         # 결과 추가
         article["refined_content"] = refined_content
