@@ -88,7 +88,7 @@ def _should_sync_company(company) -> bool:
     다음 조건 중 하나라도 해당하면 True:
     - homepage_url이 없음
     - logo_url이 없고 homepage_url이 있음
-    - 마지막 업데이트 후 7일 이상 경과
+    - 마지막 정보 동기화 후 7일 이상 경과 (last_info_synced_at 기준)
     """
     # 필수 정보 누락 체크
     if not company.homepage_url:
@@ -98,11 +98,17 @@ def _should_sync_company(company) -> bool:
     if company.homepage_url and not company.logo_url:
         return True
 
-    # 마지막 업데이트 후 7일 경과 체크
-    if company.updated_at:
-        age = datetime.now(company.updated_at.tzinfo) - company.updated_at
+    # 마지막 정보 동기화 후 7일 경과 체크 (시가총액 갱신은 제외)
+    if company.last_info_synced_at:
+        age = (
+            datetime.now(company.last_info_synced_at.tzinfo)
+            - company.last_info_synced_at
+        )
         if age > timedelta(days=7):
             return True
+    else:
+        # last_info_synced_at이 없으면 동기화 필요
+        return True
 
     return False
 

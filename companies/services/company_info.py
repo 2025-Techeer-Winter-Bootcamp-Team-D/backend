@@ -111,6 +111,10 @@ class CompanyInfoService:
             # Logo.dev를 통해 로고 URL 갱신
             self._sync_logo_url(company)
 
+            # 마지막 정보 동기화 시간 업데이트 (시가총액 갱신은 제외)
+            from django.utils import timezone
+            company.last_info_synced_at = timezone.now()
+
             company.save()
             logger.info(
                 f"기업 정보 동기화 완료: {company.stock_code} ({company.company_name})"
@@ -188,6 +192,9 @@ class CompanyInfoService:
     def sync_market_amount_only(self, company: Company) -> bool:
         """
         시가총액만 단독으로 갱신 (DART 동기화 없이)
+        
+        주의: updated_at이나 last_info_synced_at은 업데이트하지 않음
+        (시가총액 갱신은 정보 동기화로 간주하지 않음)
 
         Args:
             company: Company 인스턴스
@@ -197,7 +204,8 @@ class CompanyInfoService:
         """
         success = self._sync_market_amount(company)
         if success:
-            company.save(update_fields=["market_amount", "updated_at"])
+            # market_amount만 업데이트 (updated_at, last_info_synced_at 제외)
+            company.save(update_fields=["market_amount"])
         return success
 
     def get_company_info_dict(self, company: Company) -> Dict[str, Any]:
