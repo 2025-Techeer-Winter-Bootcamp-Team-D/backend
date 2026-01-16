@@ -144,8 +144,8 @@ class KISQuoteClient:
                         logger.debug(
                             f"KIS API 에러 응답 본문 ({stock_code}): {error_body}"
                         )
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"KIS API 에러 응답 본문 읽기 실패 ({stock_code}): {e}")
                 return None
 
             response.raise_for_status()
