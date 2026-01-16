@@ -21,6 +21,11 @@ from .embedding import (
 from .storage import save_to_db_task
 from .clustering import cluster_and_save_opensearch_task
 from .workflows import scheduled_crawl_news
+from .company_news import (
+    crawl_company_news_task,
+    crawl_top_companies_news_task,
+    crawl_single_company_news_sync,
+)
 
 __all__ = [
     # Search tasks
@@ -40,4 +45,8 @@ __all__ = [
     "cluster_and_save_opensearch_task",
     # Workflow
     "scheduled_crawl_news",
+    # Company news tasks
+    "crawl_company_news_task",
+    "crawl_top_companies_news_task",
+    "crawl_single_company_news_sync",
 ]

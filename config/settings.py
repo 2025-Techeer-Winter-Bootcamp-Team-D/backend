@@ -40,6 +40,7 @@ ALLOWED_HOSTS = ["*"]
 # Application definition
 
 INSTALLED_APPS = [
+    "daphne",  # Channels ASGI 서버 (INSTALLED_APPS 최상단)
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -50,6 +51,7 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
+    "channels",  # Django Channels
     # 만든 앱 등록
     "industries",
     "companies",
@@ -59,6 +61,9 @@ INSTALLED_APPS = [
     "comparisons",
     "indices",
 ]
+
+# ASGI Application
+ASGI_APPLICATION = "config.asgi.application"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -246,6 +251,14 @@ if DART_SYNC_ENABLED:
         "schedule": crontab(hour=4, minute=0),
     }
 
+# 시가총액 갱신: 평일 장 마감 후 (16:10)
+# KIS REST API를 통해 전체 기업의 시가총액 배치 갱신
+# DART 동기화와 독립적으로 실행
+CELERY_BEAT_SCHEDULE["sync-market-amount-daily"] = {
+    "task": "companies.tasks.kis_market_amount.sync_all_market_amount",
+    "schedule": crontab(day_of_week="1-5", hour=16, minute=10),
+}
+
 # =============================================================================
 # 주가 데이터 동기화 스케줄 (Continuous Aggregate → 통합 테이블)
 # =============================================================================
@@ -284,6 +297,10 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or None
 # 선택 API 키: Jina는 무료 티어로도 동작 가능
 JINA_API_KEY = os.getenv("JINA_API_KEY") or None
 DART_API_KEY = os.getenv("DART_API_KEY") or None
+
+# Logo.dev API (기업 로고 이미지)
+# 무료 tier: 월 50만 요청 (attribution 필요)
+LOGO_DEV_PUB_KEY = os.getenv("LOGO_DEV_PUB_KEY") or None
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators

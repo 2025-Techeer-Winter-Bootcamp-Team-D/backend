@@ -73,18 +73,68 @@ class OpenSearchService:
                     "index": {
                         "knn": True,  # k-NN 검색 활성화
                         "knn.algo_param.ef_search": 100,  # 검색 성능 파라미터
-                    }
+                    },
+                    "analysis": {
+                        "tokenizer": {
+                            "nori_tokenizer": {
+                                "type": "nori_tokenizer",
+                                "decompound_mode": "mixed",  # 복합어 분해 모드
+                            }
+                        },
+                        "filter": {
+                            "nori_posfilter": {
+                                "type": "nori_part_of_speech",
+                                "stoptags": [
+                                    # 조사 (Particles)
+                                    "JKS",
+                                    "JKC",
+                                    "JKG",
+                                    "JKO",
+                                    "JKB",
+                                    "JKV",
+                                    "JKQ",
+                                    "JX",
+                                    "JC",
+                                    # 어미 (Endings)
+                                    "EP",
+                                    "EF",
+                                    "EC",
+                                    "ETN",
+                                    "ETM",
+                                    # 기호 (Symbols) - SS, SO 제외 (버전별 지원 여부 상이)
+                                    "SF",
+                                    "SP",
+                                    "SE",
+                                    # 접미사 (Suffixes)
+                                    "XSN",
+                                    "XSA",
+                                    "XSV",
+                                ],
+                            }
+                        },
+                        "analyzer": {
+                            "nori_analyzer": {
+                                "type": "custom",
+                                "tokenizer": "nori_tokenizer",
+                                "filter": [
+                                    "nori_readingform",  # 한자를 한글로 변환
+                                    "nori_posfilter",  # 불용어 품사 제거
+                                    "lowercase",  # 영문 소문자 변환
+                                ],
+                            }
+                        },
+                    },
                 },
                 "mappings": {
                     "properties": {
                         "news_id": {"type": "long"},
                         "title": {
                             "type": "text",
-                            "analyzer": "standard",  # 한국어는 나중에 nori 분석기로 변경 가능
+                            "analyzer": "nori_analyzer",
                         },
                         "content": {
                             "type": "text",
-                            "analyzer": "standard",
+                            "analyzer": "nori_analyzer",
                         },
                         "content_vector": {
                             "type": "knn_vector",

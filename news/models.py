@@ -9,6 +9,55 @@ from django.db import models
 from django.utils import timezone
 
 
+class CompanyNews(models.Model):
+    """
+    기업-뉴스 매핑 테이블
+
+    - Company ↔ News 다대다 관계를 위한 매핑 테이블
+    - 동일 뉴스가 여러 기업에 연결될 수 있음
+    """
+
+    id = models.BigAutoField(primary_key=True, verbose_name="ID")
+
+    # 기업 연결 (Company.stock_code FK)
+    company = models.ForeignKey(
+        "companies.Company",
+        on_delete=models.CASCADE,
+        related_name="company_news",
+        db_column="stock_code",
+        verbose_name="기업",
+    )
+
+    # 뉴스 연결 (News FK)
+    news = models.ForeignKey(
+        "News",
+        on_delete=models.CASCADE,
+        related_name="company_mappings",
+        verbose_name="뉴스",
+    )
+
+    # 날짜 정보
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성 시간")
+
+    class Meta:
+        db_table = "company_news"
+        ordering = ["-created_at"]
+        verbose_name = "기업 뉴스 매핑"
+        verbose_name_plural = "기업 뉴스 매핑 목록"
+        indexes = [
+            models.Index(fields=["company", "-created_at"]),
+        ]
+        constraints = [
+            # 동일 기업-뉴스 매핑 중복 방지
+            models.UniqueConstraint(
+                fields=["company", "news"], name="unique_company_news_mapping"
+            )
+        ]
+
+    def __str__(self):
+        return f"[{self.company_id}] -> News {self.news_id}"
+
+
 class News(models.Model):
     """
     뉴스 기사 모델
@@ -16,21 +65,36 @@ class News(models.Model):
     - title: 뉴스 제목
     - url: 원본 링크 (unique)
     - summary: Gemini로 생성된 요약문
+    - content: 정제된 본문
+    - author: 저자/기자
+    - press: 언론사
+    - keywords: 키워드 목록
     - published_at: 발행일
     - created_at: 생성 시간
     - updated_at: 수정 시간
     - is_deleted: 삭제 여부 (soft delete)
-
-    본문(full_content)은 OpenSearch에 벡터 임베딩으로 저장됩니다.
     """
 
     news_id = models.BigAutoField(primary_key=True, verbose_name="뉴스 ID")
 
-    title = models.CharField(max_length=255, verbose_name="제목")
+    title = models.CharField(max_length=500, verbose_name="제목")
 
-    url = models.CharField(max_length=500, unique=True, verbose_name="링크")
+    url = models.CharField(max_length=1000, unique=True, verbose_name="링크")
 
     summary = models.TextField(null=True, blank=True, verbose_name="요약")
+
+    # 메타데이터 필드 추가
+    content = models.TextField(null=True, blank=True, verbose_name="정제된 본문")
+
+    author = models.CharField(
+        max_length=100, null=True, blank=True, verbose_name="저자/기자"
+    )
+
+    press = models.CharField(
+        max_length=100, null=True, blank=True, verbose_name="언론사"
+    )
+
+    keywords = models.JSONField(default=list, blank=True, verbose_name="키워드 목록")
 
     published_at = models.DateTimeField(null=True, blank=True, verbose_name="발행일")
 
@@ -50,6 +114,7 @@ class News(models.Model):
         indexes = [
             models.Index(fields=["-published_at", "is_deleted"]),
             models.Index(fields=["is_deleted", "-created_at"]),
+            models.Index(fields=["press", "-published_at"]),
         ]
 
     def __str__(self):

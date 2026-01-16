@@ -42,7 +42,12 @@ class Company(models.Model):
     establishment_date = models.DateField(null=True)  # 설립일
     homepage_url = models.URLField(max_length=500, blank=True, null=True)  # 홈페이지
     address = models.TextField(blank=True, null=True)  # 본사 주소
-    
+
+    # 동기화 추적 필드
+    last_info_synced_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="마지막 정보 동기화 시간"
+    )  # DART 기업 정보 동기화 시간 (시가총액 갱신은 제외)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_deleted = models.BooleanField(default=False)
@@ -58,7 +63,6 @@ class FinancialStatement(models.Model):
         Company,
         on_delete=models.CASCADE,
         related_name="financial_statements",
-        to_field="stock_code",
         db_column="company_id",
     )
     fiscal_year = models.IntegerField()  # 사업연도 (예: 2024)
@@ -90,7 +94,6 @@ class RevenueComposition(models.Model):
         Company,
         on_delete=models.CASCADE,
         related_name="revenue_compositions",
-        to_field="stock_code",
         db_column="company_id",
     )
     fiscal_year = models.IntegerField()  # 사업연도
@@ -134,7 +137,6 @@ class Report(models.Model):
         Company,
         on_delete=models.CASCADE,
         related_name="reports",
-        to_field="stock_code",
         db_column="company_id",
     )
     rcept_no = models.CharField(max_length=20, unique=True)  # 접수번호

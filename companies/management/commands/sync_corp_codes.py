@@ -4,7 +4,13 @@ DART 고유번호 목록 동기화 Management Command
 상장기업(stock_code가 있는 기업)만 동기화합니다.
 
 사용법:
-    # 기본 실행 (업종코드 조회 건너뛰기 - 빠른 동기화)
+    # 시가총액 상위 50개 기업만 동기화 (개발/테스트용, 권장)
+    python manage.py sync_corp_codes --top-companies --skip-industry-mapping
+
+    # 상위 N개 기업만 동기화
+    python manage.py sync_corp_codes --limit 100 --skip-industry-mapping
+
+    # 전체 동기화 (업종코드 조회 건너뛰기 - 빠른 동기화)
     python manage.py sync_corp_codes --skip-industry-mapping
 
     # 업종코드 포함 동기화 (느리지만 완전한 데이터)
@@ -22,6 +28,63 @@ from companies.services.corp_code_parser import CorpCodeParser
 import logging
 
 logger = logging.getLogger(__name__)
+
+# 시가총액 상위 50개 기업 종목코드 (2024년 기준)
+# 개발/테스트 환경에서 의미있는 데이터로 작업하기 위한 대표 기업 목록
+TOP_50_STOCK_CODES = {
+    # 코스피 시가총액 상위
+    "005930",  # 삼성전자
+    "000660",  # SK하이닉스
+    "373220",  # LG에너지솔루션
+    "207940",  # 삼성바이오로직스
+    "005380",  # 현대차
+    "000270",  # 기아
+    "068270",  # 셀트리온
+    "035420",  # NAVER
+    "005490",  # POSCO홀딩스
+    "051910",  # LG화학
+    "006400",  # 삼성SDI
+    "035720",  # 카카오
+    "028260",  # 삼성물산
+    "105560",  # KB금융
+    "055550",  # 신한지주
+    "012330",  # 현대모비스
+    "003670",  # 포스코퓨처엠
+    "066570",  # LG전자
+    "086790",  # 하나금융지주
+    "096770",  # SK이노베이션
+    "034730",  # SK
+    "003550",  # LG
+    "015760",  # 한국전력
+    "032830",  # 삼성생명
+    "009150",  # 삼성전기
+    "018260",  # 삼성에스디에스
+    "010130",  # 고려아연
+    "033780",  # KT&G
+    "000810",  # 삼성화재
+    "030200",  # KT
+    "011200",  # HMM
+    "017670",  # SK텔레콤
+    "316140",  # 우리금융지주
+    "010950",  # S-Oil
+    "024110",  # 기업은행
+    "000100",  # 유한양행
+    "009540",  # 한국조선해양
+    "003490",  # 대한항공
+    "011170",  # 롯데케미칼
+    "034020",  # 두산에너빌리티
+    # 코스닥 시가총액 상위
+    "247540",  # 에코프로비엠
+    "086520",  # 에코프로
+    "091990",  # 셀트리온헬스케어
+    "028300",  # HLB
+    "041510",  # 에스엠
+    "263750",  # 펄어비스
+    "145020",  # 휴젤
+    "293490",  # 카카오게임즈
+    "112040",  # 위메이드
+    "039030",  # 이오테크닉스
+}
 
 
 class Command(BaseCommand):
@@ -47,11 +110,24 @@ class Command(BaseCommand):
             action="store_true",
             help="업종코드 조회를 건너뜁니다 (API 호출 절약, 빠른 동기화). 권장 옵션입니다.",
         )
+        parser.add_argument(
+            "--top-companies",
+            action="store_true",
+            help="시가총액 상위 50개 기업만 동기화합니다 (개발/테스트용 권장)",
+        )
+        parser.add_argument(
+            "--limit",
+            type=int,
+            default=0,
+            help="동기화할 최대 기업 수 (0=무제한, 기본값: 0)",
+        )
 
     def handle(self, *args, **options):
         update_existing = options["update_existing"]
         dry_run = options["dry_run"]
         skip_industry_mapping = options["skip_industry_mapping"]
+        top_companies = options["top_companies"]
+        limit = options["limit"]
 
         self.stdout.write(
             self.style.SUCCESS("DART 상장기업 고유번호 목록 동기화 시작...")
@@ -62,6 +138,17 @@ class Command(BaseCommand):
                 "비상장기업은 자동으로 제외됩니다."
             )
         )
+
+        if top_companies:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"시가총액 상위 {len(TOP_50_STOCK_CODES)}개 기업만 동기화합니다."
+                )
+            )
+        elif limit > 0:
+            self.stdout.write(
+                self.style.WARNING(f"최대 {limit}개 기업만 동기화합니다.")
+            )
 
         try:
             # DART API 클라이언트 초기화
@@ -88,6 +175,28 @@ class Command(BaseCommand):
                     f"파싱 완료: {len(companies_data)}개 기업 (코스피/코스닥, 종목코드 000001~005999, 010000~099999)"
                 )
             )
+
+            # 기업 필터링 (--top-companies 또는 --limit 옵션)
+            before_count = len(companies_data)
+            if top_companies:
+                # 시가총액 상위 50개 기업만 필터링
+                companies_data = [
+                    c for c in companies_data if c["stock_code"] in TOP_50_STOCK_CODES
+                ]
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f"필터링 완료: {before_count}개 → {len(companies_data)}개 기업 "
+                        f"(시가총액 상위 50개 중 DART에 존재하는 기업)"
+                    )
+                )
+            elif limit > 0:
+                # 상위 N개만 선택
+                companies_data = companies_data[:limit]
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f"필터링 완료: {before_count}개 → {len(companies_data)}개 기업 (상위 {limit}개 제한)"
+                    )
+                )
 
             if skip_industry_mapping:
                 self.stdout.write(
