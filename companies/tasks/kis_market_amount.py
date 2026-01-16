@@ -13,7 +13,9 @@ from companies.services.company_info import CompanyInfoService
 logger = logging.getLogger(__name__)
 
 # API Rate Limit 대응: 요청 간 딜레이 (초)
-REQUEST_DELAY = 0.5
+# KIS API는 초당 2회로 제한되어 있으므로 최소 500ms 딜레이 필요
+# 안전 마진을 두어 600ms로 설정 (초당 약 1.67회)
+REQUEST_DELAY = 0.6
 
 
 @shared_task(bind=True, max_retries=3)
