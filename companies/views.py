@@ -326,10 +326,6 @@ def get_company_reports(request, stock_code):
 @permission_classes([AllowAny])
 def get_report_detail(request, stock_code, rcept_no):
     """보고서 분석 결과 조회 API"""
-    import logging
-
-    logger = logging.getLogger(__name__)
-
     try:
         # 기업 조회
         company = Company.objects.get(pk=stock_code, is_deleted=False)
