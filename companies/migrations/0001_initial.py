@@ -8,7 +8,9 @@ class Migration(migrations.Migration):
 
     initial = True
 
-    dependencies = []
+    dependencies = [
+        ("industries", "0001_initial"),
+    ]
 
     operations = [
         migrations.CreateModel(
@@ -19,6 +21,17 @@ class Migration(migrations.Migration):
                     models.CharField(max_length=6, primary_key=True, serialize=False),
                 ),
                 ("corp_code", models.CharField(max_length=8, null=True, unique=True)),
+                (
+                    "industry",
+                    models.ForeignKey(
+                        blank=True,
+                        db_column="industry_id",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="companies",
+                        to="industries.industry",
+                    ),
+                ),
                 (
                     "induty_code",
                     models.CharField(
@@ -130,11 +143,10 @@ class Migration(migrations.Migration):
                 (
                     "company",
                     models.ForeignKey(
+                        db_column="company_id",
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="reports",
                         to="companies.company",
-                        to_field="stock_code",
-                        db_column="company_id",
                     ),
                 ),
             ],
@@ -166,11 +178,10 @@ class Migration(migrations.Migration):
                 (
                     "company",
                     models.ForeignKey(
+                        db_column="company_id",
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="revenue_compositions",
                         to="companies.company",
-                        to_field="stock_code",
-                        db_column="company_id",
                     ),
                 ),
             ],
@@ -204,11 +215,10 @@ class Migration(migrations.Migration):
                 (
                     "company",
                     models.ForeignKey(
+                        db_column="company_id",
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="financial_statements",
                         to="companies.company",
-                        to_field="stock_code",
-                        db_column="company_id",
                     ),
                 ),
             ],

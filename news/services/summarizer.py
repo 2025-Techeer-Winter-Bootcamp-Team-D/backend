@@ -19,7 +19,6 @@ class SummarizeService:
             logger.error(error_msg)
             raise ValueError(error_msg)
 
-        # 새 google.genai SDK 사용
         self.client = genai.Client(api_key=api_key)
 
         # 모델 이름 (가성비 좋은 모델 우선: Flash 모델이 빠르고 저렴)

@@ -29,8 +29,12 @@ requests==2.31.0
 # Environment
 python-dotenv
 
+# Django Channels
+channels>=4.0.0
+channels-redis>=4.1.0
+daphne>=4.0.0
+
 # Django Extensions
-django-channels
 django-extensions
 
 # Web Scraping & Parsing

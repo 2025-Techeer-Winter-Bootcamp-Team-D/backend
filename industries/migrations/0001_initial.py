@@ -30,4 +30,31 @@ class Migration(migrations.Migration):
                 "db_table": "industry",
             },
         ),
+        migrations.CreateModel(
+            name="IndustryRanking",
+            fields=[
+                (
+                    "ranking_id",
+                    models.BigIntegerField(primary_key=True, serialize=False),
+                ),
+                ("rank", models.IntegerField()),
+                ("amount", models.BigIntegerField()),
+                ("base_date", models.DateField()),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("is_deleted", models.BooleanField(default=False)),
+                (
+                    "industry",
+                    models.ForeignKey(
+                        db_column="industry_id",
+                        on_delete=models.deletion.CASCADE,
+                        related_name="rankings",
+                        to="industries.industry",
+                    ),
+                ),
+            ],
+            options={
+                "db_table": "industry_ranking",
+            },
+        ),
     ]

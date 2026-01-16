@@ -2,6 +2,7 @@
 """
 기업 기본 정보 서비스
 DART API를 통해 기업 기본 정보를 조회하고 Company 모델에 저장하는 서비스
+KIS REST API를 통해 시가총액을 갱신하는 기능 포함
 """
 from typing import Dict, Any, Optional
 from datetime import datetime
@@ -10,6 +11,8 @@ import logging
 from companies.models import Company
 from companies.services.dart_api import DartAPIClient, DartAPIError
 from companies.services.industry_mapper import IndustryMapper
+from companies.services.kis_quote import get_market_amount
+from companies.services.logo import get_logo_url
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +26,7 @@ class CompanyInfoService:
     def sync_company_info(self, company: Company) -> Company:
         """
         DART API에서 기업 기본 정보를 조회하여 Company 모델 업데이트
+        KIS REST API를 통해 시가총액도 함께 갱신
 
         Args:
             company: 업데이트할 Company 인스턴스
@@ -101,6 +105,12 @@ class CompanyInfoService:
                         f"(Industry를 찾을 수 없습니다. 업종코드는 저장되었습니다.)"
                     )
 
+            # KIS REST API를 통해 시가총액 갱신
+            self._sync_market_amount(company)
+
+            # Logo.dev를 통해 로고 URL 갱신
+            self._sync_logo_url(company)
+
             company.save()
             logger.info(
                 f"기업 정보 동기화 완료: {company.stock_code} ({company.company_name})"
@@ -114,6 +124,81 @@ class CompanyInfoService:
         except Exception as e:
             logger.error(f"기업 정보 동기화 중 오류 발생: {e}")
             raise
+
+    def _sync_market_amount(self, company: Company) -> bool:
+        """
+        KIS REST API를 통해 시가총액을 갱신 (내부 헬퍼)
+
+        Args:
+            company: Company 인스턴스
+
+        Returns:
+            갱신 성공 여부
+        """
+        try:
+            market_amount = get_market_amount(company.stock_code)
+            if market_amount is not None:
+                company.market_amount = market_amount
+                logger.info(
+                    f"시가총액 갱신: {company.stock_code} → {market_amount:,}원"
+                )
+                return True
+            else:
+                logger.warning(
+                    f"시가총액 조회 실패 (값 없음): {company.stock_code} - 기존 값 유지"
+                )
+                return False
+        except Exception as e:
+            logger.error(f"시가총액 갱신 중 오류 ({company.stock_code}): {e}")
+            return False
+
+    def _sync_logo_url(self, company: Company) -> bool:
+        """
+        Logo.dev를 통해 로고 URL을 갱신 (내부 헬퍼)
+
+        Args:
+            company: Company 인스턴스
+
+        Returns:
+            갱신 성공 여부
+        """
+        # 이미 logo_url이 있으면 스킵
+        if company.logo_url:
+            return True
+
+        if not company.homepage_url:
+            logger.debug(
+                f"로고 URL 갱신 스킵 (homepage_url 없음): {company.stock_code}"
+            )
+            return False
+
+        try:
+            logo_url = get_logo_url(homepage_url=company.homepage_url)
+            if logo_url:
+                company.logo_url = logo_url
+                logger.info(f"로고 URL 갱신: {company.stock_code} → {logo_url}")
+                return True
+            else:
+                logger.warning(f"로고 URL 생성 실패: {company.stock_code}")
+                return False
+        except Exception as e:
+            logger.error(f"로고 URL 갱신 중 오류 ({company.stock_code}): {e}")
+            return False
+
+    def sync_market_amount_only(self, company: Company) -> bool:
+        """
+        시가총액만 단독으로 갱신 (DART 동기화 없이)
+
+        Args:
+            company: Company 인스턴스
+
+        Returns:
+            갱신 성공 여부
+        """
+        success = self._sync_market_amount(company)
+        if success:
+            company.save(update_fields=["market_amount", "updated_at"])
+        return success
 
     def get_company_info_dict(self, company: Company) -> Dict[str, Any]:
         """

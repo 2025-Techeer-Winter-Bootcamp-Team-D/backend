@@ -58,7 +58,6 @@ class FinancialStatement(models.Model):
         Company,
         on_delete=models.CASCADE,
         related_name="financial_statements",
-        to_field="stock_code",
         db_column="company_id",
     )
     fiscal_year = models.IntegerField()  # 사업연도 (예: 2024)
@@ -90,7 +89,6 @@ class RevenueComposition(models.Model):
         Company,
         on_delete=models.CASCADE,
         related_name="revenue_compositions",
-        to_field="stock_code",
         db_column="company_id",
     )
     fiscal_year = models.IntegerField()  # 사업연도
@@ -134,7 +132,6 @@ class Report(models.Model):
         Company,
         on_delete=models.CASCADE,
         related_name="reports",
-        to_field="stock_code",
         db_column="company_id",
     )
     rcept_no = models.CharField(max_length=20, unique=True)  # 접수번호

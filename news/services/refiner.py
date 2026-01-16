@@ -18,7 +18,6 @@ class RefineService:
             logger.error(error_msg)
             raise ValueError(error_msg)
 
-        # 새 google.genai SDK 사용
         self.client = genai.Client(api_key=api_key)
 
         # 모델 이름 (가성비 좋은 모델 우선: Flash 모델이 빠르고 저렴)
@@ -70,6 +69,9 @@ class RefineService:
 - 기사 내용을 요약하거나 변형하지 마십시오. 원문 텍스트를 그대로 유지하세요.
 - 기사 제목과 본문 내용(본문 이미지 포함)만 남기십시오.
 - 아래 "=== 입력 데이터 시작 ==="와 "=== 입력 데이터 끝 ===" 사이의 텍스트만 처리하세요.
+- 결과는 설명 없이 **정제된 본문 텍스트만** 반환하세요.
+- 본문이 없으면 빈 문자열("")을 반환하세요.
+- 과도한 공백/연속 줄바꿈은 한 번씩으로 정리하세요.
 
 === 입력 데이터 시작 ===
 {input_text}

@@ -13,7 +13,6 @@ class EmbeddingService:
             logger.error(error_msg)
             raise ValueError(error_msg)
 
-        # 새 google.genai SDK 사용
         self.client = genai.Client(api_key=api_key)
 
         # 최신 Gemini Embedding 모델 사용
