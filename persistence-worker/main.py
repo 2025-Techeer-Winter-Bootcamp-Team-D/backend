@@ -184,11 +184,17 @@ class PersistenceWorker:
                                 # 시퀀스 번호 증가 (exclusive start)
                                 last_id = f"{timestamp}-{sequence + 1}"
                             else:
-                                # 예상치 못한 형식이면 그대로 사용
-                                last_id = last_message_id
-                        except (ValueError, AttributeError):
-                            # 파싱 실패 시 그대로 사용
-                            last_id = last_message_id
+                                # 예상치 못한 형식이면 루프 종료 (무한 루프 방지)
+                                print(
+                                    f"[WARN] Unexpected message ID format: {last_message_id}. Stopping pagination."
+                                )
+                                break
+                        except (ValueError, AttributeError) as parse_error:
+                            # 파싱 실패 시 루프 종료 (무한 루프 방지)
+                            print(
+                                f"[WARN] Failed to parse message ID '{last_message_id}': {parse_error}. Stopping pagination."
+                            )
+                            break
                     else:
                         break
                 else:
@@ -308,7 +314,16 @@ class PersistenceWorker:
                         except asyncio.CancelledError:
                             pass
                         self._flush_task = None
+                    # 기존 Redis 연결 정리
+                    if redis_client:
+                        try:
+                            await redis_client.close()
+                        except Exception as close_error:
+                            print(
+                                f"[WARN] Error closing old Redis connection: {close_error}"
+                            )
                     await asyncio.sleep(5)
+                    # 새 Redis 연결 생성
                     redis_client = redis.from_url(REDIS_URL)
                     # Consumer Group 복원
                     await self.ensure_consumer_group(redis_client)
