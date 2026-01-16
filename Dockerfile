@@ -23,6 +23,15 @@ RUN uv pip install --system --no-cache -r requirements.txt
 # Remove build dependencies
 RUN apk del .build-deps
 
-COPY . /app/
+# Copy application code (자주 변경되는 파일은 마지막에 복사하여 레이어 캐싱 최적화)
+# 자주 변경되지 않는 파일들을 먼저 복사
+COPY manage.py /app/
+COPY config/ /app/config/
+COPY companies/ /app/companies/
+COPY core/ /app/core/
+COPY industries/ /app/industries/
+COPY news/ /app/news/
+COPY users/ /app/users/
 
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+# Daphne ASGI 서버 (WebSocket 지원)
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "config.asgi:application"]

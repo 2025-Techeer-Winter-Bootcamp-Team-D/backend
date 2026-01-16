@@ -8,12 +8,14 @@ from .models import (
     Report,
     CompanyRanking,
 )
+from .services.logo import get_logo_url
 from industries.models import Industry
 from industries.serializers import IndustrySerializer
 
 
 class CompanyDetailSerializer(serializers.ModelSerializer):
     industry = serializers.SerializerMethodField()
+    logo_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Company
@@ -32,6 +34,14 @@ class CompanyDetailSerializer(serializers.ModelSerializer):
             "homepage_url",
             "address",
         ]
+
+    def get_logo_url(self, obj):
+        """DB에 저장된 logo_url이 없으면 Logo.dev에서 동적 생성"""
+        if obj.logo_url:
+            return obj.logo_url
+        if obj.homepage_url:
+            return get_logo_url(homepage_url=obj.homepage_url)
+        return None
 
     def get_industry(self, obj):
         """업종코드로 Industry 조회"""
@@ -134,6 +144,29 @@ class ReportSerializer(serializers.ModelSerializer):
         return obj.get_report_type_display()
 
 
+class ReportDetailSerializer(serializers.ModelSerializer):
+    """보고서 상세 Serializer (분석 결과 포함)"""
+
+    report_type = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Report
+        fields = [
+            "id",
+            "rcept_no",
+            "report_name",
+            "report_type",
+            "submitted_at",
+            "report_url",
+            "extracted_info",
+            "created_at",
+        ]
+
+    def get_report_type(self, obj):
+        """공시유형 표시명 반환"""
+        return obj.get_report_type_display()
+
+
 class ReportListSerializer(serializers.Serializer):
     """보고서 목록 응답 Serializer"""
 
@@ -151,10 +184,19 @@ class CompanyRankingSerializer(serializers.ModelSerializer):
     # stock_code(FK)을 통해 Company 모델의 필드에 접근합니다.
     stock_code = serializers.CharField(source="stock_code.stock_code")
     name = serializers.CharField(source="stock_code.company_name")
-    logo = serializers.URLField(source="stock_code.logo_url")
+    logo = serializers.SerializerMethodField()
     amount = serializers.IntegerField(source="stock_code.market_amount")
     rank = serializers.IntegerField(required=False, allow_null=True)
 
     class Meta:
         model = CompanyRanking
         fields = ["rank", "name", "stock_code", "amount", "logo"]
+
+    def get_logo(self, obj):
+        """DB에 저장된 logo_url이 없으면 Logo.dev에서 동적 생성"""
+        company = obj.stock_code
+        if company.logo_url:
+            return company.logo_url
+        if company.homepage_url:
+            return get_logo_url(homepage_url=company.homepage_url)
+        return None
