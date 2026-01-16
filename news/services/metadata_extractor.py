@@ -64,6 +64,9 @@ class MetadataExtractorService:
         # 포털 (원본 언론사 별도 추출 필요)
         "news.naver.com": None,
         "news.daum.net": None,
+        # 기타 뉴스 사이트
+        "www.finomy.com": "파이노미",
+        "finomy.com": "파이노미",
     }
 
     # 언론사 추출 정규식
@@ -125,14 +128,21 @@ class MetadataExtractorService:
 
         # 4. 저자/언론사가 모두 없으면 AI 폴백 (최후 수단)
         if not press or not author:
-            logger.debug("Rule-based extraction incomplete, trying AI fallback")
+            logger.info(
+                f"Rule-based extraction incomplete (author={author is not None}, "
+                f"press={press is not None}), trying AI fallback"
+            )
             ai_result = self._extract_author_press_ai_fallback(
                 content, need_author=not author, need_press=not press
             )
             if not author:
                 author = ai_result.get("author")
+                if author:
+                    logger.info(f"AI fallback extracted author: {author}")
             if not press:
                 press = ai_result.get("press")
+                if press:
+                    logger.info(f"AI fallback extracted press: {press}")
 
         return {
             "author": author,
@@ -173,8 +183,7 @@ class MetadataExtractorService:
                     return value
         except Exception as e:
             logger.warning(
-                f"URL에서 언론사 추출 실패: url={url}, error={e}",
-                exc_info=True
+                f"URL에서 언론사 추출 실패: url={url}, error={e}", exc_info=True
             )
         return None
 
@@ -333,14 +342,29 @@ JSON만 응답 (필드가 없으면 null):
                 contents=prompt,
             )
             text = response.text.strip()
+            logger.debug(f"AI fallback raw response: {text[:200]}...")
 
             if "{" in text and "}" in text:
                 start = text.find("{")
                 end = text.rfind("}") + 1
-                result = json.loads(text[start:end])
-                logger.debug(f"AI fallback result: {result}")
-                return result
+                json_text = text[start:end]
+                try:
+                    result = json.loads(json_text)
+                    logger.info(
+                        f"AI fallback extraction success: "
+                        f"author={result.get('author')}, press={result.get('press')}"
+                    )
+                    return result
+                except json.JSONDecodeError as json_err:
+                    logger.warning(
+                        f"AI fallback JSON parsing failed: {json_err}, "
+                        f"json_text={json_text[:200]}"
+                    )
+            else:
+                logger.warning(
+                    f"AI fallback response does not contain JSON: {text[:200]}..."
+                )
         except Exception as e:
-            logger.warning(f"AI fallback extraction failed: {e}")
+            logger.warning(f"AI fallback extraction failed: {e}", exc_info=True)
 
         return {}
