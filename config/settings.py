@@ -56,7 +56,8 @@ INSTALLED_APPS = [
     "core",
     "news",
     "users",
-    "comparisons"
+    "comparisons",
+    "indices",
 ]
 
 MIDDLEWARE = [
@@ -323,7 +324,7 @@ STATIC_URL = "static/"
 JWT_SIGNING_KEY = os.getenv("JWT_SIGNING_KEY", SECRET_KEY)
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),  # 60분은 조금 길 수 있으니 나중에 30분 검토해보세요!
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),  
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
     "ROTATE_REFRESH_TOKENS": True,                # [수정] 토큰 갱신 시 새로운 리프레시 토큰 발급
     "BLACKLIST_AFTER_ROTATION": True,             # [추가] 갱신 전 사용된 토큰은 즉시 블랙리스트행
@@ -340,3 +341,16 @@ AUTHENTICATION_BACKENDS = [
 # https://docs.djangoproject.com/en/6.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+
+# 마켓 지수 데이터 동기화 활성화 설정
+MARKET_INDEX_SYNC_ENABLED = (
+    os.getenv("MARKET_INDEX_SYNC_ENABLED", "true").lower() == "true"
+)
+
+# 마켓 지수 동기화 스케줄 
+if MARKET_INDEX_SYNC_ENABLED:
+    CELERY_BEAT_SCHEDULE["sync-market-indices-test"] = {
+        "task": "indices.tasks.sync_indices_daily", 
+        "schedule": crontab(hour=5, minute=0),     # 새벽 5시
+    }
