@@ -108,41 +108,92 @@ class PersistenceWorker:
             print(f"[BUFFER] Restored: {len(self.buffer)} rows (will retry)")
 
     async def process_pending_messages(self, redis_client, pool):
-        """시작 시 처리되지 않은 PENDING 메시지 처리"""
+        """
+        시작 시 처리되지 않은 PENDING 메시지 처리
+        
+        페이징을 통해 모든 PENDING 메시지를 조회하고,
+        min_idle_time을 설정하여 즉시 스틸을 방지하며,
+        배치 단위로 처리하여 효율성을 높입니다.
+        """
         try:
             pending_info = await redis_client.xpending(STREAM_KEY, CONSUMER_GROUP)
             pending_count = pending_info.get("pending", 0) if pending_info else 0
 
-            if pending_count > 0:
-                print(
-                    f"[PENDING] Found {pending_count} pending messages. Processing..."
-                )
+            if pending_count == 0:
+                return
 
-                # PENDING 메시지 조회 (최대 1000개씩)
+            print(
+                f"[PENDING] Found {pending_count} pending messages. Processing..."
+            )
+
+            # 안전한 min_idle_time 설정 (5초 이상 idle인 메시지만 클레임)
+            # 즉시 스틸 방지 및 메시지 누락 방지
+            min_idle_time_ms = 5000  # 5초 (밀리초)
+            batch_size = 100
+            last_id = "-"
+            total_processed = 0
+
+            # 페이징을 통해 모든 PENDING 메시지 처리
+            while True:
+                # XPENDING RANGE로 배치 조회
                 pending_messages = await redis_client.xpending_range(
-                    STREAM_KEY, CONSUMER_GROUP, min="-", max="+", count=1000
+                    STREAM_KEY,
+                    CONSUMER_GROUP,
+                    min=last_id,
+                    max="+",
+                    count=batch_size,
                 )
 
+                if not pending_messages:
+                    break
+
+                # 메시지 ID 수집
+                message_ids = []
                 for msg_info in pending_messages:
                     msg_id = msg_info.get("message_id")
                     if msg_id:
-                        # XCLAIM으로 메시지 가져오기
-                        claimed = await redis_client.xclaim(
-                            STREAM_KEY,
-                            CONSUMER_GROUP,
-                            CONSUMER_NAME,
-                            min_idle_time=0,
-                            message_ids=[msg_id],
-                        )
-                        for entry_id, fields in claimed:
-                            await self._process_entry(entry_id, fields)
+                        message_ids.append(msg_id)
 
-                # 버퍼에 있는 것들 저장
+                if not message_ids:
+                    # 더 이상 처리할 메시지가 없으면 종료
+                    break
+
+                # XCLAIM으로 메시지 클레임 (min_idle_time 적용)
+                claimed = await redis_client.xclaim(
+                    STREAM_KEY,
+                    CONSUMER_GROUP,
+                    CONSUMER_NAME,
+                    min_idle_time=min_idle_time_ms,
+                    message_ids=message_ids,
+                )
+
+                # 클레임된 메시지 처리
+                for entry_id, fields in claimed:
+                    await self._process_entry(entry_id, fields)
+                    total_processed += 1
+
+                # 마지막 메시지 ID를 다음 페이징 시작점으로 사용
+                if pending_messages:
+                    last_id = pending_messages[-1].get("message_id", "+")
+                else:
+                    break
+
+                # 배치 처리 후 버퍼 저장 (메모리 관리)
+                if len(self.buffer) >= self.batch_size:
+                    await self.save_to_database(pool, redis_client)
+
+            # 남은 버퍼 저장
+            if self.buffer:
                 await self.save_to_database(pool, redis_client)
-                print(f"[PENDING] Processed pending messages")
+
+            print(
+                f"[PENDING] Processed {total_processed} pending messages"
+            )
 
         except Exception as e:
             print(f"[ERROR] Error processing pending messages: {e}")
+            import traceback
+            traceback.print_exc()
 
     async def _process_entry(self, entry_id, fields):
         """단일 Stream Entry 처리"""
