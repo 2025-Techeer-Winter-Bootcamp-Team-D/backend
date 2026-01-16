@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
@@ -366,9 +366,14 @@ def get_report_detail(request, stock_code, rcept_no):
             status=status.HTTP_404_NOT_FOUND,
         )
     except Exception as e:
-        logger.error(f"보고서 분석 결과 조회 오류: {e}")
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.exception(
+            f"보고서 분석 결과 조회 오류: stock_code={stock_code}, rcept_no={rcept_no}"
+        )
         return Response(
-            {"status": 500, "error": f"서버 오류가 발생했습니다: {str(e)}"},
+            {"status": 500, "error": "서버 오류가 발생했습니다"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -435,7 +440,7 @@ def get_report_detail(request, stock_code, rcept_no):
     tags=["Company"],
 )
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdminUser])
 def sync_company_from_dart(request, stock_code):
     """
     DART 데이터 동기화 API (관리자용)
@@ -671,7 +676,7 @@ def sync_company_from_dart(request, stock_code):
     tags=["Company"],
 )
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdminUser])
 def sync_all_companies_from_dart(request):
     """
     전체 기업 DART 데이터 동기화 API (관리자용)
@@ -790,6 +795,23 @@ def sync_all_companies_from_dart(request):
             "errors": [],
         }
 
+        # 서비스 인스턴스를 루프 밖에서 생성하여 재사용
+        info_service = CompanyInfoService() if sync_info else None
+        financial_service = FinancialService() if sync_financials else None
+        reports_service = ReportsService() if sync_reports else None
+
+        # 동기 실행은 시간이 오래 걸릴 수 있으므로 최대 처리 개수 제한
+        max_sync_count = min(total_count, 50)  # 최대 50개 기업만 동기 처리
+        if total_count > max_sync_count:
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"동기 실행은 최대 {max_sync_count}개 기업만 처리합니다. "
+                f"전체 {total_count}개 기업을 처리하려면 async=true를 사용하세요."
+            )
+            company_list = company_list[:max_sync_count]
+
         for stock_code in company_list:
             try:
                 company = Company.objects.get(pk=stock_code, is_deleted=False)
@@ -801,20 +823,18 @@ def sync_all_companies_from_dart(request):
                 company_results = {}
                 company_errors = []
 
-                if sync_info:
+                if sync_info and info_service:
                     try:
-                        service = CompanyInfoService()
-                        service.sync_company_info(company)
+                        info_service.sync_company_info(company)
                         company_results["info"] = "동기화 완료"
                     except Exception as e:
                         error_msg = f"{stock_code} 기업 정보 동기화 실패: {str(e)}"
                         company_errors.append(error_msg)
                         company_results["info"] = error_msg
 
-                if sync_financials:
+                if sync_financials and financial_service:
                     try:
-                        service = FinancialService()
-                        statements = service.sync_financial_statements(
+                        statements = financial_service.sync_financial_statements(
                             company, year, sync_all_reports=False
                         )
                         company_results["financials"] = (
@@ -825,10 +845,9 @@ def sync_all_companies_from_dart(request):
                         company_errors.append(error_msg)
                         company_results["financials"] = error_msg
 
-                if sync_reports:
+                if sync_reports and reports_service:
                     try:
-                        service = ReportsService()
-                        reports = service.sync_reports(
+                        reports = reports_service.sync_reports(
                             company,
                             days=days,
                             incremental=True,
@@ -967,7 +986,7 @@ def get_company_rankings(request):
     tags=["Reports"],
 )
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdminUser])
 def process_company_reports_view(request, stock_code):
     """보고서 처리 API (관리자용)"""
     try:
@@ -1068,7 +1087,7 @@ def process_company_reports_view(request, stock_code):
     tags=["Reports"],
 )
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdminUser])
 def process_single_report_view(request, stock_code, rcept_no):
     """특정 보고서 분석 API (관리자용)"""
     try:
@@ -1558,7 +1577,7 @@ def get_company_news_detail(request, stock_code, news_id):
     tags=["Company News"],
 )
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdminUser])
 def sync_company_news(request, stock_code):
     """
     기업 뉴스 동기화 API (관리자용)
@@ -1629,10 +1648,17 @@ def sync_company_news(request, stock_code):
             status=status.HTTP_200_OK,
         )
     except Exception as e:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.exception(
+            f"뉴스 동기화 중 오류 발생: stock_code={stock_code}, "
+            f"company_name={company.company_name if 'company' in locals() else 'N/A'}"
+        )
         return Response(
             {
                 "status": 500,
-                "error": f"뉴스 동기화 중 오류 발생: {str(e)}",
+                "error": "뉴스 동기화 중 오류가 발생했습니다",
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
