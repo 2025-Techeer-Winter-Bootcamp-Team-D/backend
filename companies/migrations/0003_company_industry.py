@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('companies', '0002_report_embedding_report_extracted_info_and_more'),
+        ('companies', '0001_initial'),
         ('industries', '0002_remove_industry_induty_code_industryranking'),
     ]
 
