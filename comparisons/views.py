@@ -11,7 +11,8 @@ from .serializers import (
     ComparisonCreateSerializer, 
     CompanyDetailSerializer, 
     ComparisonItemAddSerializer,
-    ComparisonDetailResponseSerializer
+    ComparisonDetailResponseSerializer,
+    ComparisonNameUpdateSerializer
 )
 
 class ComparisonBaseView(APIView):
@@ -65,8 +66,32 @@ class ComparisonDetailView(APIView):
         comparison = get_object_or_404(Comparison, comparison_id=comparison_id, user=request.user)
         comparison.delete()
         return Response({"status": 200, "message": "매치업 삭제 완료"})
+        
+    @extend_schema(summary="기업 비교 매치업 이름 변경", request=ComparisonNameUpdateSerializer)
+    def patch(self, request, comparison_id):
+        # 1. 내 매치업인지 확인
+        comparison = get_object_or_404(Comparison, comparison_id=comparison_id, user=request.user)
+        
+        # 2. partial=True를 주어 이름만 수정 가능하게 함
+        serializer = ComparisonNameUpdateSerializer(comparison, data=request.data, partial=True)
+        
+        if serializer.is_valid(raise_exception=True):
+            serializer.save()
+            # 3. 형님이 원하셨던 응답 포맷
+            return Response({
+                "status": 200,
+                "message": "기업 비교 매치업 이름 변경을 성공하였습니다.",
+                "data": {
+                    "comparisons": [
+                        {
+                            "id": comparison.comparison_id, 
+                            "name": comparison.title  # 업데이트된 title(name) 출력
+                        }
+                    ]
+                }
+            }, status=status.HTTP_200_OK)    
 
-# [클래스 2] 새 주소용: DELETE(특정 기업 삭제) 딱 하나만!
+# [클래스 2] 새 주소용: DELETE(특정 기업 삭제) 
 class ComparisonCompanyDeleteView(APIView):
     permission_classes = [IsAuthenticated]
 
