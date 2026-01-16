@@ -171,8 +171,11 @@ class MetadataExtractorService:
             for key, value in self.PRESS_DOMAIN_MAP.items():
                 if value and domain.endswith(key):
                     return value
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(
+                f"URL에서 언론사 추출 실패: url={url}, error={e}",
+                exc_info=True
+            )
         return None
 
     def _extract_press_from_content(self, content: str) -> str | None:
