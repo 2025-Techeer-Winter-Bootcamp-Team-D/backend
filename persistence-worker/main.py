@@ -111,9 +111,8 @@ class PersistenceWorker:
         """
         시작 시 처리되지 않은 PENDING 메시지 처리
 
-        페이징을 통해 모든 PENDING 메시지를 조회하고,
-        min_idle_time을 설정하여 즉시 스틸을 방지하며,
-        배치 단위로 처리하여 효율성을 높입니다.
+        XAUTOCLAIM을 사용하여 idle time이 충분한 메시지만 안전하게 클레임하고,
+        cursor 기반 pagination으로 모든 메시지를 처리합니다.
         """
         try:
             pending_info = await redis_client.xpending(STREAM_KEY, CONSUMER_GROUP)
@@ -128,77 +127,34 @@ class PersistenceWorker:
             # 즉시 스틸 방지 및 메시지 누락 방지
             min_idle_time_ms = 5000  # 5초 (밀리초)
             batch_size = 100
-            last_id = "-"
+            start_id = "0-0"  # XAUTOCLAIM 시작 ID
             total_processed = 0
 
-            # 페이징을 통해 모든 PENDING 메시지 처리
+            # XAUTOCLAIM을 사용하여 cursor 기반 pagination으로 모든 PENDING 메시지 처리
             while True:
-                # XPENDING RANGE로 배치 조회
-                pending_messages = await redis_client.xpending_range(
-                    STREAM_KEY,
-                    CONSUMER_GROUP,
-                    min=last_id,
-                    max="+",
-                    count=batch_size,
-                )
-
-                if not pending_messages:
-                    break
-
-                # 메시지 ID 수집
-                message_ids = []
-                for msg_info in pending_messages:
-                    msg_id = msg_info.get("message_id")
-                    if msg_id:
-                        message_ids.append(msg_id)
-
-                if not message_ids:
-                    # 더 이상 처리할 메시지가 없으면 종료
-                    break
-
-                # XCLAIM으로 메시지 클레임 (min_idle_time 적용)
-                claimed = await redis_client.xclaim(
+                # XAUTOCLAIM: idle time이 충분한 메시지만 자동으로 클레임하고 반환
+                # 반환값: (next_id, claimed_entries)
+                next_id, claimed = await redis_client.xautoclaim(
                     STREAM_KEY,
                     CONSUMER_GROUP,
                     CONSUMER_NAME,
                     min_idle_time=min_idle_time_ms,
-                    message_ids=message_ids,
+                    start_id=start_id,
+                    count=batch_size,
                 )
 
                 # 클레임된 메시지 처리
-                for entry_id, fields in claimed:
-                    await self._process_entry(entry_id, fields)
-                    total_processed += 1
+                if claimed:
+                    for entry_id, fields in claimed:
+                        await self._process_entry(entry_id, fields)
+                        total_processed += 1
 
-                # 마지막 메시지 ID를 다음 페이징 시작점으로 사용 (exclusive pagination)
-                if pending_messages:
-                    last_message_id = pending_messages[-1].get("message_id")
-                    if last_message_id:
-                        # 메시지 ID를 증가시켜 exclusive start로 사용
-                        # Redis Stream ID 형식: "timestamp-sequence"
-                        try:
-                            parts = last_message_id.split("-")
-                            if len(parts) == 2:
-                                timestamp = int(parts[0])
-                                sequence = int(parts[1])
-                                # 시퀀스 번호 증가 (exclusive start)
-                                last_id = f"{timestamp}-{sequence + 1}"
-                            else:
-                                # 예상치 못한 형식이면 루프 종료 (무한 루프 방지)
-                                print(
-                                    f"[WARN] Unexpected message ID format: {last_message_id}. Stopping pagination."
-                                )
-                                break
-                        except (ValueError, AttributeError) as parse_error:
-                            # 파싱 실패 시 루프 종료 (무한 루프 방지)
-                            print(
-                                f"[WARN] Failed to parse message ID '{last_message_id}': {parse_error}. Stopping pagination."
-                            )
-                            break
-                    else:
-                        break
-                else:
+                # cursor가 "0-0"이면 더 이상 처리할 메시지가 없음
+                if next_id == "0-0":
                     break
+
+                # 다음 iteration을 위한 start_id 업데이트
+                start_id = next_id
 
                 # 배치 처리 후 버퍼 저장 (메모리 관리)
                 if len(self.buffer) >= self.batch_size:
@@ -290,7 +246,7 @@ class PersistenceWorker:
                 try:
 
                     if messages:
-                        for stream_name, entries in messages:
+                        for _stream_name, entries in messages:
                             for entry_id, fields in entries:
                                 message_count += 1
                                 await self._process_entry(entry_id, fields)
