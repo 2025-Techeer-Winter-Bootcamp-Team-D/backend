@@ -70,12 +70,12 @@ def sync_all_market_amount():
                 fail_count += 1
                 logger.warning(f"시가총액 갱신 실패: {company.stock_code}")
 
-            # API Rate Limit 대응
-            time.sleep(REQUEST_DELAY)
-
         except Exception as e:
             fail_count += 1
             logger.error(f"시가총액 갱신 중 오류 ({company.stock_code}): {e}")
+        finally:
+            # API Rate Limit 대응 - 항상 실행
+            time.sleep(REQUEST_DELAY)
 
     logger.info(
         f"전체 기업 시가총액 갱신 완료: 성공 {success_count}건, 실패 {fail_count}건"

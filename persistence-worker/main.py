@@ -110,7 +110,7 @@ class PersistenceWorker:
     async def process_pending_messages(self, redis_client, pool):
         """
         시작 시 처리되지 않은 PENDING 메시지 처리
-        
+
         페이징을 통해 모든 PENDING 메시지를 조회하고,
         min_idle_time을 설정하여 즉시 스틸을 방지하며,
         배치 단위로 처리하여 효율성을 높입니다.
@@ -122,9 +122,7 @@ class PersistenceWorker:
             if pending_count == 0:
                 return
 
-            print(
-                f"[PENDING] Found {pending_count} pending messages. Processing..."
-            )
+            print(f"[PENDING] Found {pending_count} pending messages. Processing...")
 
             # 안전한 min_idle_time 설정 (5초 이상 idle인 메시지만 클레임)
             # 즉시 스틸 방지 및 메시지 누락 방지
@@ -172,9 +170,27 @@ class PersistenceWorker:
                     await self._process_entry(entry_id, fields)
                     total_processed += 1
 
-                # 마지막 메시지 ID를 다음 페이징 시작점으로 사용
+                # 마지막 메시지 ID를 다음 페이징 시작점으로 사용 (exclusive pagination)
                 if pending_messages:
-                    last_id = pending_messages[-1].get("message_id", "+")
+                    last_message_id = pending_messages[-1].get("message_id")
+                    if last_message_id:
+                        # 메시지 ID를 증가시켜 exclusive start로 사용
+                        # Redis Stream ID 형식: "timestamp-sequence"
+                        try:
+                            parts = last_message_id.split("-")
+                            if len(parts) == 2:
+                                timestamp = int(parts[0])
+                                sequence = int(parts[1])
+                                # 시퀀스 번호 증가 (exclusive start)
+                                last_id = f"{timestamp}-{sequence + 1}"
+                            else:
+                                # 예상치 못한 형식이면 그대로 사용
+                                last_id = last_message_id
+                        except (ValueError, AttributeError):
+                            # 파싱 실패 시 그대로 사용
+                            last_id = last_message_id
+                    else:
+                        break
                 else:
                     break
 
@@ -186,13 +202,12 @@ class PersistenceWorker:
             if self.buffer:
                 await self.save_to_database(pool, redis_client)
 
-            print(
-                f"[PENDING] Processed {total_processed} pending messages"
-            )
+            print(f"[PENDING] Processed {total_processed} pending messages")
 
         except Exception as e:
             print(f"[ERROR] Error processing pending messages: {e}")
             import traceback
+
             traceback.print_exc()
 
     async def _process_entry(self, entry_id, fields):
@@ -236,9 +251,7 @@ class PersistenceWorker:
             await self.process_pending_messages(redis_client, pool)
 
             # 주기적 flush 태스크 생성 및 저장
-            self._flush_task = asyncio.create_task(
-                self.auto_flush(pool, redis_client)
-            )
+            self._flush_task = asyncio.create_task(self.auto_flush(pool, redis_client))
             print("[INIT] Listening for stream messages...")
 
             message_count = 0
