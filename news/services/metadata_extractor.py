@@ -296,7 +296,28 @@ JSON만 응답: {{"keywords": ["키워드1", "키워드2"]}}
                 start = text.find("{")
                 end = text.rfind("}") + 1
                 result = json.loads(text[start:end])
-                return result.get("keywords", [])
+
+                # 결과 검증 및 정규화
+                if not isinstance(result, dict):
+                    return []
+
+                keywords = result.get("keywords", [])
+                if not isinstance(keywords, list):
+                    return []
+
+                # 문자열만 필터링하고 정규화
+                normalized = []
+                seen = set()  # 중복 제거용
+                for item in keywords:
+                    if isinstance(item, str):
+                        item = item.strip()
+                        if item and item not in seen:
+                            normalized.append(item)
+                            seen.add(item)
+                            if len(normalized) >= 5:  # 최대 5개로 제한
+                                break
+
+                return normalized
         except Exception as e:
             logger.warning(f"Keyword extraction failed: {e}")
 
