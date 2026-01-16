@@ -6,7 +6,8 @@ class KISIndexService:
     def __init__(self):
         self.app_key = os.getenv("KIS_APP_KEY")
         self.app_secret = os.getenv("KIS_APP_SECRET")
-        self.base_url = "https://openapi.koreainvestment.com:9443"
+        #self.base_url = "https://openapi.koreainvestment.com:9443" 실제 계좌용
+        self.base_url = "https://openapivts.koreainvestment.com:29443" # 모의계좌 (잠깐 사용)
         self._token = None  # [추가] 토큰 저장용 변수
 
     def get_token(self):
