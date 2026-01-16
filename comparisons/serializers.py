@@ -86,7 +86,7 @@ class ComparisonDetailResponseSerializer(serializers.Serializer):
 # 6. 기업 매치업 이름 수정용 
 class ComparisonNameUpdateSerializer(serializers.ModelSerializer):
     # 모델의 title 필드를 API에서는 name이라는 이름으로 사용함
-    name = serializers.CharField(source='title')
+    name = serializers.CharField(source='title',max_length=100)
 
     class Meta:
         model = Comparison

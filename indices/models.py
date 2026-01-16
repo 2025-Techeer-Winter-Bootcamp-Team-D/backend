@@ -15,7 +15,7 @@ class MarketIndex(models.Model):
     
     # 추가: 거래량 및 거래대금
     volume = models.BigIntegerField(help_text="거래량 (주)")
-    amount = models.BigIntegerField(help_text="거래대금 (원원)")
+    amount = models.BigIntegerField(help_text="거래대금 (원)")
     
     # 관리용 필드
     created_at = models.DateTimeField(auto_now_add=True)

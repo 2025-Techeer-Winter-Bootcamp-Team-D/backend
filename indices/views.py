@@ -2,8 +2,23 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from .models import MarketIndex
 from datetime import datetime, timedelta
+from drf_spectacular.utils import extend_schema, OpenApiParameter
+from drf_spectacular.types import OpenApiTypes
 
 class IndexListView(APIView):
+    @extend_schema(
+        summary="시장 지수 조회",
+        description="KOSPI 또는 KOSDAQ의 최근 1년치 지수 데이터를 조회합니다.",
+        parameters=[
+            OpenApiParameter(
+                name='market_type',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.PATH,
+                description='시장 타입 (kospi 또는 kosdaq)',
+                enum=['kospi', 'kosdaq']
+            )
+        ]
+    )
     def get(self, request, market_type):
         """
         market_type: kospi 또는 kosdaq
@@ -14,7 +29,7 @@ class IndexListView(APIView):
         queryset = MarketIndex.objects.filter(
             market_type=market_type.upper(),
             idx_date__gte=one_year_ago
-        ).order_by('idx_date') # 그래프를 그리려면 날짜 오름차순 정렬이 필요함
+        ).order_by('idx_date')
         
         
        
@@ -29,7 +44,11 @@ class IndexListView(APIView):
         ]
         
         return Response({
-            "market": market_type.upper(),
-            "count": len(data),
-            "data": data
+            "status": 200,
+            "message": "시장 지수 조회를 성공하였습니다.",
+            "data": {
+                "market": market_type.upper(),
+                "count": len(data),
+                "indices": data # 형님 응답 규격에 맞게 살짝 맞춤
+            }
         })

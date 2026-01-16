@@ -1,6 +1,10 @@
 import os
 import requests
 from datetime import datetime
+import logging
+from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 class KISIndexService:
     def __init__(self):
@@ -11,20 +15,25 @@ class KISIndexService:
         self._token = None  # [추가] 토큰 저장용 변수
 
     def get_token(self):
-        # 이미 토큰이 있으면 새로 받지 않고 그대로 반환
+        # [수정] 실행 중에는 저장된 토큰을 쓰고, 없거나 에러 날 때만 새로 받음
+        # 이렇게 해야 '연속 토큰 발급'으로 인한 403 에러를 피할 수 있습니다.
         if self._token:
             return self._token
             
         url = f"{self.base_url}/oauth2/tokenP"
-        res = requests.post(url, json={
-            "grant_type": "client_credentials",
-            "appkey": self.app_key,
-            "appsecret": self.app_secret
-        })
-        
-        self._token = res.json().get("access_token")
-        print(">>> [알림] KIS 새로운 접근 토큰 발급됨")
-        return self._token
+        try:
+            res = requests.post(url, json={
+                "grant_type": "client_credentials",
+                "appkey": self.app_key,
+                "appsecret": self.app_secret
+            }, timeout=10)
+            res.raise_for_status()
+            self._token = res.json().get("access_token")
+            print(">>> [알림] KIS 새로운 접근 토큰 발급됨")
+            return self._token
+        except Exception as e:
+            logger.error(f"KIS 토큰 발급 실패: {e}")
+            raise
 
     def fetch_index_data(self, iscd, start_date, end_date):
         # 여기서는 get_token()을 불러도 위에서 캐싱하니까 안전합니다.
@@ -49,5 +58,11 @@ class KISIndexService:
             "FID_ORG_ADJ_PRC": "0"
         }
         
-        response = requests.get(url, headers=headers, params=params)
-        return response.json().get('output2', [])
+        try:
+            # [수정] 타임아웃 추가 및 에러 처리
+            response = requests.get(url, headers=headers, params=params, timeout=60)
+            response.raise_for_status()
+            return response.json().get('output2', [])
+        except Exception as e:
+            logger.error(f"지수 데이터 조회 실패 ({iscd}): {e}")
+            return [] 

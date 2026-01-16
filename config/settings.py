@@ -324,7 +324,7 @@ STATIC_URL = "static/"
 JWT_SIGNING_KEY = os.getenv("JWT_SIGNING_KEY", SECRET_KEY)
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),  # 60분은 조금 길 수 있으니 나중에 30분 검토해보세요!
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),  
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
     "ROTATE_REFRESH_TOKENS": True,                # [수정] 토큰 갱신 시 새로운 리프레시 토큰 발급
     "BLACKLIST_AFTER_ROTATION": True,             # [추가] 갱신 전 사용된 토큰은 즉시 블랙리스트행
