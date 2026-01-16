@@ -164,6 +164,64 @@ class KISQuoteClient:
             logger.error(f"KIS 시세 조회 요청 실패 ({stock_code}): {e}")
             return None
 
+    def get_stock_quote_or_raise(self, stock_code: str) -> dict:
+        """
+        주식 현재가 시세 조회 (일시적 오류 시 예외 발생)
+
+        Args:
+            stock_code: 종목코드 (6자리)
+
+        Returns:
+            시세 정보 딕셔너리
+
+        Raises:
+            requests.RequestException: 네트워크 오류, 타임아웃 등 일시적 오류
+            requests.HTTPError: HTTP 5xx 서버 오류
+        """
+        access_token = self._get_access_token()
+        if not access_token:
+            # 토큰 발급 실패는 일시적 오류로 간주하지 않음 (None 반환)
+            return None
+
+        url = f"{self.base_url}/uapi/domestic-stock/v1/quotations/inquire-price"
+        headers = {
+            "Content-Type": "application/json; charset=utf-8",
+            "authorization": f"Bearer {access_token}",
+            "appkey": self.app_key,
+            "appsecret": self.app_secret,
+            "tr_id": "FHKST01010100",  # 주식현재가 시세 (모의투자)
+        }
+        params = {
+            "FID_COND_MRKT_DIV_CODE": "J",  # 주식, ETF, ETN
+            "FID_INPUT_ISCD": stock_code,
+        }
+
+        # Rate limiting: 요청 간 딜레이
+        time.sleep(REQUEST_DELAY)
+
+        response = requests.get(url, headers=headers, params=params, timeout=10)
+
+        # HTTP 5xx 서버 오류는 일시적 오류로 간주하여 예외 발생
+        if response.status_code >= 500:
+            logger.error(
+                f"KIS 시세 조회 서버 오류 ({stock_code}): "
+                f"{response.status_code} Server Error: {response.reason}"
+            )
+            response.raise_for_status()  # HTTPError 발생
+
+        response.raise_for_status()
+        data = response.json()
+
+        # 응답 코드 확인
+        rt_cd = data.get("rt_cd")
+        if rt_cd != "0":
+            msg = data.get("msg1", "알 수 없는 오류")
+            logger.warning(f"KIS 시세 조회 실패 ({stock_code}): {msg}")
+            # 비일시적 오류로 간주 (None 반환)
+            return None
+
+        return data.get("output")
+
     def get_market_amount(self, stock_code: str) -> Optional[int]:
         """
         시가총액 조회

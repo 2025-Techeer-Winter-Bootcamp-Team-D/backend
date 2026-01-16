@@ -11,7 +11,7 @@ import logging
 from companies.models import Company
 from companies.services.dart_api import DartAPIClient, DartAPIError
 from companies.services.industry_mapper import IndustryMapper
-from companies.services.kis_quote import get_market_amount
+from companies.services.kis_quote import get_market_amount, get_kis_quote_client
 from companies.services.logo import get_logo_url
 
 logger = logging.getLogger(__name__)
@@ -138,23 +138,59 @@ class CompanyInfoService:
 
         Returns:
             갱신 성공 여부
+
+        Raises:
+            requests.RequestException: 네트워크 오류, 타임아웃, HTTP 5xx 등 일시적 오류
+            requests.HTTPError: HTTP 5xx 서버 오류
+            requests.Timeout: 요청 타임아웃
         """
+        import requests
+        
+        # KIS 클라이언트를 직접 호출하여 일시적 오류를 감지할 수 있도록 함
+        client = get_kis_quote_client()
+        
         try:
-            market_amount = get_market_amount(company.stock_code)
-            if market_amount is not None:
+            # get_stock_quote_or_raise를 사용하여 일시적 오류 시 예외 발생
+            quote = client.get_stock_quote_or_raise(company.stock_code)
+            
+            if not quote:
+                # 데이터 없음은 비일시적 오류로 간주 (재시도 불필요)
+                logger.warning(
+                    f"시가총액 조회 실패 (값 없음): {company.stock_code} - 기존 값 유지"
+                )
+                return False
+            
+            # hts_avls: HTS 시가총액 (억 단위)
+            hts_avls = quote.get("hts_avls")
+            if not hts_avls:
+                logger.warning(
+                    f"시가총액 필드(hts_avls) 없음: {company.stock_code} - 기존 값 유지"
+                )
+                return False
+            
+            try:
+                # 억 단위 → 원 단위 변환
+                market_amount = int(hts_avls.replace(",", "")) * 100_000_000
                 company.market_amount = market_amount
                 logger.info(
                     f"시가총액 갱신: {company.stock_code} → {market_amount:,}원"
                 )
                 return True
-            else:
-                logger.warning(
-                    f"시가총액 조회 실패 (값 없음): {company.stock_code} - 기존 값 유지"
-                )
+            except (ValueError, AttributeError) as e:
+                # 파싱 오류는 비일시적 오류로 간주
+                logger.error(f"시가총액 파싱 실패 ({company.stock_code}): {hts_avls}, {e}")
                 return False
+                
+        except (requests.RequestException, requests.HTTPError, requests.Timeout) as e:
+            # 네트워크 오류, 타임아웃, HTTP 5xx 등 일시적 오류는 재시도 가능하므로 재발생
+            logger.warning(
+                f"시가총액 갱신 중 일시적 오류 ({company.stock_code}): {e} - 재시도 예정"
+            )
+            raise
         except Exception as e:
-            logger.error(f"시가총액 갱신 중 오류 ({company.stock_code}): {e}")
-            return False
+            # 예상치 못한 오류도 재시도 가능하도록 재발생
+            logger.error(f"시가총액 갱신 중 예상치 못한 오류 ({company.stock_code}): {e}")
+            raise
 
     def _sync_logo_url(self, company: Company) -> bool:
         """

@@ -6,11 +6,19 @@ KIS REST API를 통한 시가총액 갱신 Celery 작업
 import time
 import logging
 from celery import shared_task
+import requests
 
 from companies.models import Company
 from companies.services.company_info import CompanyInfoService
 
 logger = logging.getLogger(__name__)
+
+
+class RetryableError(Exception):
+    """재시도 가능한 일시적 오류를 나타내는 예외"""
+
+    pass
+
 
 # API Rate Limit 대응: 요청 간 딜레이 (초)
 # KIS API는 초당 2회로 제한되어 있으므로 최소 500ms 딜레이 필요
@@ -39,9 +47,22 @@ def sync_market_amount(self, stock_code: str):
 
     except Company.DoesNotExist:
         logger.error(f"Company not found: {stock_code}")
+        # Company가 없으면 재시도 불필요
+        return
+    except (
+        RetryableError,
+        requests.RequestException,
+        requests.HTTPError,
+        requests.Timeout,
+    ) as e:
+        # 재시도 가능한 일시적 오류
+        logger.warning(
+            f"시가총액 갱신 중 일시적 오류 ({stock_code}): {e} - 재시도 예정"
+        )
+        raise self.retry(countdown=30, exc=e)
     except Exception as e:
+        # 기타 예외도 재시도 가능하도록 처리
         logger.error(f"시가총액 갱신 중 오류 ({stock_code}): {e}")
-        # 30초 후 재시도
         raise self.retry(countdown=30, exc=e)
 
 
