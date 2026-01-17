@@ -8,6 +8,7 @@ from opensearchpy import OpenSearch, helpers
 from django.conf import settings
 from datetime import datetime
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ class OpenSearchService:
             use_ssl=settings.OPENSEARCH_USE_SSL,
             verify_certs=settings.OPENSEARCH_VERIFY_CERTS,
             ssl_show_warn=False,
+            maxsize=25,  # 연결 풀 크기 (동시 요청 처리 성능 개선)
         )
 
         # 인덱스가 없으면 생성
@@ -547,93 +549,4 @@ class OpenSearchService:
 
         except Exception as e:
             logger.error(f"Failed to search news by keyword: {str(e)}")
-            return []
-
-    def get_top_keywords(
-        self,
-        size=15,
-        published_after=None,
-        exclude_keywords=None,
-        min_doc_count=2,
-    ):
-        """
-        뉴스 본문에서 상위 키워드 빈도수를 추출합니다.
-
-        Args:
-            size: 반환할 상위 키워드 개수 (기본값: 15)
-            published_after: 이 날짜 이후의 뉴스만 분석 (datetime, 선택적)
-            exclude_keywords: 빈도수에서 제외할 키워드 리스트 (선택적)
-                예: 크롤링에 사용한 카테고리 키워드들을 제외하여 편향 방지
-            min_doc_count: 최소 문서 수 (이 값 이상 등장한 키워드만 반환, 기본값: 2)
-
-        Returns:
-            list: 키워드 빈도수 리스트. 각 항목은 다음을 포함:
-                - keyword: str (키워드)
-                - count: int (빈도수)
-                - doc_count: int (등장한 문서 수)
-        """
-        # 쿼리 구성
-        query = {
-            "size": 0,  # 문서는 반환하지 않고 집계만 수행
-            "aggs": {
-                "top_keywords": {
-                    "terms": {
-                        "field": "content",  # content 필드에서 키워드 추출
-                        "size": size * 2,  # 제외 키워드 필터링을 위해 더 많이 가져옴
-                        "min_doc_count": min_doc_count,
-                    }
-                }
-            },
-        }
-
-        # 날짜 필터 추가
-        if published_after:
-            if isinstance(published_after, datetime):
-                published_after_str = published_after.isoformat()
-            else:
-                published_after_str = published_after
-
-            query["query"] = {
-                "range": {
-                    "published_at": {
-                        "gte": published_after_str,
-                    }
-                }
-            }
-
-        try:
-            response = self.client.search(index=self.NEWS_INDEX_NAME, body=query)
-
-            # 집계 결과 추출
-            buckets = (
-                response.get("aggregations", {})
-                .get("top_keywords", {})
-                .get("buckets", [])
-            )
-
-            # 제외 키워드 필터링
-            if exclude_keywords:
-                exclude_set = set(kw.lower() for kw in exclude_keywords)
-                buckets = [
-                    bucket
-                    for bucket in buckets
-                    if bucket.get("key", "").lower() not in exclude_set
-                ]
-
-            # 상위 N개만 반환
-            results = []
-            for bucket in buckets[:size]:
-                results.append(
-                    {
-                        "keyword": bucket.get("key", ""),
-                        "count": bucket.get("doc_count", 0),  # 문서 수
-                        "doc_count": bucket.get("doc_count", 0),
-                    }
-                )
-
-            logger.info(f"Extracted top {len(results)} keywords from news content")
-            return results
-
-        except Exception as e:
-            logger.error(f"Failed to extract keywords from OpenSearch: {str(e)}")
             return []
