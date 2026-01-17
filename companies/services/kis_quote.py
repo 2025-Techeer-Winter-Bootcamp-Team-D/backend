@@ -113,7 +113,7 @@ class KISQuoteClient:
         """
 
         # 락 TTL: REQUEST_DELAY보다 약간 길게 설정 (안전 마진)
-        lock_ttl = int((REQUEST_DELAY + 0.1) * 1000)  # 밀리초 단위
+        lock_ttl = REQUEST_DELAY + 0.1  # 초 단위 (Django cache timeout은 초 단위)
         max_retries = 10
         retry_backoff = 0.01  # 10ms
 
@@ -132,8 +132,8 @@ class KISQuoteClient:
                 time.sleep(retry_backoff)
             else:
                 logger.warning(
-                    f"KIS rate limit 락 획득 실패 (최대 재시도 횟수 초과). "
-                    f"락이 해제될 때까지 대기합니다."
+                    "KIS rate limit 락 획득 실패 (최대 재시도 횟수 초과). "
+                    "락이 해제될 때까지 대기합니다."
                 )
                 # 최종 시도 실패 시 락이 해제될 때까지 대기
                 while not cache.add(

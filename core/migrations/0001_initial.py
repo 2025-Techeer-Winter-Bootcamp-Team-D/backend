@@ -432,15 +432,6 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="StockTick",
             fields=[
-                (
-                    "id",
-                    models.BigAutoField(
-                        auto_created=True,
-                        primary_key=True,
-                        serialize=False,
-                        verbose_name="ID",
-                    ),
-                ),
                 ("stock_code", models.CharField(db_column="stock_code", max_length=10)),
                 (
                     "symbol",
