@@ -111,8 +111,13 @@ class IndustryMapper:
         if not industry_code:
             return None
 
-        # 업종코드 정규화 (앞뒤 공백 제거, 대문자 변환)
-        industry_code = industry_code.strip().upper()
+        # DART API 응답이 숫자(int)일 수 있으므로 문자열로 변환
+        industry_code = str(industry_code).strip().upper()
+
+        # 숫자 형식의 업종코드는 3자리로 정규화 (KSIC 소분류 기준)
+        # 예: "64992" → "649", "26410" → "264", "264" → "264"
+        if industry_code.isdigit() and len(industry_code) > 3:
+            industry_code = industry_code[:3]
 
         # 1. 업종코드로 직접 Industry 찾기
         industry = Industry.objects.filter(
@@ -121,17 +126,19 @@ class IndustryMapper:
         if industry:
             return industry
 
-        # 2. 상위 분류 코드로 찾기 (예: "26410" → "264" → "26")
-        for code_length in range(len(industry_code) - 1, 0, -1):
-            parent_code = industry_code[:code_length]
-            industry = Industry.objects.filter(
-                induty_code=parent_code, is_deleted=False
-            ).first()
-            if industry:
-                logger.debug(
-                    f"업종코드 '{industry_code}'를 상위 코드 '{parent_code}'로 매핑"
-                )
-                return industry
+        # 2. 상위 분류 코드로 찾기 (3자리 이하인 경우만, 예: "264" → "26" → "2")
+        # 이미 3자리로 정규화되었으므로, 3자리 이하인 경우에만 상위 분류로 찾기
+        if len(industry_code) <= 3:
+            for code_length in range(len(industry_code) - 1, 0, -1):
+                parent_code = industry_code[:code_length]
+                industry = Industry.objects.filter(
+                    induty_code=parent_code, is_deleted=False
+                ).first()
+                if industry:
+                    logger.debug(
+                        f"업종코드 '{industry_code}'를 상위 코드 '{parent_code}'로 매핑"
+                    )
+                    return industry
 
         # 3. 매핑 테이블에서 Industry 이름 찾기 (fallback - DB에 업종코드가 없는 경우)
         industry_name = cls.INDUSTRY_CODE_MAP.get(industry_code)
