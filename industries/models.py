@@ -25,7 +25,10 @@ class Industry(models.Model):
 class IndustryRanking(models.Model):
     ranking_id = models.BigIntegerField(primary_key=True)  # 순위 아이디
     industry = models.ForeignKey(
-        Industry, on_delete=models.CASCADE, related_name="rankings", db_column="industry_id"
+        Industry,
+        on_delete=models.CASCADE,
+        related_name="rankings",
+        db_column="industry_id",
     )  # 산업 아이디
     rank = models.IntegerField()  # 순위
     amount = models.BigIntegerField()  # 시가총액 합계

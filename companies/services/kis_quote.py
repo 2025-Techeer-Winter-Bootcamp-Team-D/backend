@@ -31,6 +31,10 @@ TOKEN_CACHE_TIMEOUT = 60 * 60 * 23  # 23시간 (토큰 유효기간 24시간)
 # 안전 마진을 두어 600ms로 설정 (초당 약 1.67회)
 REQUEST_DELAY = 0.6  # 600ms 딜레이 (초당 2회 제한 준수)
 
+# 분산 락 및 마지막 요청 시간 관리용 Redis 키
+KIS_RATE_LIMIT_LOCK_KEY = "kis_api_rate_limit_lock"
+KIS_LAST_REQUEST_TIME_KEY = "kis_api_last_request_time"
+
 
 class KISQuoteError(Exception):
     """KIS API 호출 오류"""
@@ -97,6 +101,31 @@ class KISQuoteClient:
             logger.error(f"KIS 토큰 발급 실패: {e}")
             return None
 
+    def _wait_for_rate_limit(self) -> None:
+        """
+        분산 환경에서 KIS API rate limit 준수를 위한 전역 딜레이 관리
+
+        Redis를 사용하여 마지막 요청 시간을 공유하고,
+        필요 시 딜레이를 적용하여 초당 2회 제한을 준수
+        """
+        import time
+
+        # Redis에서 마지막 요청 시간 조회
+        last_request_time = cache.get(KIS_LAST_REQUEST_TIME_KEY)
+        current_time = time.time()
+
+        if last_request_time:
+            elapsed = current_time - last_request_time
+            # 마지막 요청 이후 REQUEST_DELAY 시간이 지나지 않았으면 대기
+            if elapsed < REQUEST_DELAY:
+                wait_time = REQUEST_DELAY - elapsed
+                logger.debug(f"KIS API rate limit 대기: {wait_time:.3f}초")
+                time.sleep(wait_time)
+                current_time = time.time()
+
+        # 현재 시간을 마지막 요청 시간으로 저장 (타임아웃 1초)
+        cache.set(KIS_LAST_REQUEST_TIME_KEY, current_time, timeout=1)
+
     def get_stock_quote(self, stock_code: str) -> Optional[dict]:
         """
         주식 현재가 시세 조회
@@ -125,8 +154,8 @@ class KISQuoteClient:
         }
 
         try:
-            # Rate limiting: 요청 간 딜레이
-            time.sleep(REQUEST_DELAY)
+            # 분산 환경에서 전역 rate limit 준수
+            self._wait_for_rate_limit()
 
             response = requests.get(url, headers=headers, params=params, timeout=10)
 
@@ -145,7 +174,9 @@ class KISQuoteClient:
                             f"KIS API 에러 응답 본문 ({stock_code}): {error_body}"
                         )
                 except Exception as e:
-                    logger.debug(f"KIS API 에러 응답 본문 읽기 실패 ({stock_code}): {e}")
+                    logger.debug(
+                        f"KIS API 에러 응답 본문 읽기 실패 ({stock_code}): {e}"
+                    )
                 return None
 
             response.raise_for_status()
@@ -196,17 +227,27 @@ class KISQuoteClient:
             "FID_INPUT_ISCD": stock_code,
         }
 
-        # Rate limiting: 요청 간 딜레이
-        time.sleep(REQUEST_DELAY)
+        # 분산 환경에서 전역 rate limit 준수
+        self._wait_for_rate_limit()
 
         response = requests.get(url, headers=headers, params=params, timeout=10)
 
         # HTTP 5xx 서버 오류는 일시적 오류로 간주하여 예외 발생
         if response.status_code >= 500:
+            # 상세한 오류 정보 로깅
             logger.error(
                 f"KIS 시세 조회 서버 오류 ({stock_code}): "
-                f"{response.status_code} Server Error: {response.reason}"
+                f"{response.status_code} Server Error: {response.reason} for url: {response.url}"
             )
+            # 응답 본문이 있으면 로깅 (디버깅용)
+            try:
+                error_body = response.text[:500]  # 최대 500자만
+                if error_body:
+                    logger.debug(
+                        f"KIS API 서버 오류 응답 본문 ({stock_code}): {error_body}"
+                    )
+            except Exception as e:
+                logger.debug(f"KIS API 오류 응답 본문 읽기 실패 ({stock_code}): {e}")
             response.raise_for_status()  # HTTPError 발생
 
         response.raise_for_status()

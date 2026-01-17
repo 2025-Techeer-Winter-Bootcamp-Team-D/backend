@@ -6,6 +6,7 @@ DART 데이터 동기화 Celery 작업
 from celery import shared_task
 from typing import List
 import logging
+import requests
 
 from companies.models import Company
 from companies.services.company_info import CompanyInfoService
@@ -41,6 +42,10 @@ def sync_company_info_from_dart(self, stock_code: str):
     except DartAPIError as e:
         logger.error(f"DART API error: {e}")
         # 60초 후 재시도
+        raise self.retry(countdown=60, exc=e)
+    except (requests.RequestException, requests.HTTPError, requests.Timeout) as e:
+        # KIS API 등 일시적 네트워크/서버 오류는 재시도
+        logger.error(f"일시적 네트워크/서버 오류 (재시도): {e}")
         raise self.retry(countdown=60, exc=e)
     except Exception as e:
         logger.error(f"Error syncing company info: {e}")
@@ -168,12 +173,14 @@ def sync_all_reports():
 
     logger.info(f"전체 기업 보고서 동기화 작업 등록 완료: {total}개")
 
+
 @shared_task
 def sync_all_rankings():
     """
     모든 산업의 시가총액 순위 동기화 (주기적 실행용)
     """
     from companies.tasks.rankings import update_all_rankings_task
+
     try:
         update_all_rankings_task.delay()
         logger.info("산업 시가총액 순위 동기화 작업 등록 완료")
