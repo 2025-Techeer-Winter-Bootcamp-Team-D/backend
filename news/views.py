@@ -1,6 +1,6 @@
 from rest_framework import status, serializers
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from drf_spectacular.utils import (
     extend_schema,
@@ -15,6 +15,7 @@ from datetime import timedelta
 from .models import News
 from .serializers import NewsSerializer, NewsDetailSerializer
 from .services.opensearch import OpenSearchService
+from .tasks.workflows import scheduled_crawl_news
 
 
 @extend_schema(
@@ -60,7 +61,7 @@ def news_list(request):
             {"error": "page와 page_size는 정수여야 합니다."},
             status=status.HTTP_400_BAD_REQUEST,
         )
-    
+
     # 유효 범위 검증
     if page < 1:
         return Response(
@@ -72,7 +73,7 @@ def news_list(request):
             {"error": "page_size는 1에서 100 사이여야 합니다."},
             status=status.HTTP_400_BAD_REQUEST,
         )
-    
+
     # page_size 상한 적용
     page_size = min(page_size, 100)
 
@@ -184,7 +185,9 @@ def news_detail(request, news_id):
             name="KeywordFrequencyResponse",
             fields={
                 "status": serializers.IntegerField(),
-                "message": serializers.CharField(default="키워드 빈도수 조회를 성공하였습니다."),
+                "message": serializers.CharField(
+                    default="키워드 빈도수 조회를 성공하였습니다."
+                ),
                 "data": inline_serializer(
                     name="KeywordFrequencyData",
                     fields={
@@ -274,5 +277,107 @@ def get_news_keywords(request):
                 "status": 500,
                 "error": f"OpenSearch 오류: {str(e)}",
             },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@extend_schema(
+    summary="관리자용 뉴스 크롤링 수동 실행",
+    description="Celery Beat 스케줄에 등록된 일반 뉴스 크롤링 태스크를 수동으로 실행합니다. "
+    "최대 크롤링 개수를 설정하여 즉시 백그라운드 작업을 시작합니다.",
+    parameters=[
+        OpenApiParameter(
+            name="max_articles",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            description="키워드당 최대 크롤링 개수 (기본값: 10, 최대: 50)",
+            required=False,
+        ),
+        OpenApiParameter(
+            name="keywords",
+            type=str,
+            location=OpenApiParameter.QUERY,
+            description="크롤링할 키워드 (쉼표로 구분, 예: AI,반도체,삼성전자)",
+            required=False,
+        ),
+    ],
+    responses={
+        202: inline_serializer(
+            name="CrawlNewsTriggerResponse",
+            fields={
+                "status": serializers.IntegerField(),
+                "message": serializers.CharField(),
+                "data": inline_serializer(
+                    name="CrawlNewsTriggerData",
+                    fields={
+                        "task_id": serializers.CharField(),
+                        "keywords": serializers.ListField(
+                            child=serializers.CharField()
+                        ),
+                        "max_articles_per_keyword": serializers.IntegerField(),
+                    },
+                ),
+            },
+        ),
+        400: OpenApiResponse(description="잘못된 요청"),
+        500: OpenApiResponse(description="태스크 실행 오류"),
+    },
+    tags=["Admin"],
+)
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def trigger_crawl_news(request):
+    """
+    관리자용 뉴스 크롤링 수동 실행 API
+
+    Celery Beat 스케줄에 등록된 일반 뉴스 크롤링을 즉시 시작합니다.
+
+    Query Parameters:
+    - max_articles: 키워드당 최대 크롤링 개수 (기본값: 10, 최대: 50)
+    - keywords: 크롤링할 키워드 (쉼표로 구분, 선택 시 기본 키워드 대체)
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        max_articles = int(request.query_params.get("max_articles", 10))
+        max_articles = max(1, min(max_articles, 50))
+
+        keywords_param = request.query_params.get("keywords", "")
+        if keywords_param:
+            keywords = [k.strip() for k in keywords_param.split(",") if k.strip()]
+        else:
+            keywords = None
+
+        logger.info(
+            f"[Admin] 뉴스 크롤링 수동 실행: keywords={keywords}, "
+            f"max_articles={max_articles}"
+        )
+
+        task = scheduled_crawl_news.delay(keywords, max_articles)
+
+        return Response(
+            {
+                "status": 202,
+                "message": "뉴스 크롤링 태스크가 시작되었습니다.",
+                "data": {
+                    "task_id": task.id,
+                    "keywords": keywords if keywords else "기본 키워드 사용",
+                    "max_articles_per_keyword": max_articles,
+                },
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+    except ValueError:
+        return Response(
+            {"status": 400, "error": "max_articles는 정수여야 합니다."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as e:
+        logger.error(f"[Admin] 뉴스 크롤링 트리거 오류: {e}")
+        return Response(
+            {"status": 500, "error": f"태스크 실행 오류: {str(e)}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
