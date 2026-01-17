@@ -380,3 +380,9 @@ refactor: 사용자 인증 로직 개선
 ## 기존 설정 파일
 - `.cursor/rules`, `.cursorrules`, `.github/copilot-instructions.md` 파일은 존재하지 않음
 - 기존 `AGENTS.md` 파일은 없어서 새로 생성
+
+## 커뮤니케이션 규칙
+- 한국어
+- 주석 작성: 한국어
+- 커밋 메시지: 한국어
+- 변수/함수명: 영어(표준)
