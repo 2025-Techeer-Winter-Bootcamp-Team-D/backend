@@ -105,26 +105,65 @@ class KISQuoteClient:
         """
         분산 환경에서 KIS API rate limit 준수를 위한 전역 딜레이 관리
 
-        Redis를 사용하여 마지막 요청 시간을 공유하고,
-        필요 시 딜레이를 적용하여 초당 2회 제한을 준수
+        Redis 분산 락을 사용하여 동시성 문제를 해결하고,
+        마지막 요청 시간을 공유하여 초당 2회 제한을 준수합니다.
+
+        여러 워커가 동시에 실행되어도 하나의 워커만 rate limit을 체크하고
+        업데이트하도록 보장합니다.
         """
-        import time
 
-        # Redis에서 마지막 요청 시간 조회
-        last_request_time = cache.get(KIS_LAST_REQUEST_TIME_KEY)
-        current_time = time.time()
+        # 락 TTL: REQUEST_DELAY보다 약간 길게 설정 (안전 마진)
+        lock_ttl = int((REQUEST_DELAY + 0.1) * 1000)  # 밀리초 단위
+        max_retries = 10
+        retry_backoff = 0.01  # 10ms
 
-        if last_request_time:
-            elapsed = current_time - last_request_time
-            # 마지막 요청 이후 REQUEST_DELAY 시간이 지나지 않았으면 대기
-            if elapsed < REQUEST_DELAY:
-                wait_time = REQUEST_DELAY - elapsed
-                logger.debug(f"KIS API rate limit 대기: {wait_time:.3f}초")
-                time.sleep(wait_time)
-                current_time = time.time()
+        # 분산 락 획득 시도
+        lock_acquired = False
+        for attempt in range(max_retries):
+            # cache.add는 키가 존재하지 않을 때만 True 반환 (원자적 연산)
+            lock_acquired = cache.add(
+                KIS_RATE_LIMIT_LOCK_KEY, "locked", timeout=lock_ttl
+            )
+            if lock_acquired:
+                break
 
-        # 현재 시간을 마지막 요청 시간으로 저장 (타임아웃 1초)
-        cache.set(KIS_LAST_REQUEST_TIME_KEY, current_time, timeout=1)
+            # 락 획득 실패 시 짧은 backoff 후 재시도
+            if attempt < max_retries - 1:
+                time.sleep(retry_backoff)
+            else:
+                logger.warning(
+                    f"KIS rate limit 락 획득 실패 (최대 재시도 횟수 초과). "
+                    f"락이 해제될 때까지 대기합니다."
+                )
+                # 최종 시도 실패 시 락이 해제될 때까지 대기
+                while not cache.add(
+                    KIS_RATE_LIMIT_LOCK_KEY, "locked", timeout=lock_ttl
+                ):
+                    time.sleep(retry_backoff)
+                lock_acquired = True
+                break
+
+        try:
+            # 락 획득 후 마지막 요청 시간 조회 및 업데이트
+            last_request_time = cache.get(KIS_LAST_REQUEST_TIME_KEY)
+            current_time = time.time()
+
+            if last_request_time:
+                elapsed = current_time - last_request_time
+                # 마지막 요청 이후 REQUEST_DELAY 시간이 지나지 않았으면 대기
+                if elapsed < REQUEST_DELAY:
+                    wait_time = REQUEST_DELAY - elapsed
+                    logger.debug(f"KIS API rate limit 대기: {wait_time:.3f}초")
+                    time.sleep(wait_time)
+                    current_time = time.time()
+
+            # 현재 시간을 마지막 요청 시간으로 저장 (타임아웃 1초)
+            cache.set(KIS_LAST_REQUEST_TIME_KEY, current_time, timeout=1)
+
+        finally:
+            # 락 해제 (항상 실행되도록 보장)
+            if lock_acquired:
+                cache.delete(KIS_RATE_LIMIT_LOCK_KEY)
 
     def get_stock_quote(self, stock_code: str) -> Optional[dict]:
         """
