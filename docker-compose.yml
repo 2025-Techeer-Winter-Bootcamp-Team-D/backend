@@ -141,7 +141,7 @@ services:
       - REDIS_HOST=redis
       - PYTHONUNBUFFERED=1
       - KRX_SYMBOLS_CSV_PATH=/app/companies_data.csv
-      - KIS_SYMBOL_LIMIT=10
+      - KIS_SYMBOL_LIMIT=50
       - KIS_USE_TEST_MODE=false
       - KIS_TEST_WS_URL=ws://kis-mock-server:8080
       - KIS_MAX_RECONNECT=3

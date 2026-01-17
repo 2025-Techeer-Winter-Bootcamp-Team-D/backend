@@ -28,8 +28,10 @@ RUN apk del .build-deps
 COPY manage.py /app/
 COPY config/ /app/config/
 COPY companies/ /app/companies/
+COPY comparisons/ /app/comparisons/
 COPY core/ /app/core/
 COPY industries/ /app/industries/
+COPY indices/ /app/indices/
 COPY news/ /app/news/
 COPY users/ /app/users/
 
