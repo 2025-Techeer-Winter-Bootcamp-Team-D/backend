@@ -450,6 +450,105 @@ class OpenSearchService:
             logger.error(f"Failed to get news from OpenSearch: {str(e)}")
             return None
 
+    def search_news_by_keyword(
+        self,
+        keyword,
+        size=20,
+        min_score=None,
+        published_after=None,
+    ):
+        """
+        키워드 기반 텍스트 검색을 수행합니다.
+
+        기업명 등 키워드로 관련 뉴스를 검색합니다.
+        title 필드에 2배 가중치를 부여합니다.
+
+        Args:
+            keyword: 검색 키워드 (예: "삼성전자")
+            size: 반환할 결과 개수 (기본값: 20)
+            min_score: 최소 관련성 점수 (선택적)
+            published_after: 이 날짜 이후의 뉴스만 검색 (datetime, 선택적)
+
+        Returns:
+            list: 검색 결과 리스트. 각 항목은 다음을 포함:
+                - news_id: int
+                - title: str
+                - score: float (관련성 점수)
+                - published_at: str (ISO 형식)
+        """
+        if not keyword or not keyword.strip():
+            logger.warning("Empty keyword provided for search")
+            return []
+
+        # 기본 쿼리: multi_match로 title과 content 검색
+        must_query = {
+            "multi_match": {
+                "query": keyword.strip(),
+                "fields": ["title^2", "content"],  # title에 2배 가중치
+                "type": "best_fields",
+            }
+        }
+
+        # 쿼리 구성
+        if published_after:
+            if isinstance(published_after, datetime):
+                published_after_str = published_after.isoformat()
+            else:
+                published_after_str = published_after
+
+            query = {
+                "size": size,
+                "query": {
+                    "bool": {
+                        "must": [must_query],
+                        "filter": [
+                            {
+                                "range": {
+                                    "published_at": {
+                                        "gte": published_after_str,
+                                    }
+                                }
+                            }
+                        ],
+                    }
+                },
+                "_source": ["news_id", "title", "published_at"],
+            }
+        else:
+            query = {
+                "size": size,
+                "query": must_query,
+                "_source": ["news_id", "title", "published_at"],
+            }
+
+        try:
+            response = self.client.search(index=self.NEWS_INDEX_NAME, body=query)
+
+            results = []
+            for hit in response.get("hits", {}).get("hits", []):
+                score = hit.get("_score", 0.0)
+
+                # min_score 필터링
+                if min_score is not None and score < min_score:
+                    continue
+
+                source = hit.get("_source", {})
+                results.append(
+                    {
+                        "news_id": source.get("news_id"),
+                        "title": source.get("title", ""),
+                        "score": score,
+                        "published_at": source.get("published_at"),
+                    }
+                )
+
+            logger.info(f"Found {len(results)} news articles for keyword: {keyword}")
+            return results
+
+        except Exception as e:
+            logger.error(f"Failed to search news by keyword: {str(e)}")
+            return []
+
     def get_top_keywords(
         self,
         size=15,
