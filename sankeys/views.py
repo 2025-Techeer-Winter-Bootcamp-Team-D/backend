@@ -62,7 +62,7 @@ class AdminSankeyUpdateView(APIView):
             return Response({"error": "JSON 바디에 'year'가 필요합니다."}, status=400)
 
         # 기존 데이터 삭제
-        FinancialFlow.objects.filter(year=year).delete()
+        #FinancialFlow.objects.filter(year=year).delete()
 
         service = FinancialFlowService()
         companies = Company.objects.all()
