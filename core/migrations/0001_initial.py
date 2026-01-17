@@ -11,6 +11,13 @@ class Migration(migrations.Migration):
 
     operations = [
         # ============================================
+        # 0. TimescaleDB Extension 설치
+        # ============================================
+        migrations.RunSQL(
+            "CREATE EXTENSION IF NOT EXISTS timescaledb;",
+            reverse_sql="DROP EXTENSION IF EXISTS timescaledb CASCADE;",
+        ),
+        # ============================================
         # 1. stock_ticks 테이블 생성 (TimescaleDB Hypertable)
         # ============================================
         migrations.RunSQL(
@@ -49,11 +56,12 @@ class Migration(migrations.Migration):
         # ============================================
         # 2. 통합 OHLCV 테이블들
         # ============================================
-        # 1분봉 테이블 생성 (복합 PRIMARY KEY)
+        # 1분봉 테이블 생성 (id 컬럼 포함, 복합 UNIQUE 제약조건)
         migrations.RunSQL(
             """
             CREATE TABLE IF NOT EXISTS stock_prices_1m (
-                bucket TIMESTAMP NOT NULL,
+                id BIGSERIAL PRIMARY KEY,
+                bucket TIMESTAMPTZ NOT NULL,
                 stock_code VARCHAR(10) NOT NULL,
                 open DECIMAL(12, 2),
                 high DECIMAL(12, 2),
@@ -63,19 +71,20 @@ class Migration(migrations.Migration):
                 amount DECIMAL(20, 2),
                 trade_count INTEGER DEFAULT 0,
                 source VARCHAR(20) DEFAULT 'realtime',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (stock_code, bucket)
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (stock_code, bucket)
             );
             CREATE INDEX IF NOT EXISTS idx_prices_1m_bucket ON stock_prices_1m(bucket DESC);
             """,
             reverse_sql="DROP TABLE IF EXISTS stock_prices_1m CASCADE;",
         ),
-        # 15분봉 테이블 생성 (복합 PRIMARY KEY)
+        # 15분봉 테이블 생성 (id 컬럼 포함, 복합 UNIQUE 제약조건)
         migrations.RunSQL(
             """
             CREATE TABLE IF NOT EXISTS stock_prices_15m (
-                bucket TIMESTAMP NOT NULL,
+                id BIGSERIAL PRIMARY KEY,
+                bucket TIMESTAMPTZ NOT NULL,
                 stock_code VARCHAR(10) NOT NULL,
                 open DECIMAL(12, 2),
                 high DECIMAL(12, 2),
@@ -85,19 +94,20 @@ class Migration(migrations.Migration):
                 amount DECIMAL(20, 2),
                 trade_count INTEGER DEFAULT 0,
                 source VARCHAR(20) DEFAULT 'realtime',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (stock_code, bucket)
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (stock_code, bucket)
             );
             CREATE INDEX IF NOT EXISTS idx_prices_15m_bucket ON stock_prices_15m(bucket DESC);
             """,
             reverse_sql="DROP TABLE IF EXISTS stock_prices_15m CASCADE;",
         ),
-        # 1시간봉 테이블 생성 (복합 PRIMARY KEY)
+        # 1시간봉 테이블 생성 (id 컬럼 포함, 복합 UNIQUE 제약조건)
         migrations.RunSQL(
             """
             CREATE TABLE IF NOT EXISTS stock_prices_1h (
-                bucket TIMESTAMP NOT NULL,
+                id BIGSERIAL PRIMARY KEY,
+                bucket TIMESTAMPTZ NOT NULL,
                 stock_code VARCHAR(10) NOT NULL,
                 open DECIMAL(12, 2),
                 high DECIMAL(12, 2),
@@ -107,19 +117,20 @@ class Migration(migrations.Migration):
                 amount DECIMAL(20, 2),
                 trade_count INTEGER DEFAULT 0,
                 source VARCHAR(20) DEFAULT 'realtime',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (stock_code, bucket)
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (stock_code, bucket)
             );
             CREATE INDEX IF NOT EXISTS idx_prices_1h_bucket ON stock_prices_1h(bucket DESC);
             """,
             reverse_sql="DROP TABLE IF EXISTS stock_prices_1h CASCADE;",
         ),
-        # 1일봉 테이블 생성 (복합 PRIMARY KEY)
+        # 1일봉 테이블 생성 (id 컬럼 포함, 복합 UNIQUE 제약조건)
         migrations.RunSQL(
             """
             CREATE TABLE IF NOT EXISTS stock_prices_1d (
-                bucket TIMESTAMP NOT NULL,
+                id BIGSERIAL PRIMARY KEY,
+                bucket TIMESTAMPTZ NOT NULL,
                 stock_code VARCHAR(10) NOT NULL,
                 open DECIMAL(12, 2),
                 high DECIMAL(12, 2),
@@ -129,9 +140,9 @@ class Migration(migrations.Migration):
                 amount DECIMAL(20, 2),
                 trade_count INTEGER DEFAULT 0,
                 source VARCHAR(20) DEFAULT 'realtime',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (stock_code, bucket)
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (stock_code, bucket)
             );
             CREATE INDEX IF NOT EXISTS idx_prices_1d_bucket ON stock_prices_1d(bucket DESC);
             """,
