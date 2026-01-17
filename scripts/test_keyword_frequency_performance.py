@@ -27,7 +27,7 @@ sys.path.insert(0, str(BASE_DIR))
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
-from news.services.opensearch import OpenSearchService
+from news.services.keyword_frequency import KeywordFrequencyService
 from django.utils import timezone
 import logging
 
@@ -39,7 +39,7 @@ class KeywordFrequencyPerformanceTest:
     """키워드 빈도 추출 성능 테스트 클래스"""
 
     def __init__(self):
-        self.opensearch = OpenSearchService()
+        self.keyword_frequency_service = KeywordFrequencyService()
         self.results: List[Dict[str, Any]] = []
 
     def test_single_request(
@@ -54,7 +54,7 @@ class KeywordFrequencyPerformanceTest:
 
         start_time = time.time()
         try:
-            keywords = self.opensearch.get_top_keywords(
+            keywords = self.keyword_frequency_service.get_top_keywords(
                 size=size,
                 published_after=published_after,
                 exclude_keywords=exclude_keywords,
