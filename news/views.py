@@ -356,13 +356,16 @@ def trigger_crawl_news(request):
 
         task = scheduled_crawl_news.delay(keywords, max_articles)
 
+        # keywords는 항상 리스트로 반환
+        keywords_list = keywords if keywords else []
+
         return Response(
             {
                 "status": 202,
                 "message": "뉴스 크롤링 태스크가 시작되었습니다.",
                 "data": {
                     "task_id": task.id,
-                    "keywords": keywords if keywords else "기본 키워드 사용",
+                    "keywords": keywords_list,
                     "max_articles_per_keyword": max_articles,
                 },
             },

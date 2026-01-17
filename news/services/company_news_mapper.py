@@ -98,7 +98,7 @@ class CompanyNewsMapperService:
                     if clean_name and clean_name not in keywords:
                         keywords.append(clean_name)
                 elif suffix in name:
-                    clean_name = name.replace(suffix, "").strip()
+                    clean_name = name.replace(suffix, "", 1).strip()
                     if clean_name and clean_name not in keywords:
                         keywords.append(clean_name)
 

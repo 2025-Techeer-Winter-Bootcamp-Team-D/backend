@@ -8,7 +8,6 @@ from opensearchpy import OpenSearch, helpers
 from django.conf import settings
 from datetime import datetime
 import logging
-import re
 
 logger = logging.getLogger(__name__)
 
