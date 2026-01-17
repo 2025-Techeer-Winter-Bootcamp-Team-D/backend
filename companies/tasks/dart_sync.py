@@ -184,5 +184,5 @@ def sync_all_rankings():
     try:
         update_all_rankings_task.delay()
         logger.info("산업 시가총액 순위 동기화 작업 등록 완료")
-    except Exception as e:
+    except Exception:
         logger.exception("산업 시가총액 순위 동기화 작업 등록 실패")
