@@ -13,9 +13,12 @@ from .views import (
     get_company_news_list,
     get_company_news_detail,
     sync_company_news,
+    search_companies,
 )
 
 urlpatterns = [
+    # 기업 검색
+    path("search/", search_companies, name="company_search"),
     # 기업 상세 정보 주소
     path("<str:stock_code>/", get_company_info, name="company_detail"),
     # 기업 재무 지표 조회
