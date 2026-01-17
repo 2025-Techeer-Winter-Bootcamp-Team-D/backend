@@ -207,3 +207,52 @@ class CrawlJob(models.Model):
         self.error_message = error_message
         self.completed_at = timezone.now()
         self.save(update_fields=["status", "error_message", "completed_at"])
+
+
+class KeywordFrequency(models.Model):
+    """
+    키워드 빈도수 모델
+
+    AI 추출 키워드의 빈도수를 관리합니다.
+    뉴스 저장 시 자동으로 빈도수를 업데이트하며,
+    키워드 조회 시 이 테이블에서 집계합니다.
+    """
+
+    keyword_id = models.BigAutoField(primary_key=True, verbose_name="키워드 ID")
+
+    keyword = models.CharField(
+        max_length=200, unique=True, db_index=True, verbose_name="키워드"
+    )
+
+    frequency = models.IntegerField(default=0, verbose_name="전체 빈도수")
+    """전체 빈도수: 키워드가 등장한 총 횟수"""
+
+    doc_count = models.IntegerField(default=0, verbose_name="문서 수")
+    """문서 수: 키워드가 등장한 뉴스 기사 수"""
+
+    first_seen_at = models.DateTimeField(
+        null=True, blank=True, db_index=True, verbose_name="최초 등장일"
+    )
+    """키워드가 처음 등장한 날짜"""
+
+    last_seen_at = models.DateTimeField(
+        null=True, blank=True, db_index=True, verbose_name="최종 등장일"
+    )
+    """키워드가 마지막으로 등장한 날짜"""
+
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성 시간")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정 시간")
+
+    class Meta:
+        db_table = "keyword_frequencies"
+        ordering = ["-frequency", "-doc_count"]
+        verbose_name = "키워드 빈도수"
+        verbose_name_plural = "키워드 빈도수 목록"
+        indexes = [
+            models.Index(fields=["-frequency", "-doc_count"]),
+            models.Index(fields=["-last_seen_at"]),
+            models.Index(fields=["keyword"]),
+        ]
+
+    def __str__(self):
+        return f"{self.keyword} (빈도: {self.frequency}, 문서: {self.doc_count})"

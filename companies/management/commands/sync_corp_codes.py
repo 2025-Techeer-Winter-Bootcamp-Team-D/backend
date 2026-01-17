@@ -233,11 +233,28 @@ class Command(BaseCommand):
                                 # DART API에서 기업개황 조회하여 업종코드 가져오기
                                 company_info = dart_client.get_company_info(corp_code)
                                 # 업종코드 추출
-                                industry_code = company_info.get("induty_code")
-                                if industry_code and not dry_run:
-                                    self.stdout.write(
-                                        f"  업종코드 조회: {stock_code} → {industry_code}"
-                                    )
+                                raw_industry_code = company_info.get("induty_code")
+                                if raw_industry_code:
+                                    # DART API 응답이 숫자(int)일 수 있으므로 문자열로 변환
+                                    # 업종코드를 3자리로 정규화 (KSIC 소분류 기준)
+                                    industry_code_str = str(raw_industry_code).strip()
+                                    # 숫자 형식의 업종코드를 3자리로 정규화
+                                    # 예: "64992" → "649", "26410" → "264", "264" → "264"
+                                    if (
+                                        industry_code_str.isdigit()
+                                        and len(industry_code_str) > 3
+                                    ):
+                                        industry_code = industry_code_str[:3]
+                                        if not dry_run:
+                                            self.stdout.write(
+                                                f"  업종코드 정규화: {stock_code} → {raw_industry_code} → {industry_code}"
+                                            )
+                                    else:
+                                        industry_code = industry_code_str
+                                        if not dry_run:
+                                            self.stdout.write(
+                                                f"  업종코드 조회: {stock_code} → {industry_code}"
+                                            )
                             except Exception as e:
                                 logger.warning(
                                     f"기업개황 조회 실패 ({stock_code}): {e}. 업종코드 없이 진행."

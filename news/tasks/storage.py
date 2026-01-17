@@ -10,6 +10,7 @@ from typing import List, Dict, Any
 import logging
 
 from news.models import News
+from news.services.keyword_frequency import KeywordFrequencyService
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,17 @@ def save_to_db_task(self, articles: List[Dict[str, Any]]) -> List[Dict[str, Any]
                     logger.info(
                         f"[DB Save] [{idx}/{len(articles)}] 신규 뉴스 저장: news_id={news.news_id}"
                     )
+
+                # 키워드 빈도수 업데이트 (신규 뉴스인 경우만)
+                if created and article.get("keywords"):
+                    try:
+                        KeywordFrequencyService.update_keyword_frequencies(
+                            news, article.get("keywords", [])
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"[DB Save] 키워드 빈도수 업데이트 실패 (news_id={news.news_id}): {e}"
+                        )
 
                 # news_id 추가
                 article["news_id"] = news.news_id

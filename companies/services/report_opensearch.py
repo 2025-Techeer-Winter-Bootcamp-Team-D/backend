@@ -34,6 +34,7 @@ class ReportOpenSearchService:
             use_ssl=settings.OPENSEARCH_USE_SSL,
             verify_certs=settings.OPENSEARCH_VERIFY_CERTS,
             ssl_show_warn=False,
+            maxsize=25,  # 연결 풀 크기 (동시 요청 처리 성능 개선)
         )
 
         self._ensure_index_exists()

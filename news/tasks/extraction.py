@@ -1,14 +1,15 @@
 """
-Jina.ai 본문 추출 태스크
+뉴스 본문 추출 태스크
 
 기사별로 병렬 본문 추출을 수행하고 결과를 집계합니다.
+Trafilatura 라이브러리를 사용하여 로컬에서 추출합니다.
 """
 
 from celery import shared_task
 from typing import List, Dict, Any
 import logging
 
-from news.services.jina_api import JinaReaderService
+from news.services.content_extractor import ContentExtractorService
 from news.models import News
 
 logger = logging.getLogger(__name__)
@@ -41,9 +42,9 @@ def extract_single_article_task(self, article: Dict[str, Any]) -> Dict[str, Any]
         return None
 
     try:
-        # Jina.ai API로 본문 추출
-        jina_service = JinaReaderService()
-        raw_content = jina_service.extract_content(url)
+        # Trafilatura로 본문 추출
+        extractor = ContentExtractorService()
+        raw_content = extractor.extract_content(url)
 
         # 추출 결과 검증
         if not raw_content:

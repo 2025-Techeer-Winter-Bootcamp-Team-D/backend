@@ -115,3 +115,40 @@ class CompanyNewsDetailSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["news_id", "created_at", "updated_at"]
+
+
+class IndustryNewsSerializer(serializers.ModelSerializer):
+    """
+    산업 뉴스 목록용 Serializer
+
+    CompanyNews를 통해 조회하며 기업 정보를 함께 반환합니다.
+    """
+
+    # News 테이블에서 데이터 가져오기
+    news_id = serializers.IntegerField(source="news.news_id", read_only=True)
+    title = serializers.CharField(source="news.title", read_only=True)
+    summary = serializers.CharField(source="news.summary", read_only=True)
+    url = serializers.CharField(source="news.url", read_only=True)
+    author = serializers.CharField(source="news.author", read_only=True)
+    press = serializers.CharField(source="news.press", read_only=True)
+    keywords = serializers.JSONField(source="news.keywords", read_only=True)
+    published_at = serializers.DateTimeField(source="news.published_at", read_only=True)
+
+    # 기업 정보 추가
+    stock_code = serializers.CharField(source="company.stock_code", read_only=True)
+    company_name = serializers.CharField(source="company.company_name", read_only=True)
+
+    class Meta:
+        model = CompanyNews
+        fields = [
+            "news_id",
+            "title",
+            "summary",
+            "url",
+            "author",
+            "press",
+            "keywords",
+            "published_at",
+            "stock_code",
+            "company_name",
+        ]

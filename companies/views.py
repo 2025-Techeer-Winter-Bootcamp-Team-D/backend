@@ -1529,7 +1529,14 @@ def get_company_news_detail(request, stock_code, news_id):
 
 @extend_schema(
     summary="기업 뉴스 동기화 (관리자용)",
-    description="특정 기업의 뉴스를 크롤링하여 CompanyNews 테이블에 저장합니다. 인증이 필요합니다.",
+    description="""
+    특정 기업의 뉴스를 동기화합니다. 인증이 필요합니다.
+
+    **동작 방식:**
+    1. OpenSearch에서 기업명으로 관련 뉴스 검색
+    2. 검색 결과가 3개 이상이면 CompanyNews에 매핑 (빠름, API 비용 없음)
+    3. 검색 결과가 3개 미만이면 기존 크롤링 방식으로 fallback (Gemini API 사용)
+    """,
     parameters=[
         OpenApiParameter(
             name="stock_code",
@@ -1538,10 +1545,17 @@ def get_company_news_detail(request, stock_code, news_id):
             description="동기화할 기업의 종목코드 (예: 005930)",
         ),
         OpenApiParameter(
-            name="max_articles",
+            name="max_news",
             type=int,
             location=OpenApiParameter.QUERY,
-            description="최대 크롤링 기사 수 (기본값: 10, 최대: 100)",
+            description="최대 뉴스 수 (기본값: 20, 최대: 100)",
+            required=False,
+        ),
+        OpenApiParameter(
+            name="days_back",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            description="검색 기간 (일, 기본값: 30)",
             required=False,
         ),
         OpenApiParameter(
@@ -1567,9 +1581,9 @@ def sync_company_news(request, stock_code):
     """
     기업 뉴스 동기화 API (관리자용)
 
-    특정 기업의 뉴스를 크롤링하여 저장합니다.
+    OpenSearch 검색 기반으로 동기화하고, 결과가 부족하면 크롤링 fallback.
     """
-    from news.tasks.company_news import crawl_company_news_task
+    from news.tasks.company_news import sync_company_news_task
 
     # 기업 존재 확인
     try:
@@ -1582,16 +1596,29 @@ def sync_company_news(request, stock_code):
 
     # 쿼리 파라미터 처리
     try:
-        max_articles = int(request.query_params.get("max_articles", 10))
-        if max_articles < 1:
+        max_news = int(request.query_params.get("max_news", 20))
+        if max_news < 1:
             return Response(
-                {"status": 400, "error": "max_articles는 1 이상이어야 합니다."},
+                {"status": 400, "error": "max_news는 1 이상이어야 합니다."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        max_articles = min(max_articles, 100)
+        max_news = min(max_news, 100)
     except (ValueError, TypeError):
         return Response(
-            {"status": 400, "error": "max_articles는 정수여야 합니다."},
+            {"status": 400, "error": "max_news는 정수여야 합니다."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        days_back = int(request.query_params.get("days_back", 30))
+        if days_back < 1:
+            return Response(
+                {"status": 400, "error": "days_back은 1 이상이어야 합니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+    except (ValueError, TypeError):
+        return Response(
+            {"status": 400, "error": "days_back은 정수여야 합니다."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -1599,7 +1626,7 @@ def sync_company_news(request, stock_code):
 
     # 비동기 실행
     if use_async:
-        task = crawl_company_news_task.delay(stock_code, max_articles)
+        task = sync_company_news_task.delay(stock_code, max_news, days_back)
         return Response(
             {
                 "status": 202,
@@ -1608,7 +1635,8 @@ def sync_company_news(request, stock_code):
                     "stock_code": stock_code,
                     "company_name": company.company_name,
                     "task_id": task.id,
-                    "max_articles": max_articles,
+                    "max_news": max_news,
+                    "days_back": days_back,
                     "async": True,
                 },
             },
@@ -1617,7 +1645,7 @@ def sync_company_news(request, stock_code):
 
     # 동기 실행
     try:
-        result = crawl_company_news_task(stock_code, max_articles)
+        result = sync_company_news_task(stock_code, max_news, days_back)
         return Response(
             {
                 "status": 200,
@@ -1625,7 +1653,8 @@ def sync_company_news(request, stock_code):
                 "data": {
                     "stock_code": stock_code,
                     "company_name": company.company_name,
-                    "max_articles": max_articles,
+                    "max_news": max_news,
+                    "days_back": days_back,
                     "async": False,
                     "result": result,
                 },
@@ -1641,3 +1670,105 @@ def sync_company_news(request, stock_code):
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+# ------------------------ 기업 검색 ----------------------------------
+@extend_schema(
+    summary="기업 검색",
+    description="기업명으로 기업을 검색합니다.",
+    parameters=[
+        OpenApiParameter(
+            name="q",
+            type=str,
+            location=OpenApiParameter.QUERY,
+            description="검색 키워드 (기업명)",
+            required=True,
+        ),
+        OpenApiParameter(
+            name="page",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            description="페이지 번호 (기본값: 1)",
+            required=False,
+        ),
+        OpenApiParameter(
+            name="page_size",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            description="페이지당 항목 수 (기본값: 20, 최대: 100)",
+            required=False,
+        ),
+    ],
+    responses={
+        200: OpenApiResponse(description="검색 성공"),
+        400: OpenApiResponse(description="Bad Request"),
+    },
+    tags=["Company"],
+)
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def search_companies(request):
+    """
+    기업 검색 API
+
+    기업명으로 기업을 검색합니다.
+    """
+    from django.core.paginator import Paginator
+    from .serializers import CompanyDetailSerializer
+
+    # 검색 키워드
+    query = request.query_params.get("q", "").strip()
+    if not query:
+        return Response(
+            {"status": 400, "error": "검색 키워드(q)를 입력해주세요."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # 페이지네이션 파라미터
+    try:
+        page = int(request.query_params.get("page", 1))
+        page_size = int(request.query_params.get("page_size", 20))
+    except (ValueError, TypeError):
+        return Response(
+            {"status": 400, "error": "page와 page_size는 정수여야 합니다."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if page < 1:
+        return Response(
+            {"status": 400, "error": "page는 1 이상이어야 합니다."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    page_size = max(1, min(page_size, 100))
+
+    # 검색 쿼리
+    queryset = Company.objects.filter(
+        company_name__icontains=query,
+        is_deleted=False,
+    ).order_by("-market_amount", "company_name")
+
+    # 페이지네이션
+    paginator = Paginator(queryset, page_size)
+    total_count = paginator.count
+    total_pages = paginator.num_pages
+
+    companies_page = paginator.get_page(page)
+
+    # Serializer
+    serializer = CompanyDetailSerializer(companies_page.object_list, many=True)
+
+    return Response(
+        {
+            "status": 200,
+            "message": "기업 검색 성공",
+            "data": {
+                "query": query,
+                "total_count": total_count,
+                "total_pages": total_pages,
+                "current_page": page,
+                "page_size": page_size,
+                "results": serializer.data,
+            },
+        },
+        status=status.HTTP_200_OK,
+    )

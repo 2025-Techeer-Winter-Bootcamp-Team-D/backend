@@ -10,6 +10,7 @@ from typing import Dict, Any
 import logging
 
 from django.db import IntegrityError
+from news.services.keyword_frequency import KeywordFrequencyService
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ def crawl_company_news_task(
     from companies.models import Company
     from news.models import News, CompanyNews
     from news.services.naver_api import NaverSearchService
-    from news.services.jina_api import JinaReaderService
+    from news.services.content_extractor import ContentExtractorService
     from news.services.refiner import RefineService
     from news.services.summarizer import SummarizeService
     from news.services.metadata_extractor import MetadataExtractorService
@@ -54,7 +55,7 @@ def crawl_company_news_task(
 
     # 서비스 초기화
     naver_service = NaverSearchService()
-    jina_service = JinaReaderService()
+    extractor = ContentExtractorService()
     refiner = RefineService()
     summarizer = SummarizeService()
     metadata_extractor = MetadataExtractorService()
@@ -102,15 +103,13 @@ def crawl_company_news_task(
                     )
                 else:
                     skipped_count += 1
-                    logger.debug(
-                        f"[CompanyNews] Mapping already exists: {url[:50]}..."
-                    )
+                    logger.debug(f"[CompanyNews] Mapping already exists: {url[:50]}...")
                 continue
 
             # 새 뉴스인 경우 크롤링 진행
 
-            # 1. 본문 추출
-            raw_content = jina_service.extract_content(url)
+            # 1. 본문 추출 (Trafilatura)
+            raw_content = extractor.extract_content(url)
             if not raw_content:
                 logger.warning(
                     f"[CompanyNews] Failed to extract content: {url[:50]}..."
@@ -166,7 +165,18 @@ def crawl_company_news_task(
                 if updated:
                     news.save()
 
-            # 6. CompanyNews 매핑 생성
+            # 6. 키워드 빈도수 업데이트 (신규 뉴스인 경우만)
+            if news_created and metadata.get("keywords"):
+                try:
+                    KeywordFrequencyService.update_keyword_frequencies(
+                        news, metadata.get("keywords", [])
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"[CompanyNews] 키워드 빈도수 업데이트 실패 (news_id={news.news_id}): {e}"
+                    )
+
+            # 7. CompanyNews 매핑 생성
             CompanyNews.objects.get_or_create(
                 company_id=stock_code,
                 news=news,
@@ -269,3 +279,94 @@ def crawl_single_company_news_sync(
     """
     # 내부적으로 같은 로직 사용
     return crawl_company_news_task(stock_code, max_articles)
+
+
+# Fallback 임계값: 검색 결과가 이 값 미만이면 기존 크롤링 사용
+MIN_SEARCH_RESULTS = 3
+
+
+@shared_task(bind=True, max_retries=3)
+def sync_company_news_task(
+    self, stock_code: str, max_news: int = 20, days_back: int = 30
+) -> Dict[str, Any]:
+    """
+    기업 뉴스 동기화 (OpenSearch 검색 기반 + Fallback)
+
+    1. OpenSearch에서 기업명으로 관련 뉴스 검색
+    2. 검색 결과가 3개 미만이면 기존 크롤링 방식으로 fallback
+    3. 3개 이상이면 검색 결과를 CompanyNews에 매핑
+
+    Args:
+        stock_code: 기업 종목코드
+        max_news: 최대 뉴스 수 (기본값: 20)
+        days_back: 검색 기간 (일, 기본값: 30)
+
+    Returns:
+        dict: 동기화 결과
+    """
+    from companies.models import Company
+    from news.services.company_news_mapper import CompanyNewsMapperService
+
+    try:
+        company = Company.objects.get(stock_code=stock_code, is_deleted=False)
+    except Company.DoesNotExist:
+        logger.error(f"[SyncCompanyNews] Company not found: {stock_code}")
+        return {"success": 0, "error": "Company not found"}
+
+    logger.info(
+        f"[SyncCompanyNews] Starting sync for {stock_code} ({company.company_name})"
+    )
+
+    try:
+        mapper = CompanyNewsMapperService()
+
+        # 1단계: OpenSearch 검색 시도
+        search_results = mapper.search_company_news(
+            company=company,
+            max_news=max_news,
+            days_back=days_back,
+        )
+
+        # 2단계: 결과가 3개 미만이면 기존 크롤링으로 fallback
+        if len(search_results) < MIN_SEARCH_RESULTS:
+            logger.info(
+                f"[SyncCompanyNews] OpenSearch 검색 결과 부족 ({len(search_results)}개), "
+                f"기존 크롤링으로 fallback: {company.company_name}"
+            )
+            # 기존 크롤링 태스크 직접 호출 (동기) - fallback 시 5개만 크롤링
+            fallback_result = crawl_company_news_task(stock_code, 5)
+            fallback_result["method"] = "crawling_fallback"
+            fallback_result["search_count"] = len(search_results)
+            return fallback_result
+
+        # 3단계: 검색 결과를 CompanyNews에 매핑
+        created, existing = mapper.map_news_to_company(
+            company=company,
+            search_results=search_results,
+        )
+
+        result = {
+            "stock_code": stock_code,
+            "company_name": company.company_name,
+            "method": "opensearch",
+            "search_count": len(search_results),
+            "created": created,
+            "existing": existing,
+        }
+
+        logger.info(
+            f"[SyncCompanyNews] Completed {stock_code}: "
+            f"method=opensearch, search={len(search_results)}, "
+            f"created={created}, existing={existing}"
+        )
+
+        return result
+
+    except Exception as e:
+        logger.error(f"[SyncCompanyNews] Error during sync: {e}")
+
+        # 재시도 가능한 에러면 재시도
+        if self.request.retries < self.max_retries:
+            raise self.retry(exc=e, countdown=2**self.request.retries)
+
+        return {"success": 0, "error": str(e)}

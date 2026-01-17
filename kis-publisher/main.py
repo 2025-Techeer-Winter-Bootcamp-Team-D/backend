@@ -4,7 +4,9 @@ import os
 import websockets
 import redis.asyncio as redis
 import aiohttp
-from fetch_symbols import get_all_listed_symbols
+import asyncpg
+from urllib.parse import urlparse
+from fetch_symbols import get_all_listed_symbols, get_stock_codes_from_db
 
 APP_KEY = os.getenv("KIS_APP_KEY")
 APP_SECRET = os.getenv("KIS_APP_SECRET")
@@ -21,13 +23,8 @@ SUBSCRIPTION_DELAY = float(os.getenv("KIS_SUBSCRIPTION_DELAY", "0.5"))  # 기본
 BATCH_DELAY = float(os.getenv("KIS_BATCH_DELAY", "1.0"))  # 배치 간 딜레이 1초
 BATCH_SIZE = int(os.getenv("KIS_BATCH_SIZE", "5"))  # 배치 크기
 
-# 구독할 종목 코드 목록 (동적으로 로드, 제한 적용)
-ALL_SYMBOLS = get_all_listed_symbols()
-SUBSCRIBE_SYMBOLS = ALL_SYMBOLS[:MAX_SUBSCRIBE_SYMBOLS]
-print(
-    f"[INIT] Total symbols available: {len(ALL_SYMBOLS)}, subscribing to: {len(SUBSCRIBE_SYMBOLS)}"
-)
-print(f"[INIT] First symbols to subscribe: {SUBSCRIBE_SYMBOLS[:5]}")
+# 구독할 종목 코드 목록은 run_publisher() 함수 내에서 동적으로 로드
+SUBSCRIBE_SYMBOLS = []
 
 
 class KISParser:
@@ -94,6 +91,35 @@ async def get_approval_key():
 
 
 async def run_publisher():
+    # DB에서 모든 기업의 stock_code 가져오기
+    global SUBSCRIBE_SYMBOLS
+    try:
+        all_stock_codes = await get_stock_codes_from_db()
+        if all_stock_codes:
+            SUBSCRIBE_SYMBOLS = all_stock_codes[:MAX_SUBSCRIBE_SYMBOLS]
+            print(
+                f"[INIT] Loaded {len(all_stock_codes)} stock codes from DB, subscribing to: {len(SUBSCRIBE_SYMBOLS)}"
+            )
+            print(f"[INIT] First symbols to subscribe: {SUBSCRIBE_SYMBOLS[:5]}")
+        else:
+            # DB 조회 실패 시 fallback으로 CSV 또는 환경변수 사용
+            print("[WARNING] Failed to load from DB, falling back to CSV/environment")
+            all_stock_codes = get_all_listed_symbols()
+            SUBSCRIBE_SYMBOLS = all_stock_codes[:MAX_SUBSCRIBE_SYMBOLS]
+            print(
+                f"[INIT] Total symbols available: {len(all_stock_codes)}, subscribing to: {len(SUBSCRIBE_SYMBOLS)}"
+            )
+            print(f"[INIT] First symbols to subscribe: {SUBSCRIBE_SYMBOLS[:5]}")
+    except Exception as e:
+        print(f"[ERROR] Failed to load stock codes: {e}")
+        # Fallback으로 CSV 또는 환경변수 사용
+        all_stock_codes = get_all_listed_symbols()
+        SUBSCRIBE_SYMBOLS = all_stock_codes[:MAX_SUBSCRIBE_SYMBOLS]
+        print(
+            f"[INIT] Total symbols available (fallback): {len(all_stock_codes)}, subscribing to: {len(SUBSCRIBE_SYMBOLS)}"
+        )
+        print(f"[INIT] First symbols to subscribe: {SUBSCRIBE_SYMBOLS[:5]}")
+
     # Redis 연결
     redis_host = os.getenv("REDIS_HOST", "redis")
     redis_url = f"redis://{redis_host}:6379/0"
