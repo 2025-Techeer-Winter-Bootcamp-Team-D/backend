@@ -231,12 +231,12 @@ class KeywordFrequency(models.Model):
     """문서 수: 키워드가 등장한 뉴스 기사 수"""
 
     first_seen_at = models.DateTimeField(
-        auto_now_add=True, db_index=True, verbose_name="최초 등장일"
+        null=True, blank=True, db_index=True, verbose_name="최초 등장일"
     )
     """키워드가 처음 등장한 날짜"""
 
     last_seen_at = models.DateTimeField(
-        auto_now=True, db_index=True, verbose_name="최종 등장일"
+        null=True, blank=True, db_index=True, verbose_name="최종 등장일"
     )
     """키워드가 마지막으로 등장한 날짜"""
 
