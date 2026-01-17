@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """
-Jina.ai 본문 추출 테스트 스크립트
+뉴스 본문 추출 테스트 스크립트
 
-본문 추출한 전체 내용을 확인하기 위한 테스트 스크립트입니다.
+Trafilatura를 사용하여 본문 추출한 전체 내용을 확인하기 위한 테스트 스크립트입니다.
 """
 import os
 import sys
@@ -14,14 +14,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
-from news.services.jina_api import JinaReaderService
+from news.services.content_extractor import ContentExtractorService
 from news.models import News
 
 
-def test_jina_extraction(url: str = None, check_duplicate: bool = True):
+def test_content_extraction(url: str = None, check_duplicate: bool = True):
     """
-    Jina.ai 본문 추출 테스트
-    
+    Trafilatura 본문 추출 테스트
+
     Args:
         url: 테스트할 뉴스 기사 URL (없으면 샘플 URL 사용)
         check_duplicate: DB 중복 체크 여부
@@ -35,7 +35,7 @@ def test_jina_extraction(url: str = None, check_duplicate: bool = True):
             print(f"[알림] 다른 URL을 테스트하려면 --url 옵션을 사용하세요.\n")
 
         print("=" * 80)
-        print(f"Jina.ai 본문 추출 테스트")
+        print(f"Trafilatura 본문 추출 테스트")
         print("=" * 80)
         print(f"\n[테스트 URL]")
         print(f"  {url}")
@@ -53,12 +53,12 @@ def test_jina_extraction(url: str = None, check_duplicate: bool = True):
                     print(f"\n[참고] 본문은 OpenSearch에 저장되어 있습니다. news_id={existing_news.news_id}")
                 return
 
-        # Jina.ai API로 본문 추출
+        # Trafilatura로 본문 추출
         print(f"\n[본문 추출 시작]")
-        print(f"  Jina.ai API 호출 중...")
-        
-        jina_service = JinaReaderService()
-        raw_content = jina_service.extract_content(url)
+        print(f"  Trafilatura 추출 중...")
+
+        extractor = ContentExtractorService()
+        raw_content = extractor.extract_content(url)
 
         # 추출 결과 검증
         if not raw_content:
@@ -97,7 +97,7 @@ def test_jina_extraction(url: str = None, check_duplicate: bool = True):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Jina.ai 본문 추출 테스트")
+    parser = argparse.ArgumentParser(description="Trafilatura 본문 추출 테스트")
     parser.add_argument(
         "--url",
         type=str,
@@ -109,10 +109,10 @@ if __name__ == "__main__":
         action="store_true",
         help="DB 중복 체크 건너뛰기"
     )
-    
+
     args = parser.parse_args()
-    
-    test_jina_extraction(
+
+    test_content_extraction(
         url=args.url,
         check_duplicate=not args.no_check_duplicate
     )
