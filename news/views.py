@@ -14,7 +14,7 @@ from datetime import timedelta
 
 from .models import News
 from .serializers import NewsSerializer, NewsDetailSerializer
-from .services.opensearch import OpenSearchService
+from .services.keyword_frequency import KeywordFrequencyService
 from .tasks.workflows import scheduled_crawl_news
 
 
@@ -149,7 +149,7 @@ def news_detail(request, news_id):
 @extend_schema(
     summary="뉴스 키워드 빈도수 조회",
     description="최근 뉴스에서 자주 등장하는 키워드 빈도수를 조회합니다. "
-    "OpenSearch의 키워드 집계 기능을 사용합니다.",
+    "AI 추출 키워드의 빈도수를 집계하여 반환합니다.",
     parameters=[
         OpenApiParameter(
             name="size",
@@ -217,7 +217,7 @@ def get_news_keywords(request):
     """
     뉴스 키워드 빈도수 조회 API
 
-    OpenSearch에서 최근 뉴스 본문의 키워드 빈도수를 집계하여 반환합니다.
+    KeywordFrequency 테이블에서 AI 추출 키워드의 빈도수를 집계하여 반환합니다.
 
     Query Parameters:
     - size: 반환할 상위 키워드 개수 (기본값: 15, 최대: 50)
@@ -251,8 +251,7 @@ def get_news_keywords(request):
     published_after = timezone.now() - timedelta(days=days)
 
     try:
-        opensearch = OpenSearchService()
-        keywords = opensearch.get_top_keywords(
+        keywords = KeywordFrequencyService.get_top_keywords(
             size=size,
             published_after=published_after,
             exclude_keywords=exclude_keywords,
@@ -275,7 +274,7 @@ def get_news_keywords(request):
         return Response(
             {
                 "status": 500,
-                "error": f"OpenSearch 오류: {str(e)}",
+                "error": f"키워드 조회 오류: {str(e)}",
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )

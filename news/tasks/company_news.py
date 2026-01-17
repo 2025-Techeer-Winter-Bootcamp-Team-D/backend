@@ -10,6 +10,7 @@ from typing import Dict, Any
 import logging
 
 from django.db import IntegrityError
+from news.services.keyword_frequency import KeywordFrequencyService
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ def crawl_company_news_task(
     from companies.models import Company
     from news.models import News, CompanyNews
     from news.services.naver_api import NaverSearchService
-    from news.services.jina_api import JinaReaderService
+    from news.services.content_extractor import ContentExtractorService
     from news.services.refiner import RefineService
     from news.services.summarizer import SummarizeService
     from news.services.metadata_extractor import MetadataExtractorService
@@ -54,7 +55,7 @@ def crawl_company_news_task(
 
     # 서비스 초기화
     naver_service = NaverSearchService()
-    jina_service = JinaReaderService()
+    extractor = ContentExtractorService()
     refiner = RefineService()
     summarizer = SummarizeService()
     metadata_extractor = MetadataExtractorService()
@@ -107,8 +108,8 @@ def crawl_company_news_task(
 
             # 새 뉴스인 경우 크롤링 진행
 
-            # 1. 본문 추출
-            raw_content = jina_service.extract_content(url)
+            # 1. 본문 추출 (Trafilatura)
+            raw_content = extractor.extract_content(url)
             if not raw_content:
                 logger.warning(
                     f"[CompanyNews] Failed to extract content: {url[:50]}..."
@@ -164,7 +165,18 @@ def crawl_company_news_task(
                 if updated:
                     news.save()
 
-            # 6. CompanyNews 매핑 생성
+            # 6. 키워드 빈도수 업데이트 (신규 뉴스인 경우만)
+            if news_created and metadata.get("keywords"):
+                try:
+                    KeywordFrequencyService.update_keyword_frequencies(
+                        news, metadata.get("keywords", [])
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"[CompanyNews] 키워드 빈도수 업데이트 실패 (news_id={news.news_id}): {e}"
+                    )
+
+            # 7. CompanyNews 매핑 생성
             CompanyNews.objects.get_or_create(
                 company_id=stock_code,
                 news=news,
