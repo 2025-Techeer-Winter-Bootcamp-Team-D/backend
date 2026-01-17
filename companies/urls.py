@@ -14,6 +14,7 @@ from .views import (
     get_company_news_detail,
     sync_company_news,
     search_companies,
+    get_company_outlook,
 )
 
 urlpatterns = [
@@ -29,6 +30,12 @@ urlpatterns = [
     ),
     # 기업 보고서 목록 조회
     path("<str:stock_code>/reports/", get_company_reports, name="company_reports"),
+    # 보고서 처리 (관리자용) - reports/<rcept_no>/ 보다 위에 배치해야 함
+    path(
+        "<str:stock_code>/reports/process/",
+        process_company_reports_view,
+        name="company_reports_process",
+    ),
     # 기업 보고서 분석 결과 조회
     path(
         "<str:stock_code>/reports/<str:rcept_no>/",
@@ -43,6 +50,8 @@ urlpatterns = [
     ),
     # 기업 주가 데이터 조회
     path("<str:stock_code>/prices/", get_company_prices, name="company_prices"),
+    # 기업 전망 분석
+    path("<str:stock_code>/outlook/", get_company_outlook, name="company_outlook"),
     # 기업 뉴스 목록 조회
     path("<str:stock_code>/news/", get_company_news_list, name="company_news_list"),
     # 기업 뉴스 상세 조회
@@ -61,12 +70,6 @@ urlpatterns = [
     path("<str:stock_code>/sync/", sync_company_from_dart, name="company_sync"),
     # 전체 기업 DART 데이터 동기화 (관리자용)
     path("sync/all/", sync_all_companies_from_dart, name="sync_all_companies"),
-    # 보고서 처리 (관리자용)
-    path(
-        "<str:stock_code>/reports/process/",
-        process_company_reports_view,
-        name="company_reports_process",
-    ),
     # 기업 랭킹 조회
     path("rankings/companies/", get_company_rankings, name="company_rankings"),
 ]
