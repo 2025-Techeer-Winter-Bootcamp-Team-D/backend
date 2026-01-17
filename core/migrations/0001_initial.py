@@ -15,7 +15,7 @@ class Migration(migrations.Migration):
         # ============================================
         migrations.RunSQL(
             "CREATE EXTENSION IF NOT EXISTS timescaledb;",
-            reverse_sql="DROP EXTENSION IF EXISTS timescaledb CASCADE;",
+            reverse_sql="DROP EXTENSION IF EXISTS timescaledb;",
         ),
         # ============================================
         # 1. stock_ticks 테이블 생성 (TimescaleDB Hypertable)
@@ -43,7 +43,7 @@ class Migration(migrations.Migration):
                 chunk_time_interval => INTERVAL '1 day'
             );
             """,
-            reverse_sql="",  # Hypertable은 테이블 삭제 시 자동 정리
+            reverse_sql=None,  # Hypertable 변환은 되돌릴 수 없음 (irreversible)
         ),
         # stock_ticks 인덱스
         migrations.RunSQL(
