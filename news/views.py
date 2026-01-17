@@ -1,6 +1,6 @@
 from rest_framework import status, serializers
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from drf_spectacular.utils import (
     extend_schema,
@@ -324,7 +324,7 @@ def get_news_keywords(request):
     tags=["Admin"],
 )
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdminUser])
 def trigger_crawl_news(request):
     """
     관리자용 뉴스 크롤링 수동 실행 API
