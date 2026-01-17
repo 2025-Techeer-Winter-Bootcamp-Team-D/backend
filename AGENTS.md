@@ -308,6 +308,9 @@ from django.core.cache import cache
 from django.db import transaction
 
 from .models import Company
+import logging
+
+logger = logging.getLogger(__name__)
 
 class CompanyService:
     """기업 관련 비즈니스 로직 서비스"""
@@ -340,7 +343,13 @@ class CompanyService:
             Company.objects.filter(stock_code=stock_code).update(rank=rank)
         
         # 캐시 무효화
-        cache.delete_pattern("company:*")
+        # Redis 백엔드인 경우 delete_pattern 사용, 그 외에는 안전한 fallback
+        if hasattr(cache, "delete_pattern"):
+            cache.delete_pattern("company:*")
+        else:
+            # Redis가 아닌 백엔드의 경우: 패턴 매칭 키 삭제는 지원하지 않음
+            # 필요시 개별 키를 삭제하거나 Redis 백엔드 사용 권장
+            logger.warning("Redis 백엔드가 아니므로 패턴 기반 캐시 삭제를 건너뜁니다.")
 ```
 
 ## 프로젝트 특이사항
@@ -363,10 +372,11 @@ class CompanyService:
 ### API 문서화
 - drf-spectacular로 OpenAPI/Swagger 자동 생성
 - `/api/docs/`에서 Swagger UI 접근 가능
-- 모든 API 엔드포인트은 적절한 데코레이터로 문서화
+- 모든 API 엔드포인트는 적절한 데코레이터로 문서화
 
 ### 커밋 메시지 규칙
-```
+
+```text
 <IssueType>: <Message>
 
 feat: 회원가입 기능 구현 완료
@@ -375,7 +385,11 @@ docs: API 명세서 업데이트
 chore: Docker Compose 설정 추가
 refactor: 사용자 인증 로직 개선
 ```
-커밋을 할 때에는 논리적으로 묶어서 여러번 시행
+
+#### 커밋 가이드라인
+- 커밋을 할 때에는 논리적으로 묶어서 여러번 시행
+- 관련된 변경사항은 하나의 커밋으로 묶기
+- 각 커밋은 독립적으로 의미가 있어야 함
 
 ## 기존 설정 파일
 - `.cursor/rules`, `.cursorrules`, `.github/copilot-instructions.md` 파일은 존재하지 않음
