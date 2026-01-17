@@ -8,7 +8,7 @@
 
 ### 현재 구조
 
-```
+```text
 [기업 뉴스 동기화 - crawl_company_news_task]
 회사명 → Naver API 검색 → Jina Reader 본문 추출 → Gemini 정제 → Gemini 요약 → Gemini 메타데이터 → DB 저장
 
@@ -69,7 +69,7 @@ def search_news_by_keyword(
 
 #### 검색 전략 옵션
 
-**A. 텍스트 매칭 (단순)**
+### A. 텍스트 매칭 (단순)
 ```json
 {
   "query": {
@@ -82,7 +82,7 @@ def search_news_by_keyword(
 }
 ```
 
-**B. 하이브리드 검색 (정확도 향상)**
+### B. 하이브리드 검색 (정확도 향상)
 ```json
 {
   "query": {
