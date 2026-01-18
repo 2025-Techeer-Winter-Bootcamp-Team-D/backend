@@ -87,7 +87,7 @@ def refine_report_content_task(self, data: dict[str, Any]) -> dict[str, Any] | N
     except Exception as e:
         logger.error(f"보고서 정제 오류: {report_id} - {e}")
         # Celery retry 호출 (지수 백오프)
-        raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
+        raise self.retry(exc=e, countdown=60 * (2**self.request.retries))
 
 
 @shared_task(bind=True, max_retries=3)
@@ -123,6 +123,7 @@ def extract_report_info_task(self, data: dict[str, Any]) -> dict[str, Any] | Non
                     # ISO/datetime 형식 파싱 시도
                     from datetime import datetime
                     from dateutil import parser as date_parser
+
                     parsed_date = date_parser.parse(submitted_at)
                     fiscal_year = parsed_date.year
                 except (ValueError, TypeError, AttributeError):
@@ -132,38 +133,59 @@ def extract_report_info_task(self, data: dict[str, Any]) -> dict[str, Any] | Non
                             fiscal_year = int(submitted_at[:4])
                     except (ValueError, TypeError):
                         pass
-            
+
             if fiscal_year is None:
                 fiscal_year = timezone.now().year
                 logger.warning(
                     f"submitted_at 파싱 실패, 현재 연도 사용: report_id={report_id}, "
                     f"company={company_stock_code}, submitted_at={submitted_at}"
                 )
-            
+
             saved_count = 0
+            others_segment = None  # "기타" 항목 저장용
+            total_ratio = 0.0  # 나머지 항목들의 ratio 합
+
+            # 먼저 "기타" 항목을 제외한 나머지 항목 처리
             for segment in revenue_composition:
                 # 필수 키 검증: segment 필드가 있고 비어있지 않은지 확인
-                segment_name = segment.get("segment") if isinstance(segment, dict) else None
+                segment_name = (
+                    segment.get("segment") if isinstance(segment, dict) else None
+                )
                 if not segment_name or not str(segment_name).strip():
                     logger.warning(
                         f"매출 구성 항목 건너뜀 (segment 누락/비어있음): report_id={report_id}, "
                         f"company={company_stock_code}, segment_data={segment}"
                     )
                     continue
-                
+
+                segment_name = str(segment_name).strip()
+
+                # "기타" 항목은 나중에 처리
+                if segment_name == "기타":
+                    others_segment = segment
+                    continue
+
                 # revenue를 int/Decimal로 안전하게 변환
                 try:
                     revenue_value = segment.get("revenue", 0)
                     if revenue_value is None:
                         revenue_value = 0
                     revenue_value = int(revenue_value)
+
+                    # 매출(revenue)은 음수가 될 수 없음 - 마이너스 값은 건너뜀
+                    if revenue_value < 0:
+                        logger.warning(
+                            f"매출 구성 항목 건너뜀 (revenue가 마이너스): report_id={report_id}, "
+                            f"company={company_stock_code}, segment={segment_name}, revenue={revenue_value}"
+                        )
+                        continue
                 except (ValueError, TypeError):
                     logger.warning(
-                        f"매출 구성 항목 revenue 변환 실패, 기본값 0 사용: report_id={report_id}, "
+                        f"매출 구성 항목 revenue 변환 실패, 건너뜀: report_id={report_id}, "
                         f"company={company_stock_code}, revenue={segment.get('revenue')}"
                     )
-                    revenue_value = 0
-                
+                    continue
+
                 # ratio가 숫자 또는 None인지 검증
                 ratio_value = segment.get("ratio")
                 if ratio_value is not None:
@@ -172,24 +194,69 @@ def extract_report_info_task(self, data: dict[str, Any]) -> dict[str, Any] | Non
                         if isinstance(ratio_value, str):
                             ratio_value = ratio_value.replace("%", "").strip()
                         ratio_value = float(ratio_value)
+                        # 유효한 ratio만 합산
+                        if ratio_value > 0:
+                            total_ratio += ratio_value
                     except (ValueError, TypeError):
                         logger.warning(
                             f"매출 구성 항목 ratio 변환 실패, None 사용: report_id={report_id}, "
                             f"company={company_stock_code}, ratio={segment.get('ratio')}"
                         )
                         ratio_value = None
-                
+
                 RevenueComposition.objects.update_or_create(
                     company_id=company_stock_code,
                     fiscal_year=fiscal_year,
-                    segment_name=str(segment_name).strip(),
+                    segment_name=segment_name,
                     defaults={
                         "revenue": revenue_value,
                         "ratio": ratio_value,
                     },
                 )
                 saved_count += 1
-            
+
+            # "기타" 항목 처리: ratio를 100 - (나머지 ratio 합)으로 계산
+            # ratio가 0이면 저장하지 않음
+            if others_segment:
+                segment_name = "기타"
+                others_ratio = max(0.0, 100.0 - total_ratio)  # 최소 0
+
+                # ratio가 0이면 저장하지 않음
+                if others_ratio <= 0:
+                    logger.debug(
+                        f"매출 구성 기타 항목 제외 (ratio가 0): report_id={report_id}, "
+                        f"company={company_stock_code}, 계산값: 100 - {total_ratio:.2f} = {others_ratio:.2f}"
+                    )
+                else:
+                    # revenue는 원본 데이터 사용 (마이너스여도 상관없음 - ratio만 계산)
+                    try:
+                        revenue_value = others_segment.get("revenue", 0)
+                        if revenue_value is None:
+                            revenue_value = 0
+                        else:
+                            revenue_value = int(revenue_value)
+                            # 마이너스면 0으로 설정 (매출은 음수가 될 수 없음)
+                            if revenue_value < 0:
+                                revenue_value = 0
+                    except (ValueError, TypeError):
+                        revenue_value = 0
+
+                    RevenueComposition.objects.update_or_create(
+                        company_id=company_stock_code,
+                        fiscal_year=fiscal_year,
+                        segment_name=segment_name,
+                        defaults={
+                            "revenue": revenue_value,
+                            "ratio": round(others_ratio, 2),  # 소수점 2자리로 반올림
+                        },
+                    )
+                    saved_count += 1
+
+                    logger.debug(
+                        f"매출 구성 기타 항목 처리: report_id={report_id}, "
+                        f"company={company_stock_code}, ratio={round(others_ratio, 2)}% (계산값: 100 - {total_ratio:.2f})"
+                    )
+
             logger.info(
                 f"매출 구성 저장 완료: {report_id} - {saved_count}개 부문 저장 "
                 f"(총 {len(revenue_composition)}개 중)"
@@ -200,7 +267,7 @@ def extract_report_info_task(self, data: dict[str, Any]) -> dict[str, Any] | Non
     except Exception as e:
         logger.error(f"정보 추출 오류: {data.get('report_id')} - {e}")
         # Celery retry 호출 (지수 백오프)
-        raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
+        raise self.retry(exc=e, countdown=60 * (2**self.request.retries))
 
 
 @shared_task(bind=True, max_retries=3)
@@ -229,7 +296,7 @@ def create_report_embedding_task(self, data: dict[str, Any]) -> dict[str, Any] |
     except Exception as e:
         logger.error(f"임베딩 생성 오류: {report_id} - {e}")
         # Celery retry 호출 (지수 백오프)
-        raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
+        raise self.retry(exc=e, countdown=60 * (2**self.request.retries))
 
 
 @shared_task

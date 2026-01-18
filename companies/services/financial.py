@@ -3,6 +3,7 @@
 재무 지표 서비스
 DART API를 통해 재무제표를 조회하고 FinancialStatement, RevenueComposition 모델에 저장하는 서비스
 """
+
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import logging
@@ -95,6 +96,20 @@ class FinancialService:
         logger.info(
             f"재무제표 동기화 완료: {company.stock_code} ({year}년, {len(all_statements)}개 보고서)"
         )
+
+        # 재무제표 동기화 후 매출 구성 동기화 (사업보고서만)
+        # 사업보고서가 있는 경우에만 매출 구성 동기화 시도
+        annual_statement = next(
+            (s for s in all_statements if s.report_code == "11011"), None
+        )
+        if annual_statement:
+            try:
+                self.sync_revenue_composition(company, year)
+            except Exception as e:
+                # 매출 구성 동기화 실패는 경고만 출력 (치명적 오류 아님)
+                logger.warning(
+                    f"매출 구성 동기화 실패: {company.stock_code} ({year}년) - {e}"
+                )
 
         return all_statements
 
@@ -233,9 +248,8 @@ class FinancialService:
     ) -> List[RevenueComposition]:
         """
         매출 구성 데이터 동기화
-        주의: DART API에서 직접 매출 구성을 제공하지 않으므로,
-        사업보고서의 사업부문별 매출 정보를 별도로 파싱해야 함.
-        현재는 기본 구조만 제공.
+        해당 연도의 사업보고서(Report)가 처리되어 있으면 extracted_info에서
+        revenue_composition을 추출하여 RevenueComposition 테이블에 저장합니다.
 
         Args:
             company: Company 인스턴스
@@ -244,12 +258,173 @@ class FinancialService:
         Returns:
             RevenueComposition 인스턴스 리스트
         """
-        # TODO: 사업보고서 원문에서 매출 구성 정보 추출 필요
-        # 현재는 빈 리스트 반환
-        logger.warning(
-            f"매출 구성 동기화는 아직 구현되지 않았습니다. {company.stock_code} ({year}년)"
+        from companies.models import Report
+
+        # 해당 연도의 사업보고서 찾기
+        # 보고서 이름에 "사업보고서"가 포함되고, submitted_at의 연도가 해당 year와 일치하는 것 찾기
+        reports = Report.objects.filter(
+            company=company,
+            report_name__icontains="사업보고서",
+            submitted_at__year=year,
+            processing_status="completed",
+            extracted_info__isnull=False,
+        ).order_by("-submitted_at")
+
+        if not reports.exists():
+            logger.debug(
+                f"매출 구성 동기화: 처리된 사업보고서 없음 - {company.stock_code} ({year}년)"
+            )
+            return []
+
+        # 가장 최근 보고서 사용
+        report = reports.first()
+        extracted_info = report.extracted_info
+
+        if not extracted_info or "revenue_composition" not in extracted_info:
+            logger.debug(
+                f"매출 구성 동기화: extracted_info에 revenue_composition 없음 - "
+                f"{company.stock_code} ({year}년, report_id: {report.id})"
+            )
+            return []
+
+        revenue_composition_data = extracted_info.get("revenue_composition", [])
+
+        if not revenue_composition_data:
+            logger.debug(
+                f"매출 구성 동기화: revenue_composition 데이터 없음 - "
+                f"{company.stock_code} ({year}년)"
+            )
+            return []
+
+        saved_compositions = []
+        others_segment = None  # "기타" 항목 저장용
+        total_ratio = 0.0  # 나머지 항목들의 ratio 합
+
+        # 먼저 "기타" 항목을 제외한 나머지 항목 처리
+        for segment in revenue_composition_data:
+            # 필수 키 검증: segment 필드가 있고 비어있지 않은지 확인
+            segment_name = segment.get("segment") if isinstance(segment, dict) else None
+            if not segment_name or not str(segment_name).strip():
+                logger.warning(
+                    f"매출 구성 항목 건너뜀 (segment 누락/비어있음): "
+                    f"{company.stock_code} ({year}년), segment_data={segment}"
+                )
+                continue
+
+            segment_name = str(segment_name).strip()
+
+            # "기타" 항목은 나중에 처리
+            if segment_name == "기타":
+                others_segment = segment
+                continue
+
+            # revenue를 int로 안전하게 변환
+            try:
+                revenue_value = segment.get("revenue", 0)
+                if revenue_value is None:
+                    revenue_value = 0
+                revenue_value = int(revenue_value)
+
+                # 매출(revenue)은 음수가 될 수 없음 - 마이너스 값은 건너뜀
+                if revenue_value < 0:
+                    logger.warning(
+                        f"매출 구성 항목 건너뜀 (revenue가 마이너스): "
+                        f"{company.stock_code} ({year}년), segment={segment_name}, revenue={revenue_value}"
+                    )
+                    continue
+            except (ValueError, TypeError):
+                logger.warning(
+                    f"매출 구성 항목 revenue 변환 실패, 건너뜀: "
+                    f"{company.stock_code} ({year}년), revenue={segment.get('revenue')}"
+                )
+                continue
+
+            # ratio가 숫자 또는 None인지 검증
+            ratio_value = segment.get("ratio")
+            if ratio_value is not None:
+                try:
+                    # 문자열 "58.1%" 형태 처리
+                    if isinstance(ratio_value, str):
+                        ratio_value = ratio_value.replace("%", "").strip()
+                    ratio_value = float(ratio_value)
+                    # 유효한 ratio만 합산
+                    if ratio_value > 0:
+                        total_ratio += ratio_value
+                except (ValueError, TypeError):
+                    logger.warning(
+                        f"매출 구성 항목 ratio 변환 실패, None 사용: "
+                        f"{company.stock_code} ({year}년), ratio={segment.get('ratio')}"
+                    )
+                    ratio_value = None
+
+            # RevenueComposition 저장 또는 업데이트
+            composition, created = RevenueComposition.objects.update_or_create(
+                company=company,
+                fiscal_year=year,
+                segment_name=segment_name,
+                defaults={
+                    "revenue": revenue_value,
+                    "ratio": ratio_value,
+                },
+            )
+            saved_compositions.append(composition)
+
+            action = "생성" if created else "업데이트"
+            logger.debug(
+                f"매출 구성 {action}: {company.stock_code} ({year}년) - "
+                f"{segment_name}: {revenue_value:,}원 ({ratio_value}%)"
+            )
+
+        # "기타" 항목 처리: ratio를 100 - (나머지 ratio 합)으로 계산
+        # ratio가 0이면 저장하지 않음
+        if others_segment:
+            segment_name = "기타"
+            others_ratio = max(0.0, 100.0 - total_ratio)  # 최소 0
+
+            # ratio가 0이면 저장하지 않음
+            if others_ratio <= 0:
+                logger.debug(
+                    f"매출 구성 기타 항목 제외 (ratio가 0): "
+                    f"{company.stock_code} ({year}년), 계산값: 100 - {total_ratio:.2f} = {others_ratio:.2f}"
+                )
+            else:
+                # revenue는 원본 데이터 사용 (마이너스여도 상관없음 - ratio만 계산)
+                try:
+                    revenue_value = others_segment.get("revenue", 0)
+                    if revenue_value is None:
+                        revenue_value = 0
+                    else:
+                        revenue_value = int(revenue_value)
+                        # 마이너스면 0으로 설정 (매출은 음수가 될 수 없음)
+                        if revenue_value < 0:
+                            revenue_value = 0
+                except (ValueError, TypeError):
+                    revenue_value = 0
+
+                # RevenueComposition 저장 또는 업데이트
+                composition, created = RevenueComposition.objects.update_or_create(
+                    company=company,
+                    fiscal_year=year,
+                    segment_name=segment_name,
+                    defaults={
+                        "revenue": revenue_value,
+                        "ratio": round(others_ratio, 2),  # 소수점 2자리로 반올림
+                    },
+                )
+                saved_compositions.append(composition)
+
+                action = "생성" if created else "업데이트"
+                logger.debug(
+                    f"매출 구성 {action} (기타): {company.stock_code} ({year}년) - "
+                    f"{segment_name}: {revenue_value:,}원 (ratio: {round(others_ratio, 2)}%, 계산값: 100 - {total_ratio:.2f})"
+                )
+
+        logger.info(
+            f"매출 구성 동기화 완료: {company.stock_code} ({year}년) - "
+            f"{len(saved_compositions)}개 부문 저장"
         )
-        return []
+
+        return saved_compositions
 
     def get_financial_statements(
         self, company: Company, years: Optional[List[int]] = None
@@ -283,7 +458,7 @@ class FinancialService:
 
         Args:
             company: Company 인스턴스
-            year: 조회할 연도 (None이면 최신 연도)
+            year: 조회할 연도 (None이면 최신 연도, 해당 연도 데이터 없으면 사용 가능한 최신 연도 반환)
 
         Returns:
             RevenueComposition 인스턴스 리스트
@@ -300,8 +475,28 @@ class FinancialService:
             else:
                 return []
 
+        # 지정된 연도의 데이터 조회
         revenue_compositions = RevenueComposition.objects.filter(
             company=company, fiscal_year=year
         ).order_by("-revenue")
 
-        return list(revenue_compositions)
+        if revenue_compositions.exists():
+            return list(revenue_compositions)
+
+        # 해당 연도 데이터가 없으면 사용 가능한 최신 연도 반환
+        latest = (
+            RevenueComposition.objects.filter(company=company)
+            .order_by("-fiscal_year")
+            .first()
+        )
+        if latest:
+            logger.debug(
+                f"매출 구성: {year}년 데이터 없음, {latest.fiscal_year}년 데이터 반환"
+            )
+            return list(
+                RevenueComposition.objects.filter(
+                    company=company, fiscal_year=latest.fiscal_year
+                ).order_by("-revenue")
+            )
+
+        return []
