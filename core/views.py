@@ -38,7 +38,7 @@ from django.core.cache import cache
             },
         ),
     },
-    tags=["Health Check"],
+    tags=["System"],
 )
 @api_view(["GET"])
 def health_check(request):
@@ -141,7 +141,7 @@ def health_check(request):
         403: OpenApiResponse(description="권한 없음"),
         404: OpenApiResponse(description="종목을 찾을 수 없음"),
     },
-    tags=["Admin - Stock Data"],
+    tags=["Admin"],
 )
 @api_view(["POST"])
 @permission_classes([IsAdminUser])
@@ -272,7 +272,7 @@ def sync_stock_history(request, stock_code: str):
         400: OpenApiResponse(description="잘못된 요청"),
         401: OpenApiResponse(description="인증 필요"),
     },
-    tags=["Admin - Stock Data"],
+    tags=["Admin"],
 )
 @api_view(["POST"])
 @permission_classes([IsAdminUser])
@@ -357,7 +357,7 @@ def sync_multiple_stocks_history(request):
         200: OpenApiResponse(description="동기화 완료"),
         401: OpenApiResponse(description="인증 필요"),
     },
-    tags=["Admin - Stock Data"],
+    tags=["Admin"],
 )
 @api_view(["POST"])
 @permission_classes([IsAdminUser])
