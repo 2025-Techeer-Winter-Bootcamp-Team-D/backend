@@ -24,6 +24,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # .env 파일 로드
 load_dotenv(BASE_DIR / ".env")
 
+# KIS API 설정 (환경 변수에서 읽어오기)
+KIS_APP_KEY = os.getenv('KIS_APP_KEY')
+KIS_APP_SECRET = os.getenv('KIS_APP_SECRET')
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
@@ -40,7 +43,6 @@ ALLOWED_HOSTS = ["*"]
 # Application definition
 
 INSTALLED_APPS = [
-    "daphne",  # Channels ASGI 서버 (INSTALLED_APPS 최상단)
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -51,19 +53,13 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
-    "channels",  # Django Channels
     # 만든 앱 등록
     "industries",
     "companies",
     "core",
     "news",
     "users",
-    "comparisons",
-    "indices",
 ]
-
-# ASGI Application
-ASGI_APPLICATION = "config.asgi.application"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -119,8 +115,6 @@ SPECTACULAR_SETTINGS = {
     # 태그 정렬
     "TAGS": [
         {"name": "Health Check", "description": "서버 상태 확인"},
-        {"name": "Company", "description": "기업 정보 및 재무 데이터 조회"},
-        {"name": "Industry", "description": "산업별 기업 정보 조회"},
     ],
 }
 
@@ -194,100 +188,23 @@ CELERY_ENABLE_UTC = False
 # Celery 6.0+ 호환성을 위한 설정
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
-# =============================================================================
-# 배치 작업 활성화 설정 (개발 환경에서 토큰 사용 절감)
-# =============================================================================
-# 환경변수로 개별 배치 작업을 활성화/비활성화할 수 있습니다.
-# 기본값은 모두 비활성화 (개발 환경 기본)
-# 프로덕션에서는 .env 파일에서 true로 설정하세요.
-
-# 뉴스 크롤링 배치 (Gemini 토큰 사용: 정제, 요약, 임베딩)
-NEWS_BATCH_ENABLED = os.getenv("NEWS_BATCH_ENABLED", "false").lower() == "true"
-
-# DART 동기화 배치 (DART OpenAPI - 무료, 기본 활성화)
-DART_SYNC_ENABLED = os.getenv("DART_SYNC_ENABLED", "true").lower() == "true"
-
-# 보고서 처리 배치 (Gemini 토큰 사용: 정제, 정보추출, 임베딩)
-REPORT_PROCESSING_ENABLED = (
-    os.getenv("REPORT_PROCESSING_ENABLED", "false").lower() == "true"
-)
-
-# =============================================================================
 # Celery Beat Schedule (주기적 작업 스케줄링)
-# =============================================================================
-# 배치 작업은 위의 활성화 설정에 따라 조건부로 등록됩니다.
-
-CELERY_BEAT_SCHEDULE = {}
-
-# 뉴스 크롤링: 매 3시간마다 실행
-if NEWS_BATCH_ENABLED:
-    CELERY_BEAT_SCHEDULE["crawl-news-every-3-hours"] = {
-        "task": "news.tasks.workflows.scheduled_crawl_news",
+# 뉴스 크롤링: 매 3시간마다 실행 (오전 9시, 12시, 오후 3시, 6시, 9시, 자정)
+# 필요에 따라 주기를 조정할 수 있습니다 (예: 1시간, 6시간 등)
+CELERY_BEAT_SCHEDULE = {
+    "crawl-news-every-3-hours": {
+        "task": "news.tasks.workflows.scheduled_crawl_news",  # Canvas 워크플로우 사용
         "schedule": 3 * 60 * 60,  # 3시간 (초 단위)
         "kwargs": {
-            "keywords": [
-                "경제",
-                "증권",
-                "기업",
-                "IT",
-                "기술",
-                "산업",
-                "무역",
-                "금융",
-            ],
+            "keywords": ["AI", "반도체", "삼성전자", "SK하이닉스"],  # 기본 키워드
             "max_articles_per_keyword": 10,
         },
-    }
-
-# DART 기업 정보 동기화: 주 1회 (일요일 새벽 3시)
-if DART_SYNC_ENABLED:
-    CELERY_BEAT_SCHEDULE["sync-dart-company-info-weekly"] = {
-        "task": "companies.tasks.dart_sync.sync_all_company_info",
-        "schedule": crontab(day_of_week=0, hour=3, minute=0),
-    }
-    # DART 보고서 목록 동기화: 일 1회 (새벽 4시)
-    CELERY_BEAT_SCHEDULE["sync-dart-reports-daily"] = {
-        "task": "companies.tasks.dart_sync.sync_all_reports",
-        "schedule": crontab(hour=4, minute=0),
-    }
-
-# 시가총액 갱신: 평일 장 마감 후 (16:10)
-# KIS REST API를 통해 전체 기업의 시가총액 배치 갱신
-# DART 동기화와 독립적으로 실행
-CELERY_BEAT_SCHEDULE["sync-market-amount-daily"] = {
-    "task": "companies.tasks.kis_market_amount.sync_all_market_amount",
-    "schedule": crontab(day_of_week="1-5", hour=16, minute=10),
+    },
+    "sync-industry-charts-daily": {
+        "task": "industries.tasks.index_sync.sync_industry_charts_daily",
+        "schedule": crontab(hour=16, minute=10),  # 매일 오전 4시 10분에 실행
+    },
 }
-
-# =============================================================================
-# 주가 데이터 동기화 스케줄 (Continuous Aggregate → 통합 테이블)
-# =============================================================================
-# 장중(09:00~15:30)에만 실행되도록 설정
-STOCK_PRICE_SYNC_ENABLED = (
-    os.getenv("STOCK_PRICE_SYNC_ENABLED", "true").lower() == "true"
-)
-
-if STOCK_PRICE_SYNC_ENABLED:
-    # 1분봉: 30초마다 동기화
-    CELERY_BEAT_SCHEDULE["sync-stock-prices-1m"] = {
-        "task": "core.tasks.price_sync.sync_cagg_to_prices_1m",
-        "schedule": 30.0,  # 30초
-    }
-    # 15분봉: 5분마다 동기화
-    CELERY_BEAT_SCHEDULE["sync-stock-prices-15m"] = {
-        "task": "core.tasks.price_sync.sync_cagg_to_prices_15m",
-        "schedule": crontab(minute="*/5"),
-    }
-    # 1시간봉: 15분마다 동기화
-    CELERY_BEAT_SCHEDULE["sync-stock-prices-1h"] = {
-        "task": "core.tasks.price_sync.sync_cagg_to_prices_1h",
-        "schedule": crontab(minute="*/15"),
-    }
-    # 1일봉: 1시간마다 동기화
-    CELERY_BEAT_SCHEDULE["sync-stock-prices-1d"] = {
-        "task": "core.tasks.price_sync.sync_cagg_to_prices_1d",
-        "schedule": crontab(minute=0),
-    }
 
 # API Keys
 # 필수 API 키: 빈 문자열도 None으로 처리하여 명시적 검증 가능하도록 함
@@ -296,11 +213,7 @@ NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET") or None
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or None
 # 선택 API 키: Jina는 무료 티어로도 동작 가능
 JINA_API_KEY = os.getenv("JINA_API_KEY") or None
-DART_API_KEY = os.getenv("DART_API_KEY") or None
 
-# Logo.dev API (기업 로고 이미지)
-# 무료 tier: 월 50만 요청 (attribution 필요)
-LOGO_DEV_PUB_KEY = os.getenv("LOGO_DEV_PUB_KEY") or None
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
@@ -328,6 +241,7 @@ LANGUAGE_CODE = "ko-kr"
 
 TIME_ZONE = "Asia/Seoul"
 
+
 USE_TZ = True
 
 USE_I18N = True
@@ -341,10 +255,9 @@ STATIC_URL = "static/"
 JWT_SIGNING_KEY = os.getenv("JWT_SIGNING_KEY", SECRET_KEY)
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),  
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
-    "ROTATE_REFRESH_TOKENS": True,                # [수정] 토큰 갱신 시 새로운 리프레시 토큰 발급
-    "BLACKLIST_AFTER_ROTATION": True,             # [추가] 갱신 전 사용된 토큰은 즉시 블랙리스트행
+    "ROTATE_REFRESH_TOKENS": False,
     "ALGORITHM": "HS256",
     "SIGNING_KEY": JWT_SIGNING_KEY,
     "AUTH_HEADER_TYPES": ("Bearer",),
@@ -358,16 +271,3 @@ AUTHENTICATION_BACKENDS = [
 # https://docs.djangoproject.com/en/6.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-
-
-# 마켓 지수 데이터 동기화 활성화 설정
-MARKET_INDEX_SYNC_ENABLED = (
-    os.getenv("MARKET_INDEX_SYNC_ENABLED", "true").lower() == "true"
-)
-
-# 마켓 지수 동기화 스케줄 
-if MARKET_INDEX_SYNC_ENABLED:
-    CELERY_BEAT_SCHEDULE["sync-market-indices-test"] = {
-        "task": "indices.tasks.sync_indices_daily", 
-        "schedule": crontab(hour=5, minute=0),     # 새벽 5시
-    }

@@ -1,17 +1,42 @@
 # industries/views.py
 from rest_framework.views import APIView
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
+<<<<<<< Updated upstream
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status, serializers
 from drf_spectacular.utils import extend_schema, OpenApiResponse, inline_serializer, OpenApiParameter
 from django.core.paginator import Paginator
+from django.db.models import OuterRef, Subquery
+
+=======
+from rest_framework.response import Response
+from rest_framework import status, serializers
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter, inline_serializer
+>>>>>>> Stashed changes
 from companies.models import Company
-from .models import Industry, IndustryRanking
+from .models import (
+    Industry, 
+    IndustryRanking, 
+    IndustryChart1d,
+    IndustryChart3d,
+    IndustryChart1w,
+    IndustryChart2w,
+)
+from .tasks.index_sync import backfill_industry_charts_task
 from companies.serializers import CompanyRankingSerializer
-from industries.serializers import IndustryRankingSerializer
+<<<<<<< Updated upstream
+from industries.serializers import (
+    IndustryRankingSerializer, 
+    IndustryIndexSerializer, 
+    IndustryChartSerializer,
+    IndustryNewsSerializer
+)
 from news.models import CompanyNews
-from news.serializers import IndustryNewsSerializer
+=======
+from industries.serializers import IndustryRankingSerializer, IndustryIndexSerializer, IndustryChartSerializer
+from django.db.models import OuterRef, Subquery
+>>>>>>> Stashed changes
 
 
 class IndustryCompanyRankView(APIView):
@@ -140,6 +165,7 @@ def get_industry_rankings(request):
         "message": "전체 산업 순위 조회를 성공하였습니다.",
         "data": serializer.data
     }, status=status.HTTP_200_OK)
+<<<<<<< Updated upstream
 
 
 # ------------산업 뉴스 조회--------------------------
@@ -278,3 +304,120 @@ def get_industry_news(request, industry_id):
         },
         status=status.HTTP_200_OK,
     )
+=======
+>>>>>>> Stashed changes
+  
+#------------산업 지수 목록 조회-------------------------- 
+@extend_schema(
+    tags=["Industry"], 
+    summary="산업 지수 목록 조회 (이름순)",
+    description="DB에 저장된 모든 산업의 최신 지수 리스트를 반환합니다. 대시보드 왼쪽 리스트에 사용됩니다."
+)
+@api_view(['GET'])
+def get_industry_indices(request):
+    """
+    테이블에 저장된 최신 산업 지수들을 반환합니다.
+    """
+    # 산업 목록을 이름순(가나다순)으로 정렬하여 반환합니다.
+    latest_history = IndustryChart1d.objects.filter(
+            industry=OuterRef('pk')
+        ).order_by('-base_date')
+    industries = Industry.objects.filter(is_deleted=False).annotate(
+        # 최신 index_value 가져오기
+        latest_index_value=Subquery(latest_history.values('close')[:1]),
+        # 최신 base_date(업데이트 시간 대용) 가져오기
+        latest_index_date=Subquery(latest_history.values('base_date')[:1])
+    ).filter(
+        # 지수 데이터가 존재하는 산업만 필터링
+        latest_index_value__isnull=False
+    ).order_by('name')
+    
+    serializer = IndustryIndexSerializer(industries, many=True)
+    return Response({
+        "status": 200,
+        "message": "산업 지수 조회를 성공하였습니다.",
+        "data": serializer.data
+    })
+    
+
+# ==================== 차트 데이터 조회 API ====================
+
+
+class IndustryChartView(APIView):
+    """
+    산업 지수 차트 통합 조회 API
+    """
+    @extend_schema(
+        tags=["Industry"],
+        summary="산업 지수 차트 조회 (통합)",
+        description="기간별로 최적화된 차트 데이터를 조회합니다. (1m:일봉, 3m:3일봉, 6m:주봉, 1y:2주봉)",
+        parameters=[
+            OpenApiParameter(
+                name="period", 
+                type=str, 
+                description="조회 기간 (1m, 3m, 6m, 1y)", 
+                default="1m",
+                enum=["1m", "3m", "6m", "1y"]
+            )
+        ],
+        responses={200: IndustryChartSerializer(many=True)}
+    )
+    def get(self, request, industry_id):
+        period = request.query_params.get('period', '1m')
+        
+        model_map = {
+            '1m': IndustryChart1d,
+            '3m': IndustryChart3d,
+            '6m': IndustryChart1w,
+            '1y': IndustryChart2w,
+        }
+        
+        target_model = model_map.get(period)
+        if not target_model:
+            return Response({"status": 400, "message": "유효하지 않은 기간입니다."}, status=400)
+
+        try:
+            industry = Industry.objects.get(pk=industry_id, is_deleted=False)
+        except Industry.DoesNotExist:
+            return Response({"status": 404, "message": "산업을 찾을 수 없습니다"}, status=404)
+        
+        # [수정] 차트는 왼쪽(과거)에서 오른쪽(최신)으로 그려지므로 오름차순('base_date') 정렬
+        # 최근 1년치 흐름을 보여주기 위해 개수 제한 없이(또는 넉넉히 300개) 가져옵니다.
+        charts = target_model.objects.filter(industry=industry).order_by("base_date")
+        
+        # 시리얼라이저 적용
+        serializer = IndustryChartSerializer(charts, many=True)
+        
+        return Response({
+            "status": 200,
+            "message": f"{industry.name} {period} 차트 데이터 조회 성공",
+            "data": serializer.data,
+        })
+
+# ================관리자 전용 데이터 적재 API=====================
+
+class IndustryBackfillView(APIView):
+    # 테스트 편의를 위해 인증/권한 일시 해제
+    authentication_classes = [] 
+    permission_classes = [] 
+
+    @extend_schema(
+        tags=["Admin - Industrial index"],
+        parameters=[
+            OpenApiParameter(name='industry_id', description='특정 산업 ID (비우면 전체 적재)', required=False, type=int)
+        ]
+    )
+    def post(self, request):
+        # 1. 쿼리 파라미터에서 industry_id 추출
+        industry_id = request.query_params.get('industry_id')
+        
+        # 2. 태스크 호출 시 id 전달 (.delay 안에 인자 넣기)
+        backfill_industry_charts_task.delay(industry_id=industry_id)
+        
+        msg = f"{industry_id}번 산업" if industry_id else "전체 산업"
+<<<<<<< Updated upstream
+        return Response({"message": f"{msg} 데이터 적재 작업이 시작되었습니다."}, status=202)
+
+=======
+        return Response({"message": f"{msg} 데이터 적재 작업이 시작되었습니다."}, status=202)
+>>>>>>> Stashed changes

@@ -39,3 +39,111 @@ class IndustryRanking(models.Model):
 
     class Meta:
         db_table = "industry_ranking"
+
+
+# ==================== 산업 지수 차트 모델들 ====================
+
+class IndustryChartBase(models.Model):
+    """산업 지수 차트 기본 모델 (추상 모델)"""
+    industry = models.ForeignKey(
+        Industry, on_delete=models.CASCADE
+    )
+    base_date = models.DateField(db_index=True)  # 기준 날짜
+    
+    # OHLC 데이터
+    open = models.FloatField()  # 시가
+    high = models.FloatField()  # 고가
+    low = models.FloatField()  # 저가
+    close = models.FloatField()  # 종가
+    
+    # 변동 데이터
+    change_value = models.FloatField(null=True, blank=True)  # 전일 대비 변동값
+    change_rate = models.FloatField(null=True, blank=True)  # 전일 대비 변동률 (%)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        abstract = True
+        ordering = ["industry", "-base_date"]
+
+
+class IndustryChart1d(IndustryChartBase):
+    """산업 지수 일봉 (1개월 기준)"""
+    class Meta:
+        db_table = "industry_chart_1d"
+        unique_together = [["industry", "base_date"]]
+        ordering = ["industry","-base_date"]
+        indexes = [
+            models.Index(fields=["industry", "-base_date"]),
+        ]
+
+
+class IndustryChart3d(IndustryChartBase):
+    """산업 지수 3일봉 (3개월 기준)"""
+    class Meta:
+        db_table = "industry_chart_3d"
+        unique_together = [["industry", "base_date"]]
+        ordering = ["industry", "-base_date"]
+        indexes = [
+            models.Index(fields=["industry", "-base_date"]),
+        ]
+
+
+class IndustryChart1w(IndustryChartBase):
+    """산업 지수 주봉 (6개월 기준)"""
+    class Meta:
+        db_table = "industry_chart_1w"
+        unique_together = [["industry", "base_date"]]
+        ordering = ["industry", "-base_date"]
+        indexes = [
+            models.Index(fields=["industry", "-base_date"]),
+        ]
+
+
+class IndustryChart2w(IndustryChartBase):
+    """산업 지수 2주봉 (1년 기준)"""
+    class Meta:
+        db_table = "industry_chart_2w"
+        unique_together = [["industry", "base_date"]]
+        ordering = ["industry", "-base_date"]
+        indexes = [
+            models.Index(fields=["industry", "-base_date"]),
+        ]
+
+# ==================== KSIC - KIS 매핑 모델들 ====================
+# 1. KIS 업종 지수 마스터 (idxcode.mst에서 추출)
+class KisIndustry(models.Model):
+    kis_code = models.CharField(max_length=4, primary_key=True) # '0014' 등
+    name = models.CharField(max_length=100) # '전기전자' 등
+    
+    class Meta:
+        db_table = "kis_industry"
+
+# 2. DART 표준산업분류 마스터 (사용자님이 5->3자리로 가공한 코드)
+class KsicCategory(models.Model):
+    ksic_code = models.CharField(max_length=5, primary_key=True) # '261' 등
+    name = models.CharField(max_length=100, null=True, blank=True)
+    
+    class Meta:
+        db_table = "ksic_category"
+
+# 3. [핵심] 마스터 파일 기반 종목-업종 매핑 모델
+# 이 테이블이 MST 파일(KOSPI/KOSDAQ_CODE)의 데이터를 담는 "원본 저장소"입니다.
+class IndustryMapping(models.Model):
+    # MST 파일에서 추출한 6자리 종목코드 (Company 테이블과 독립적으로 먼저 저장 가능)
+    ticker = models.CharField(max_length=6, db_index=True) 
+    
+    # KIS 업종 코드와의 연결 (FK)
+    kis = models.ForeignKey(KisIndustry, on_delete=models.CASCADE, related_name="mappings")
+    
+    # 향후 Company 모델이 채워졌을 때 조인을 쉽게 하기 위한 선택적 필드
+    # company = models.ForeignKey('company.Company', on_delete=models.SET_NULL, null=True, to_field='ticker')
+
+    weight = models.FloatField(default=1.0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "industry_mapping"
+        # 동일 티커가 동일 KIS 업종에 중복 매핑되는 것 방지
+        unique_together = ('ticker', 'kis')
