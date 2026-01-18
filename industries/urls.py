@@ -2,10 +2,10 @@ from django.urls import path
 from .views import (
     IndustryCompanyRankView, 
     get_industry_rankings, 
-    get_industry_news,          # 동료 작업분
-    get_industry_indices,       # 사용자 작업분
-    IndustryChartView,          # 사용자 작업분
-    IndustryBackfillView        # 사용자 작업분
+    get_industry_news,          
+    get_industry_indices,       
+    IndustryChartView,          
+    IndustryBackfillView,      
 )
 
 urlpatterns = [

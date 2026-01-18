@@ -1,7 +1,5 @@
-# industries/views.py
 from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
-<<<<<<< Updated upstream
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status, serializers
@@ -9,11 +7,6 @@ from drf_spectacular.utils import extend_schema, OpenApiResponse, inline_seriali
 from django.core.paginator import Paginator
 from django.db.models import OuterRef, Subquery
 
-=======
-from rest_framework.response import Response
-from rest_framework import status, serializers
-from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter, inline_serializer
->>>>>>> Stashed changes
 from companies.models import Company
 from .models import (
     Industry, 
@@ -25,19 +18,13 @@ from .models import (
 )
 from .tasks.index_sync import backfill_industry_charts_task
 from companies.serializers import CompanyRankingSerializer
-<<<<<<< Updated upstream
 from industries.serializers import (
     IndustryRankingSerializer, 
     IndustryIndexSerializer, 
     IndustryChartSerializer,
-    IndustryNewsSerializer
 )
+from news.serilalizers import IndustryNewsSerializer 
 from news.models import CompanyNews
-=======
-from industries.serializers import IndustryRankingSerializer, IndustryIndexSerializer, IndustryChartSerializer
-from django.db.models import OuterRef, Subquery
->>>>>>> Stashed changes
-
 
 class IndustryCompanyRankView(APIView):
     @extend_schema(
@@ -165,7 +152,7 @@ def get_industry_rankings(request):
         "message": "전체 산업 순위 조회를 성공하였습니다.",
         "data": serializer.data
     }, status=status.HTTP_200_OK)
-<<<<<<< Updated upstream
+
 
 
 # ------------산업 뉴스 조회--------------------------
@@ -304,8 +291,7 @@ def get_industry_news(request, industry_id):
         },
         status=status.HTTP_200_OK,
     )
-=======
->>>>>>> Stashed changes
+
   
 #------------산업 지수 목록 조회-------------------------- 
 @extend_schema(
@@ -415,9 +401,6 @@ class IndustryBackfillView(APIView):
         backfill_industry_charts_task.delay(industry_id=industry_id)
         
         msg = f"{industry_id}번 산업" if industry_id else "전체 산업"
-<<<<<<< Updated upstream
+
         return Response({"message": f"{msg} 데이터 적재 작업이 시작되었습니다."}, status=202)
 
-=======
-        return Response({"message": f"{msg} 데이터 적재 작업이 시작되었습니다."}, status=202)
->>>>>>> Stashed changes
