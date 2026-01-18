@@ -214,6 +214,13 @@ CELERY_ENABLE_UTC = False
 # Celery 6.0+ 호환성을 위한 설정
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
+# KIS API Rate Limit: 초당 2회 제한 준수
+# KIS API를 호출하는 모든 태스크에 대해 rate limit 적용
+CELERY_TASK_ANNOTATIONS = {
+    'companies.tasks.kis_market_amount.sync_market_amount': {'rate_limit': '2/s'},
+    'companies.tasks.dart_sync.sync_company_info_from_dart': {'rate_limit': '2/s'},
+}
+
 # =============================================================================
 # 배치 작업 활성화 설정 (개발 환경에서 토큰 사용 절감)
 # =============================================================================
