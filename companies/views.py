@@ -414,10 +414,10 @@ def get_report_detail(request, stock_code, rcept_no):
             required=False,
         ),
         OpenApiParameter(
-            name="year",
+            name="years",
             type=int,
             location=OpenApiParameter.QUERY,
-            description="재무제표 동기화 시 조회할 연도 (기본값: 현재 연도)",
+            description="재무제표 동기화 시 과거 몇 년치 데이터를 조회할지 (기본값: 3, 범위: 1~10)",
             required=False,
         ),
         OpenApiParameter(
@@ -496,13 +496,22 @@ def sync_company_from_dart(request, stock_code):
 
         # 파라미터 사전 파싱
         try:
-            year = int(request.query_params.get("year", datetime.now().year))
+            years = int(request.query_params.get("years", 3))  # 기본값: 최근 3년
             days = int(request.query_params.get("days", 365))
         except ValueError:
             return Response(
-                {"status": 400, "error": "year와 days는 정수여야 합니다."},
+                {"status": 400, "error": "years와 days는 정수여야 합니다."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # years 파라미터 검증
+        if years < 1 or years > 10:
+            return Response(
+                {"status": 400, "error": "years는 1~10 사이의 값이어야 합니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        current_year = datetime.now().year
 
         # 비동기 실행
         if use_async:
@@ -510,9 +519,13 @@ def sync_company_from_dart(request, stock_code):
                 sync_company_info_from_dart.delay(stock_code)
                 results["info"] = "동기화 작업이 큐에 등록되었습니다."
             if sync_financials:
-                sync_financial_statements.delay(stock_code, year)
+                # 현재부터 과거 N년치 재무제표 동기화 작업 등록
+                for year_offset in range(years):
+                    target_year = current_year - year_offset
+                    sync_financial_statements.delay(stock_code, target_year)
                 results["financials"] = (
-                    f"{year}년 재무제표 동기화 작업이 큐에 등록되었습니다."
+                    f"최근 {years}년 재무제표 동기화 작업이 큐에 등록되었습니다. "
+                    f"({current_year - years + 1}~{current_year}년)"
                 )
             if sync_reports:
                 sync_company_reports.delay(stock_code, days)
@@ -548,18 +561,103 @@ def sync_company_from_dart(request, stock_code):
 
         if sync_financials:
             try:
-                year = int(request.query_params.get("year", datetime.now().year))
                 sync_all = (
                     request.query_params.get("sync_all_reports", "false").lower()
                     == "true"
                 )
+                from companies.services.dividend import DividendService
+                from companies.services.financial_metrics import (
+                    FinancialMetricsService,
+                )
+                from companies.services.dart_api import DartAPIError
+
                 service = FinancialService()
-                statements = service.sync_financial_statements(
-                    company, year, sync_all_reports=sync_all
-                )
+                dividend_service = DividendService()
+                metrics_service = FinancialMetricsService()
+
+                total_statements = 0
+                sync_details = []
+
+                # 현재부터 과거 N년치 재무제표 동기화
+                for year_offset in range(years):
+                    target_year = current_year - year_offset
+                    try:
+                        # 재무제표 동기화
+                        statements = service.sync_financial_statements(
+                            company, target_year, sync_all_reports=sync_all
+                        )
+                        total_statements += len(statements)
+
+                        # 재무제표 동기화 후 배당 정보 동기화 및 재무 지표 계산
+                        if statements:
+                            # 배당 정보 동기화
+                            try:
+                                dividend_service.sync_dividend_info(company, target_year)
+                                logger.info(
+                                    f"배당 정보 동기화 완료: {stock_code} ({target_year}년)"
+                                )
+                            except DartAPIError as e:
+                                # 배당 정보가 없는 경우 (status: 013)는 경고만 출력
+                                error_message = str(e)
+                                if (
+                                    "013" in error_message
+                                    or "조회된 데이타가 없습니다" in error_message
+                                ):
+                                    logger.info(
+                                        f"배당 정보 없음 (정상): {stock_code} ({target_year}년) - {e}"
+                                    )
+                                else:
+                                    logger.warning(
+                                        f"배당 정보 동기화 실패: {stock_code} ({target_year}년) - {e}"
+                                    )
+                            except Exception as e:
+                                logger.warning(
+                                    f"배당 정보 동기화 실패: {stock_code} ({target_year}년) - {e}"
+                                )
+
+                            # 재무 지표 계산 (사업보고서만)
+                            annual_statement = next(
+                                (s for s in statements if s.report_code == "11011"),
+                                None,
+                            )
+                            if annual_statement:
+                                try:
+                                    metrics_service.update_financial_metrics(
+                                        annual_statement
+                                    )
+                                    logger.info(
+                                        f"재무 지표 계산 완료: {stock_code} ({target_year}년)"
+                                    )
+                                    sync_details.append(
+                                        f"{target_year}년: {len(statements)}개 보고서 + 배당 및 재무 지표"
+                                    )
+                                except Exception as e:
+                                    logger.warning(
+                                        f"재무 지표 계산 실패: {stock_code} ({target_year}년) - {e}"
+                                    )
+                                    sync_details.append(
+                                        f"{target_year}년: {len(statements)}개 보고서 (지표 계산 실패)"
+                                    )
+                            else:
+                                logger.info(
+                                    f"사업보고서가 없어 재무 지표 계산 생략: {stock_code} ({target_year}년)"
+                                )
+                                sync_details.append(
+                                    f"{target_year}년: {len(statements)}개 보고서 (사업보고서 없음)"
+                                )
+                        else:
+                            sync_details.append(f"{target_year}년: 데이터 없음")
+
+                    except Exception as e:
+                        error_msg = f"{target_year}년 재무제표 동기화 실패: {str(e)}"
+                        logger.error(error_msg)
+                        sync_details.append(f"{target_year}년: 실패")
+
                 results["financials"] = (
-                    f"{year}년 재무제표 동기화 완료 ({len(statements)}개 보고서)"
+                    f"최근 {years}년 재무제표 동기화 완료 "
+                    f"(총 {total_statements}개 보고서) - {', '.join(sync_details)}"
                 )
+
             except Exception as e:
                 error_msg = f"재무제표 동기화 실패: {str(e)}"
                 errors.append(error_msg)
@@ -643,10 +741,10 @@ def sync_company_from_dart(request, stock_code):
             required=False,
         ),
         OpenApiParameter(
-            name="year",
+            name="years",
             type=int,
             location=OpenApiParameter.QUERY,
-            description="재무제표 동기화 시 조회할 연도 (기본값: 현재 연도)",
+            description="재무제표 동기화 시 과거 몇 년치 데이터를 조회할지 (기본값: 3, 범위: 1~10)",
             required=False,
         ),
         OpenApiParameter(
@@ -711,13 +809,22 @@ def sync_all_companies_from_dart(request):
 
         # 파라미터 사전 파싱
         try:
-            year = int(request.query_params.get("year", datetime.now().year))
+            years = int(request.query_params.get("years", 3))  # 기본값: 최근 3년
             days = int(request.query_params.get("days", 365))
         except ValueError:
             return Response(
-                {"status": 400, "error": "year와 days는 정수여야 합니다."},
+                {"status": 400, "error": "years와 days는 정수여야 합니다."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # years 파라미터 검증
+        if years < 1 or years > 10:
+            return Response(
+                {"status": 400, "error": "years는 1~10 사이의 값이어야 합니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        current_year = datetime.now().year
 
         # 모든 기업 조회
         companies_query = Company.objects.filter(is_deleted=False)
@@ -754,12 +861,17 @@ def sync_all_companies_from_dart(request):
                 task_count += total_count
 
             if sync_financials:
-                financials_tasks = group(
-                    sync_financial_statements.s(stock_code, year)
-                    for stock_code in company_list
-                )
-                task_groups.append(("financials", financials_tasks))
-                task_count += total_count
+                # 현재부터 과거 N년치 재무제표 동기화 작업 등록
+                financials_tasks = []
+                for stock_code in company_list:
+                    for year_offset in range(years):
+                        target_year = current_year - year_offset
+                        financials_tasks.append(
+                            sync_financial_statements.s(stock_code, target_year)
+                        )
+                financials_tasks_group = group(financials_tasks)
+                task_groups.append(("financials", financials_tasks_group))
+                task_count += total_count * years
 
             if sync_reports:
                 reports_tasks = group(
@@ -782,7 +894,7 @@ def sync_all_companies_from_dart(request):
                         "sync_info": sync_info,
                         "sync_financials": sync_financials,
                         "sync_reports": sync_reports,
-                        "year": year if sync_financials else None,
+                        "years": years if sync_financials else None,
                         "days": days if sync_reports else None,
                         "total_tasks": task_count,
                     },
@@ -835,11 +947,82 @@ def sync_all_companies_from_dart(request):
 
                 if sync_financials and financial_service:
                     try:
-                        statements = financial_service.sync_financial_statements(
-                            company, year, sync_all_reports=False
+                        from companies.services.dividend import DividendService
+                        from companies.services.financial_metrics import (
+                            FinancialMetricsService,
                         )
+                        from companies.services.dart_api import DartAPIError
+
+                        dividend_service = DividendService()
+                        metrics_service = FinancialMetricsService()
+
+                        total_statements = 0
+                        sync_details = []
+
+                        # 현재부터 과거 N년치 재무제표 동기화
+                        for year_offset in range(years):
+                            target_year = current_year - year_offset
+                            try:
+                                statements = financial_service.sync_financial_statements(
+                                    company, target_year, sync_all_reports=False
+                                )
+                                total_statements += len(statements)
+
+                                # 재무제표 동기화 후 배당 정보 동기화 및 재무 지표 계산
+                                if statements:
+                                    # 배당 정보 동기화
+                                    try:
+                                        dividend_service.sync_dividend_info(
+                                            company, target_year
+                                        )
+                                    except DartAPIError as e:
+                                        error_message = str(e)
+                                        if (
+                                            "013" not in error_message
+                                            and "조회된 데이타가 없습니다" not in error_message
+                                        ):
+                                            logger.warning(
+                                                f"배당 정보 동기화 실패: {stock_code} ({target_year}년) - {e}"
+                                            )
+                                    except Exception:
+                                        pass  # 배당 정보는 optional
+
+                                    # 재무 지표 계산 (사업보고서만)
+                                    annual_statement = next(
+                                        (
+                                            s
+                                            for s in statements
+                                            if s.report_code == "11011"
+                                        ),
+                                        None,
+                                    )
+                                    if annual_statement:
+                                        try:
+                                            metrics_service.update_financial_metrics(
+                                                annual_statement
+                                            )
+                                            sync_details.append(
+                                                f"{target_year}년: {len(statements)}개"
+                                            )
+                                        except Exception:
+                                            sync_details.append(
+                                                f"{target_year}년: {len(statements)}개 (지표 계산 실패)"
+                                            )
+                                    else:
+                                        sync_details.append(
+                                            f"{target_year}년: {len(statements)}개 (사업보고서 없음)"
+                                        )
+                                else:
+                                    sync_details.append(f"{target_year}년: 데이터 없음")
+                            except Exception as e:
+                                sync_details.append(f"{target_year}년: 실패")
+                                logger.error(
+                                    f"{stock_code} {target_year}년 재무제표 동기화 실패: {e}"
+                                )
+
                         company_results["financials"] = (
-                            f"동기화 완료 ({len(statements)}개 보고서)"
+                            f"최근 {years}년 동기화 완료 "
+                            f"(총 {total_statements}개 보고서) - {', '.join(sync_details)}"
                         )
                     except Exception as e:
                         error_msg = f"{stock_code} 재무제표 동기화 실패: {str(e)}"
