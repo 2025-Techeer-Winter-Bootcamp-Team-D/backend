@@ -4,7 +4,6 @@ import os
 import websockets
 import redis.asyncio as redis
 import aiohttp
-import asyncpg
 from urllib.parse import urlparse
 from fetch_symbols import get_all_listed_symbols, get_stock_codes_from_db
 
@@ -91,34 +90,85 @@ async def get_approval_key():
 
 
 async def run_publisher():
-    # DB에서 모든 기업의 stock_code 가져오기
+    # DB에서 모든 기업의 stock_code 가져오기 (우선순위 1)
     global SUBSCRIBE_SYMBOLS
-    try:
-        all_stock_codes = await get_stock_codes_from_db()
-        if all_stock_codes:
-            SUBSCRIBE_SYMBOLS = all_stock_codes[:MAX_SUBSCRIBE_SYMBOLS]
+
+    # DB 연결 재시도 로직 (최대 3회)
+    max_db_retries = 3
+    db_retry_delay = 5  # 5초
+    all_stock_codes = None
+
+    for attempt in range(1, max_db_retries + 1):
+        try:
             print(
-                f"[INIT] Loaded {len(all_stock_codes)} stock codes from DB, subscribing to: {len(SUBSCRIBE_SYMBOLS)}"
+                f"[INIT] Attempting to load stock codes from DB (attempt {attempt}/{max_db_retries})..."
             )
-            print(f"[INIT] First symbols to subscribe: {SUBSCRIBE_SYMBOLS[:5]}")
-        else:
-            # DB 조회 실패 시 fallback으로 CSV 또는 환경변수 사용
-            print("[WARNING] Failed to load from DB, falling back to CSV/environment")
-            all_stock_codes = get_all_listed_symbols()
-            SUBSCRIBE_SYMBOLS = all_stock_codes[:MAX_SUBSCRIBE_SYMBOLS]
+            all_stock_codes = await get_stock_codes_from_db()
+
+            if all_stock_codes and len(all_stock_codes) > 0:
+                SUBSCRIBE_SYMBOLS = all_stock_codes[:MAX_SUBSCRIBE_SYMBOLS]
+                print(
+                    f"[INIT] ✓ Successfully loaded {len(all_stock_codes)} stock codes from DB"
+                )
+                print(
+                    f"[INIT] Subscribing to {len(SUBSCRIBE_SYMBOLS)} symbols (limited by MAX_SUBSCRIBE_SYMBOLS={MAX_SUBSCRIBE_SYMBOLS})"
+                )
+                print(f"[INIT] First symbols to subscribe: {SUBSCRIBE_SYMBOLS[:5]}")
+                break
+            else:
+                print(
+                    f"[WARNING] DB query returned empty list (attempt {attempt}/{max_db_retries})"
+                )
+                if attempt < max_db_retries:
+                    print(f"[INIT] Retrying in {db_retry_delay}s...")
+                    await asyncio.sleep(db_retry_delay)
+
+        except Exception as e:
             print(
-                f"[INIT] Total symbols available: {len(all_stock_codes)}, subscribing to: {len(SUBSCRIBE_SYMBOLS)}"
+                f"[ERROR] Failed to load stock codes from DB (attempt {attempt}/{max_db_retries}): {e}"
             )
-            print(f"[INIT] First symbols to subscribe: {SUBSCRIBE_SYMBOLS[:5]}")
-    except Exception as e:
-        print(f"[ERROR] Failed to load stock codes: {e}")
-        # Fallback으로 CSV 또는 환경변수 사용
-        all_stock_codes = get_all_listed_symbols()
-        SUBSCRIBE_SYMBOLS = all_stock_codes[:MAX_SUBSCRIBE_SYMBOLS]
-        print(
-            f"[INIT] Total symbols available (fallback): {len(all_stock_codes)}, subscribing to: {len(SUBSCRIBE_SYMBOLS)}"
+            import traceback
+
+            traceback.print_exc()
+
+            if attempt < max_db_retries:
+                print(f"[INIT] Retrying in {db_retry_delay}s...")
+                await asyncio.sleep(db_retry_delay)
+            else:
+                print(
+                    f"[WARNING] All DB connection attempts failed. Falling back to CSV/environment..."
+                )
+
+    # DB 조회 실패 시 fallback으로 CSV 또는 환경변수 사용
+    if not all_stock_codes or len(all_stock_codes) == 0:
+        print("[WARNING] Using fallback: loading from CSV/environment variables")
+        try:
+            # 동기 함수이므로 이벤트 루프에서 실행하려면 별도 처리 필요
+            # 하지만 이미 async 컨텍스트이므로 asyncio.to_thread 사용
+            loop = asyncio.get_event_loop()
+            all_stock_codes = await loop.run_in_executor(None, get_all_listed_symbols)
+
+            if all_stock_codes and len(all_stock_codes) > 0:
+                SUBSCRIBE_SYMBOLS = all_stock_codes[:MAX_SUBSCRIBE_SYMBOLS]
+                print(
+                    f"[INIT] Loaded {len(all_stock_codes)} symbols from fallback source"
+                )
+                print(
+                    f"[INIT] Subscribing to {len(SUBSCRIBE_SYMBOLS)} symbols (limited by MAX_SUBSCRIBE_SYMBOLS={MAX_SUBSCRIBE_SYMBOLS})"
+                )
+                print(f"[INIT] First symbols to subscribe: {SUBSCRIBE_SYMBOLS[:5]}")
+            else:
+                raise Exception("Fallback source also returned empty list")
+        except Exception as e:
+            print(f"[ERROR] Fallback also failed: {e}")
+            raise Exception(
+                "Failed to load stock codes from both DB and fallback sources"
+            )
+
+    if not SUBSCRIBE_SYMBOLS or len(SUBSCRIBE_SYMBOLS) == 0:
+        raise Exception(
+            "No stock codes to subscribe. Please check database connection or fallback configuration."
         )
-        print(f"[INIT] First symbols to subscribe: {SUBSCRIBE_SYMBOLS[:5]}")
 
     # Redis 연결
     redis_host = os.getenv("REDIS_HOST", "redis")

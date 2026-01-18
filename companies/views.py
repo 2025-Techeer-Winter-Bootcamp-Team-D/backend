@@ -39,6 +39,11 @@ from .tasks.report_processing import (
     create_report_embedding_task,
     save_report_to_opensearch_task,
 )
+from .services.outlook import (
+    CompanyOutlookService,
+    QuotaExceededError,
+    LLMServiceError,
+)
 
 
 # ------------------------ 기업 기본 정보 조회--------------------------
@@ -57,7 +62,7 @@ from .tasks.report_processing import (
         200: CompanyDetailSerializer,
         404: OpenApiResponse(description="Not Found"),
     },
-    tags=["Company"],
+    tags=["Company - Info"],
 )
 @api_view(["GET"])
 def get_company_info(request, stock_code):
@@ -138,7 +143,7 @@ def _should_sync_company(company) -> bool:
         200: CompanyFinancialsSerializer,
         404: OpenApiResponse(description="Not Found"),
     },
-    tags=["Company"],
+    tags=["Company - Info"],
 )
 @api_view(["GET"])
 def get_company_financials(request, stock_code):
@@ -237,7 +242,7 @@ def get_company_financials(request, stock_code):
         200: ReportListSerializer,
         404: OpenApiResponse(description="Not Found"),
     },
-    tags=["Company"],
+    tags=["Reports"],
 )
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -320,7 +325,7 @@ def get_company_reports(request, stock_code):
         200: ReportDetailSerializer,
         404: OpenApiResponse(description="Company or Report not found"),
     },
-    tags=["Company"],
+    tags=["Reports"],
 )
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -436,7 +441,7 @@ def get_report_detail(request, stock_code, rcept_no):
         401: OpenApiResponse(description="Unauthorized"),
         404: OpenApiResponse(description="Company not found"),
     },
-    tags=["Company"],
+    tags=["Admin"],
 )
 @api_view(["POST"])
 @permission_classes([IsAdminUser])
@@ -672,7 +677,7 @@ def sync_company_from_dart(request, stock_code):
         400: OpenApiResponse(description="Bad Request"),
         401: OpenApiResponse(description="Unauthorized"),
     },
-    tags=["Company"],
+    tags=["Admin"],
 )
 @api_view(["POST"])
 @permission_classes([IsAdminUser])
@@ -921,7 +926,7 @@ def sync_all_companies_from_dart(request):
         200: CompanyRankingSerializer(many=True),
         404: OpenApiResponse(description="company_rankings Not Found"),
     },
-    tags=["Ranking"],
+    tags=["Rankings"],
 )
 @api_view(["GET"])
 def get_company_rankings(request):
@@ -1236,7 +1241,7 @@ def process_single_report_view(request, stock_code, rcept_no):
         400: OpenApiResponse(description="잘못된 요청"),
         404: OpenApiResponse(description="종목을 찾을 수 없음"),
     },
-    tags=["Company"],
+    tags=["Company - Info"],
 )
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -1389,7 +1394,7 @@ def get_company_prices(request, stock_code: str):
         200: OpenApiResponse(description="뉴스 목록 조회 성공"),
         404: OpenApiResponse(description="Company not found"),
     },
-    tags=["Company News"],
+    tags=["News"],
 )
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -1490,7 +1495,7 @@ def get_company_news_list(request, stock_code):
         200: OpenApiResponse(description="뉴스 상세 조회 성공"),
         404: OpenApiResponse(description="News not found"),
     },
-    tags=["Company News"],
+    tags=["News"],
 )
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -1573,7 +1578,7 @@ def get_company_news_detail(request, stock_code, news_id):
         401: OpenApiResponse(description="Unauthorized"),
         404: OpenApiResponse(description="Company not found"),
     },
-    tags=["Company News"],
+    tags=["Admin"],
 )
 @api_view(["POST"])
 @permission_classes([IsAdminUser])
@@ -1703,7 +1708,7 @@ def sync_company_news(request, stock_code):
         200: OpenApiResponse(description="검색 성공"),
         400: OpenApiResponse(description="Bad Request"),
     },
-    tags=["Company"],
+    tags=["Company - Info"],
 )
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -1772,3 +1777,154 @@ def search_companies(request):
         },
         status=status.HTTP_200_OK,
     )
+
+
+# ------------------------ 기업 전망 분석 ----------------------------------
+@extend_schema(
+    summary="기업 전망 분석",
+    description="""
+    특정 기업의 최근 뉴스와 보고서를 분석하여 투자 전망을 제공합니다.
+
+    **분석 결과:**
+    - `analysis`: 3줄 이내의 간결한 투자 전망 분석
+    - `upside_potential`: 상승 여력 (`high` 또는 `low`)
+    - `signal`: 투자 신호 (`buy` 또는 `sell`)
+
+    **데이터 소스:**
+    - OpenSearch에 저장된 관련 뉴스
+    - 처리 완료된 공시 보고서
+
+    **캐싱:**
+    - 동일 종목에 대한 결과는 1시간 동안 캐싱됩니다.
+    """,
+    parameters=[
+        OpenApiParameter(
+            name="stock_code",
+            type=str,
+            location=OpenApiParameter.PATH,
+            description="분석할 기업의 종목코드 (예: 005930)",
+        ),
+        OpenApiParameter(
+            name="days_back",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            description="뉴스/보고서 검색 기간 (일, 기본값: 30)",
+            required=False,
+        ),
+        OpenApiParameter(
+            name="max_news",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            description="최대 뉴스 수 (기본값: 10, 최대: 20)",
+            required=False,
+        ),
+        OpenApiParameter(
+            name="max_reports",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            description="최대 보고서 수 (기본값: 5, 최대: 10)",
+            required=False,
+        ),
+    ],
+    responses={
+        200: OpenApiResponse(description="분석 성공"),
+        404: OpenApiResponse(description="Company not found"),
+        429: OpenApiResponse(description="API 요청 한도 초과"),
+        503: OpenApiResponse(description="분석 서비스 일시 불가"),
+    },
+    tags=["Company - Analysis"],
+)
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def get_company_outlook(request, stock_code):
+    """
+    기업 전망 분석 API
+
+    OpenSearch에 저장된 뉴스/보고서를 분석하여 투자 전망을 제공합니다.
+    """
+    # 기업 조회
+    try:
+        company = Company.objects.get(pk=stock_code, is_deleted=False)
+    except Company.DoesNotExist:
+        return Response(
+            {"status": 404, "error": "Company not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    # 쿼리 파라미터 처리
+    try:
+        days_back = int(request.query_params.get("days_back", 30))
+        if days_back < 1 or days_back > 365:
+            return Response(
+                {"status": 400, "error": "days_back은 1~365 사이여야 합니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+    except (ValueError, TypeError):
+        return Response(
+            {"status": 400, "error": "days_back은 정수여야 합니다."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        max_news = int(request.query_params.get("max_news", 10))
+        max_news = max(1, min(max_news, 20))
+    except (ValueError, TypeError):
+        return Response(
+            {"status": 400, "error": "max_news는 정수여야 합니다."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        max_reports = int(request.query_params.get("max_reports", 5))
+        max_reports = max(1, min(max_reports, 10))
+    except (ValueError, TypeError):
+        return Response(
+            {"status": 400, "error": "max_reports는 정수여야 합니다."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # 분석 실행
+    try:
+        outlook_service = CompanyOutlookService()
+        result = outlook_service.analyze_outlook(
+            company=company,
+            days_back=days_back,
+            max_news=max_news,
+            max_reports=max_reports,
+        )
+
+        return Response(
+            {
+                "status": 200,
+                "message": "기업 전망 분석 성공",
+                "data": result,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    except QuotaExceededError:
+        return Response(
+            {
+                "status": 429,
+                "error": "API 요청 한도 초과",
+                "message": "잠시 후 다시 시도해주세요.",
+            },
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
+    except LLMServiceError:
+        return Response(
+            {
+                "status": 503,
+                "error": "분석 서비스 일시 불가",
+                "message": "잠시 후 다시 시도해주세요.",
+            },
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+    except Exception as e:
+        logger.exception(f"기업 전망 분석 오류: stock_code={stock_code}")
+        return Response(
+            {"status": 500, "error": "서버 오류가 발생했습니다"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

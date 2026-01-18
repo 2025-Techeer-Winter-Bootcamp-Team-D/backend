@@ -112,15 +112,35 @@ SPECTACULAR_SETTINGS = {
         "persistAuthorization": True,  # 인증 정보 유지
         "displayOperationId": True,  # Operation ID 표시
         "filter": True,  # 검색 필터 활성화
+        "docExpansion": "list",  # 기본적으로 태그만 펼쳐진 상태로 시작
+        "defaultModelsExpandDepth": 1,  # 스키마 모델 기본 펼침 깊이
+        "defaultModelExpandDepth": 1,  # 모델 기본 펼침 깊이
     },
     # 스키마 생성 설정
     "COMPONENT_SPLIT_REQUEST": True,  # 요청/응답 스키마 분리
     "SCHEMA_PATH_PREFIX": "/api/",  # API 경로 접두사
-    # 태그 정렬
+    # 태그 정의 및 정렬 (이 순서대로 Swagger UI에 표시됨)
     "TAGS": [
-        {"name": "Health Check", "description": "서버 상태 확인"},
-        {"name": "Company", "description": "기업 정보 및 재무 데이터 조회"},
-        {"name": "Industry", "description": "산업별 기업 정보 조회"},
+        # 1. 시스템
+        {"name": "System", "description": "시스템 상태 및 헬스 체크"},
+        # 2. 사용자
+        {"name": "User", "description": "사용자 인증 및 즐겨찾기 관리"},
+        # 3. 기업 정보
+        {"name": "Company - Info", "description": "기업 기본 정보 및 재무 데이터 조회"},
+        {"name": "Company - Analysis", "description": "기업 전망 및 투자 분석"},
+        {"name": "Reports", "description": "기업 공시 및 보고서 조회"},
+        # 4. 뉴스
+        {"name": "News", "description": "기업 및 산업 관련 뉴스 조회"},
+        # 5. 산업
+        {"name": "Industry - Analysis", "description": "산업별 분석 및 전망"},
+        # 6. 순위
+        {"name": "Rankings", "description": "기업 및 산업 순위 조회"},
+        # 7. 비교
+        {"name": "Comparison", "description": "기업 비교 매치업 관리"},
+        # 8. 시장 지수
+        {"name": "Indices", "description": "KOSPI, KOSDAQ 등 시장 지수 조회"},
+        # 9. 관리자
+        {"name": "Admin", "description": "관리자 전용 기능 (데이터 동기화, 관리)"},
     ],
 }
 
@@ -341,10 +361,10 @@ STATIC_URL = "static/"
 JWT_SIGNING_KEY = os.getenv("JWT_SIGNING_KEY", SECRET_KEY)
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),  
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
-    "ROTATE_REFRESH_TOKENS": True,                # [수정] 토큰 갱신 시 새로운 리프레시 토큰 발급
-    "BLACKLIST_AFTER_ROTATION": True,             # [추가] 갱신 전 사용된 토큰은 즉시 블랙리스트행
+    "ROTATE_REFRESH_TOKENS": True,  # [수정] 토큰 갱신 시 새로운 리프레시 토큰 발급
+    "BLACKLIST_AFTER_ROTATION": True,  # [추가] 갱신 전 사용된 토큰은 즉시 블랙리스트행
     "ALGORITHM": "HS256",
     "SIGNING_KEY": JWT_SIGNING_KEY,
     "AUTH_HEADER_TYPES": ("Bearer",),
@@ -365,9 +385,9 @@ MARKET_INDEX_SYNC_ENABLED = (
     os.getenv("MARKET_INDEX_SYNC_ENABLED", "true").lower() == "true"
 )
 
-# 마켓 지수 동기화 스케줄 
+# 마켓 지수 동기화 스케줄
 if MARKET_INDEX_SYNC_ENABLED:
     CELERY_BEAT_SCHEDULE["sync-market-indices-test"] = {
-        "task": "indices.tasks.sync_indices_daily", 
-        "schedule": crontab(hour=5, minute=0),     # 새벽 5시
+        "task": "indices.tasks.sync_indices_daily",
+        "schedule": crontab(hour=5, minute=0),  # 새벽 5시
     }
