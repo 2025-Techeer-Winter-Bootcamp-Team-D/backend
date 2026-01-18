@@ -62,7 +62,7 @@ from .services.outlook import (
         200: CompanyDetailSerializer,
         404: OpenApiResponse(description="Not Found"),
     },
-    tags=["Company"],
+    tags=["Company - Info"],
 )
 @api_view(["GET"])
 def get_company_info(request, stock_code):
@@ -143,7 +143,7 @@ def _should_sync_company(company) -> bool:
         200: CompanyFinancialsSerializer,
         404: OpenApiResponse(description="Not Found"),
     },
-    tags=["Company"],
+    tags=["Company - Info"],
 )
 @api_view(["GET"])
 def get_company_financials(request, stock_code):
@@ -242,7 +242,7 @@ def get_company_financials(request, stock_code):
         200: ReportListSerializer,
         404: OpenApiResponse(description="Not Found"),
     },
-    tags=["Company"],
+    tags=["Reports"],
 )
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -325,7 +325,7 @@ def get_company_reports(request, stock_code):
         200: ReportDetailSerializer,
         404: OpenApiResponse(description="Company or Report not found"),
     },
-    tags=["Company"],
+    tags=["Reports"],
 )
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -441,7 +441,7 @@ def get_report_detail(request, stock_code, rcept_no):
         401: OpenApiResponse(description="Unauthorized"),
         404: OpenApiResponse(description="Company not found"),
     },
-    tags=["Company"],
+    tags=["Admin"],
 )
 @api_view(["POST"])
 @permission_classes([IsAdminUser])
@@ -677,7 +677,7 @@ def sync_company_from_dart(request, stock_code):
         400: OpenApiResponse(description="Bad Request"),
         401: OpenApiResponse(description="Unauthorized"),
     },
-    tags=["Company"],
+    tags=["Admin"],
 )
 @api_view(["POST"])
 @permission_classes([IsAdminUser])
@@ -926,7 +926,7 @@ def sync_all_companies_from_dart(request):
         200: CompanyRankingSerializer(many=True),
         404: OpenApiResponse(description="company_rankings Not Found"),
     },
-    tags=["Ranking"],
+    tags=["Rankings"],
 )
 @api_view(["GET"])
 def get_company_rankings(request):
@@ -1241,7 +1241,7 @@ def process_single_report_view(request, stock_code, rcept_no):
         400: OpenApiResponse(description="잘못된 요청"),
         404: OpenApiResponse(description="종목을 찾을 수 없음"),
     },
-    tags=["Company"],
+    tags=["Company - Info"],
 )
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -1394,7 +1394,7 @@ def get_company_prices(request, stock_code: str):
         200: OpenApiResponse(description="뉴스 목록 조회 성공"),
         404: OpenApiResponse(description="Company not found"),
     },
-    tags=["Company News"],
+    tags=["News"],
 )
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -1495,7 +1495,7 @@ def get_company_news_list(request, stock_code):
         200: OpenApiResponse(description="뉴스 상세 조회 성공"),
         404: OpenApiResponse(description="News not found"),
     },
-    tags=["Company News"],
+    tags=["News"],
 )
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -1578,7 +1578,7 @@ def get_company_news_detail(request, stock_code, news_id):
         401: OpenApiResponse(description="Unauthorized"),
         404: OpenApiResponse(description="Company not found"),
     },
-    tags=["Company News"],
+    tags=["Admin"],
 )
 @api_view(["POST"])
 @permission_classes([IsAdminUser])
@@ -1708,7 +1708,7 @@ def sync_company_news(request, stock_code):
         200: OpenApiResponse(description="검색 성공"),
         400: OpenApiResponse(description="Bad Request"),
     },
-    tags=["Company"],
+    tags=["Company - Info"],
 )
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -1832,7 +1832,7 @@ def search_companies(request):
         429: OpenApiResponse(description="API 요청 한도 초과"),
         503: OpenApiResponse(description="분석 서비스 일시 불가"),
     },
-    tags=["Company"],
+    tags=["Company - Analysis"],
 )
 @api_view(["GET"])
 @permission_classes([AllowAny])
