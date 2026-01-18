@@ -22,14 +22,16 @@ class RetryableError(Exception):
 
 # API Rate Limit 대응: 요청 간 딜레이 (초)
 # KIS API는 초당 2회로 제한되어 있으므로 최소 500ms 딜레이 필요
-# 안전 마진을 두어 600ms로 설정 (초당 약 1.67회)
-REQUEST_DELAY = 0.6
+# 네트워크 지연 및 안전 마진을 위해 520ms로 설정 (초당 약 1.92회)
+REQUEST_DELAY = 0.52
 
 
-@shared_task(bind=True, max_retries=3)
+@shared_task(bind=True, max_retries=3, rate_limit='2/s')
 def sync_market_amount(self, stock_code: str):
     """
     단건 시가총액 갱신
+
+    Rate Limit: 초당 2회 (KIS API 제한 준수)
 
     Args:
         stock_code: 종목코드

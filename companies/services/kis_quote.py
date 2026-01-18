@@ -28,8 +28,8 @@ TOKEN_CACHE_TIMEOUT = 60 * 60 * 23  # 23시간 (토큰 유효기간 24시간)
 
 # Rate Limiting: 요청 간 최소 딜레이 (초)
 # KIS API는 초당 2회로 제한되어 있으므로 최소 500ms 딜레이 필요
-# 안전 마진을 두어 600ms로 설정 (초당 약 1.67회)
-REQUEST_DELAY = 0.6  # 600ms 딜레이 (초당 2회 제한 준수)
+# 네트워크 지연 및 안전 마진을 위해 520ms로 설정 (초당 약 1.92회)
+REQUEST_DELAY = 0.52  # 520ms 딜레이 (초당 2회 제한 준수 + 안전 마진)
 
 # 분산 락 및 마지막 요청 시간 관리용 Redis 키
 KIS_RATE_LIMIT_LOCK_KEY = "kis_api_rate_limit_lock"
