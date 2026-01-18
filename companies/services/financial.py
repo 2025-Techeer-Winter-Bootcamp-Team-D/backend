@@ -248,8 +248,9 @@ class FinancialService:
     ) -> List[RevenueComposition]:
         """
         매출 구성 데이터 동기화
-        해당 연도의 사업보고서(Report)가 처리되어 있으면 extracted_info에서
+        해당 연도의 사업보고서 또는 반기보고서(Report)가 처리되어 있으면 extracted_info에서
         revenue_composition을 추출하여 RevenueComposition 테이블에 저장합니다.
+        사업보고서가 우선적으로 사용되며, 없으면 반기보고서를 사용합니다.
 
         Args:
             company: Company 인스턴스
@@ -260,24 +261,40 @@ class FinancialService:
         """
         from companies.models import Report
 
-        # 해당 연도의 사업보고서 찾기
-        # 보고서 이름에 "사업보고서"가 포함되고, submitted_at의 연도가 해당 year와 일치하는 것 찾기
-        reports = Report.objects.filter(
-            company=company,
-            report_name__icontains="사업보고서",
-            submitted_at__year=year,
-            processing_status="completed",
-            extracted_info__isnull=False,
-        ).order_by("-submitted_at")
+        # 해당 연도의 사업보고서 또는 반기보고서 찾기
+        # 우선순위: 사업보고서 > 반기보고서
+        # 먼저 사업보고서 찾기
+        report = (
+            Report.objects.filter(
+                company=company,
+                report_name__icontains="사업보고서",
+                submitted_at__year=year,
+                processing_status="completed",
+                extracted_info__isnull=False,
+            )
+            .order_by("-submitted_at")
+            .first()
+        )
 
-        if not reports.exists():
+        # 사업보고서가 없으면 반기보고서 찾기
+        if not report:
+            report = (
+                Report.objects.filter(
+                    company=company,
+                    report_name__icontains="반기보고서",
+                    submitted_at__year=year,
+                    processing_status="completed",
+                    extracted_info__isnull=False,
+                )
+                .order_by("-submitted_at")
+                .first()
+            )
+
+        if not report:
             logger.debug(
-                f"매출 구성 동기화: 처리된 사업보고서 없음 - {company.stock_code} ({year}년)"
+                f"매출 구성 동기화: 처리된 사업/반기보고서 없음 - {company.stock_code} ({year}년)"
             )
             return []
-
-        # 가장 최근 보고서 사용
-        report = reports.first()
         extracted_info = report.extracted_info
 
         if not extracted_info or "revenue_composition" not in extracted_info:
