@@ -113,6 +113,30 @@ class DartAPIClient:
         # allow_empty=True: 새 보고서가 없는 경우 빈 리스트 반환 (오류 아님)
         return self._request("list.json", params, allow_empty=True)
 
+    def get_dividend_info(
+        self,
+        corp_code: str,
+        bsns_year: str,  # 사업연도 (예: "2024")
+        reprt_code: str = "11011",  # 11011: 사업보고서
+    ) -> Dict[str, Any]:
+        """
+        배당에 관한 사항 조회
+
+        Args:
+            corp_code: 고유번호
+            bsns_year: 사업연도
+            reprt_code: 보고서 코드
+
+        Returns:
+            배당 정보 딕셔너리
+        """
+        params = {
+            "corp_code": corp_code,
+            "bsns_year": bsns_year,
+            "reprt_code": reprt_code,
+        }
+        return self._request("alotMatter.json", params, allow_empty=True)
+
     def get_corp_code_list(self) -> bytes:
         """
         전체 기업 고유번호 목록 다운로드 (ZIP 파일)

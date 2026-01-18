@@ -55,7 +55,7 @@ def sync_company_info_from_dart(self, stock_code: str):
 @shared_task(bind=True, max_retries=3)
 def sync_financial_statements(self, stock_code: str, year: int):
     """
-    DART에서 재무제표 동기화
+    DART에서 재무제표 동기화 + 배당 정보 동기화 + 재무 지표 계산
 
     Args:
         stock_code: 종목코드
@@ -77,6 +77,15 @@ def sync_financial_statements(self, stock_code: str, year: int):
         logger.info(
             f"재무제표 동기화 완료: {stock_code} ({year}년, {len(statements)}개 보고서)"
         )
+
+        # 재무제표 동기화 후 배당 정보 동기화 및 재무 지표 계산
+        if statements:
+            from companies.tasks.financial_metrics import (
+                sync_dividend_and_calculate_task,
+            )
+
+            logger.info(f"배당 정보 동기화 및 재무 지표 계산 시작: {stock_code} ({year}년)")
+            sync_dividend_and_calculate_task.delay(stock_code, year)
 
     except Company.DoesNotExist:
         logger.error(f"Company not found: {stock_code}")

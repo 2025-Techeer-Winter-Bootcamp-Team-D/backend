@@ -93,6 +93,13 @@ class FinancialStatementSerializer(serializers.ModelSerializer):
             "total_assets",
             "total_liabilities",
             "total_equity",
+            # 계산된 재무 지표
+            "roe",
+            "debt_ratio",
+            "per",
+            "pbr",
+            "dividend_yield",
+            "metrics_calculated_at",
         ]
 
     def get_report_type(self, obj):

@@ -78,6 +78,56 @@ class FinancialStatement(models.Model):
     total_liabilities = models.BigIntegerField(null=True)  # 총부채
     total_equity = models.BigIntegerField(null=True)  # 총자본
 
+    # 계산된 재무 지표
+    per = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="PER (주가수익비율)",
+        help_text="시가총액 ÷ 당기순이익",
+    )
+    pbr = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="PBR (주가순자산비율)",
+        help_text="시가총액 ÷ 총자본",
+    )
+    roe = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="ROE (자기자본이익률)",
+        help_text="(당기순이익 ÷ 총자본) × 100",
+    )
+    debt_ratio = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="부채비율",
+        help_text="(총부채 ÷ 총자본) × 100",
+    )
+    dividend_yield = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="배당수익률",
+        help_text="(연간 배당금 ÷ 현재 주가) × 100",
+    )
+
+    # 메타 정보
+    metrics_calculated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="지표 계산 시간",
+        help_text="마지막으로 재무 지표를 계산한 시간",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -171,6 +221,43 @@ class Report(models.Model):
     class Meta:
         db_table = "report"
         ordering = ["-submitted_at"]
+
+
+class Dividend(models.Model):
+    """배당 정보"""
+
+    DIVIDEND_TYPE_CHOICES = [
+        ("cash", "현금배당"),
+        ("stock", "주식배당"),
+    ]
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="dividends",
+        db_column="company_id",
+    )
+    fiscal_year = models.IntegerField(verbose_name="배당 기준 연도")  # 배당 기준 연도
+    dividend_per_share = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        verbose_name="주당 배당금",
+        help_text="단위: 원",
+    )
+    dividend_type = models.CharField(
+        max_length=20,
+        choices=DIVIDEND_TYPE_CHOICES,
+        default="cash",
+        verbose_name="배당 유형",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "dividend"
+        unique_together = ["company", "fiscal_year", "dividend_type"]
+        ordering = ["-fiscal_year"]
 
 
 class CompanyRanking(models.Model):
