@@ -124,6 +124,89 @@ class FinancialMetricsService:
         except (InvalidOperation, ZeroDivisionError):
             return None
 
+    @staticmethod
+    def calculate_eps(
+        net_income: int, market_cap: int, current_price: int
+    ) -> Optional[Decimal]:
+        """
+        EPS (주당순이익) 계산
+
+        Args:
+            net_income: 당기순이익
+            market_cap: 시가총액
+            current_price: 현재 주가
+
+        Returns:
+            EPS (원), None if 계산 불가
+        """
+        if not net_income or net_income <= 0:
+            return None
+        if not market_cap or market_cap <= 0:
+            return None
+        if not current_price or current_price <= 0:
+            return None
+
+        try:
+            # 발행주식수 = 시가총액 / 주가
+            shares_outstanding = Decimal(market_cap) / Decimal(current_price)
+            if shares_outstanding <= 0:
+                return None
+
+            # EPS = 당기순이익 / 발행주식수
+            eps = Decimal(net_income) / shares_outstanding
+            return round(eps, 2)
+        except (InvalidOperation, ZeroDivisionError):
+            return None
+
+    @staticmethod
+    def calculate_operating_profit_margin(
+        operating_profit: int, revenue: int
+    ) -> Optional[Decimal]:
+        """
+        영업이익률 계산
+
+        Args:
+            operating_profit: 영업이익
+            revenue: 매출액
+
+        Returns:
+            영업이익률 (%), None if 계산 불가
+        """
+        if not revenue or revenue <= 0:
+            return None
+
+        try:
+            operating_margin = (Decimal(operating_profit) / Decimal(revenue)) * 100
+            return round(operating_margin, 2)
+        except (InvalidOperation, ZeroDivisionError):
+            return None
+
+    @staticmethod
+    def calculate_yoy_growth(
+        current_value: int, previous_value: int
+    ) -> Optional[Decimal]:
+        """
+        YoY (Year over Year) 성장률 계산
+
+        Args:
+            current_value: 현재 연도 값
+            previous_value: 전년도 값
+
+        Returns:
+            YoY 성장률 (%), None if 계산 불가
+        """
+        if previous_value is None or previous_value == 0:
+            return None
+
+        try:
+            yoy = (
+                (Decimal(current_value) - Decimal(previous_value))
+                / Decimal(previous_value)
+            ) * 100
+            return round(yoy, 2)
+        except (InvalidOperation, ZeroDivisionError):
+            return None
+
     def calculate_all_metrics(self, financial_statement: FinancialStatement) -> dict:
         """
         재무제표에 대한 모든 지표 계산
@@ -184,12 +267,80 @@ class FinancialMetricsService:
         except Exception as e:
             logger.warning(f"배당수익률 계산 실패: {company.stock_code} - {e}")
 
+        # 6. EPS 계산 (당기순이익 + 시가총액 + 현재가)
+        eps = None
+        try:
+            from core.models import StockPrice1d
+
+            latest_price = (
+                StockPrice1d.objects.filter(stock_code=company.stock_code)
+                .order_by("-bucket")
+                .first()
+            )
+
+            if latest_price and latest_price.close:
+                eps = self.calculate_eps(
+                    financial_statement.net_income or 0,
+                    company.market_amount,
+                    int(latest_price.close),
+                )
+        except Exception as e:
+            logger.warning(f"EPS 계산 실패: {company.stock_code} - {e}")
+
+        # 7. 영업이익률 계산
+        operating_profit_margin = self.calculate_operating_profit_margin(
+            financial_statement.operating_profit or 0,
+            financial_statement.revenue or 0,
+        )
+
+        # 8. YoY 성장률 계산 (전년도 대비)
+        yoy_revenue = None
+        yoy_operating_profit = None
+        yoy_net_income = None
+
+        try:
+            # 같은 보고서 코드의 전년도 데이터 조회
+            previous_statement = FinancialStatement.objects.filter(
+                company=company,
+                fiscal_year=financial_statement.fiscal_year - 1,
+                report_code=financial_statement.report_code,
+            ).first()
+
+            if previous_statement:
+                if financial_statement.revenue and previous_statement.revenue:
+                    yoy_revenue = self.calculate_yoy_growth(
+                        financial_statement.revenue, previous_statement.revenue
+                    )
+
+                if (
+                    financial_statement.operating_profit
+                    and previous_statement.operating_profit
+                ):
+                    yoy_operating_profit = self.calculate_yoy_growth(
+                        financial_statement.operating_profit,
+                        previous_statement.operating_profit,
+                    )
+
+                if financial_statement.net_income and previous_statement.net_income:
+                    yoy_net_income = self.calculate_yoy_growth(
+                        financial_statement.net_income, previous_statement.net_income
+                    )
+        except Exception as e:
+            logger.warning(
+                f"YoY 성장률 계산 실패: {company.stock_code} ({financial_statement.fiscal_year}년) - {e}"
+            )
+
         return {
             "roe": roe,
             "debt_ratio": debt_ratio,
             "per": per,
             "pbr": pbr,
             "dividend_yield": dividend_yield,
+            "eps": eps,
+            "operating_profit_margin": operating_profit_margin,
+            "yoy_revenue": yoy_revenue,
+            "yoy_operating_profit": yoy_operating_profit,
+            "yoy_net_income": yoy_net_income,
         }
 
     def update_financial_metrics(
@@ -213,6 +364,11 @@ class FinancialMetricsService:
         financial_statement.per = metrics["per"]
         financial_statement.pbr = metrics["pbr"]
         financial_statement.dividend_yield = metrics["dividend_yield"]
+        financial_statement.eps = metrics["eps"]
+        financial_statement.operating_profit_margin = metrics["operating_profit_margin"]
+        financial_statement.yoy_revenue = metrics["yoy_revenue"]
+        financial_statement.yoy_operating_profit = metrics["yoy_operating_profit"]
+        financial_statement.yoy_net_income = metrics["yoy_net_income"]
         financial_statement.metrics_calculated_at = timezone.now()
 
         financial_statement.save(
@@ -222,6 +378,11 @@ class FinancialMetricsService:
                 "per",
                 "pbr",
                 "dividend_yield",
+                "eps",
+                "operating_profit_margin",
+                "yoy_revenue",
+                "yoy_operating_profit",
+                "yoy_net_income",
                 "metrics_calculated_at",
             ]
         )

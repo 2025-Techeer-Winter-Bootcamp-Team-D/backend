@@ -62,11 +62,15 @@ class KISQuoteClient:
         Returns:
             access_token 문자열 또는 None
         """
-        # 캐시에서 토큰 조회
-        cached_token = cache.get(TOKEN_CACHE_KEY)
-        if cached_token:
-            logger.debug("캐시된 KIS 토큰 사용")
-            return cached_token
+        # 캐시에서 토큰 조회 (캐시 연결 오류 시 무시)
+        try:
+            cached_token = cache.get(TOKEN_CACHE_KEY)
+            if cached_token:
+                logger.debug("캐시된 KIS 토큰 사용")
+                return cached_token
+        except Exception as e:
+            # 캐시 연결 오류 시 무시하고 토큰 신규 발급
+            logger.debug(f"캐시 조회 실패 (토큰 신규 발급): {e}")
 
         # 토큰 신규 발급
         if not self.app_key or not self.app_secret:
@@ -91,9 +95,14 @@ class KISQuoteClient:
                 logger.error(f"토큰 발급 응답에 access_token 없음: {data}")
                 return None
 
-            # 캐시에 토큰 저장
-            cache.set(TOKEN_CACHE_KEY, access_token, TOKEN_CACHE_TIMEOUT)
-            logger.info("KIS 토큰 발급 및 캐싱 완료")
+            # 캐시에 토큰 저장 (캐시 연결 오류 시 무시)
+            try:
+                cache.set(TOKEN_CACHE_KEY, access_token, TOKEN_CACHE_TIMEOUT)
+                logger.info("KIS 토큰 발급 및 캐싱 완료")
+            except Exception as e:
+                # 캐시 저장 실패해도 토큰은 반환
+                logger.debug(f"캐시 저장 실패 (토큰은 사용 가능): {e}")
+                logger.info("KIS 토큰 발급 완료 (캐싱 실패)")
 
             return access_token
 
@@ -110,60 +119,82 @@ class KISQuoteClient:
 
         여러 워커가 동시에 실행되어도 하나의 워커만 rate limit을 체크하고
         업데이트하도록 보장합니다.
+
+        캐시 연결 오류 시 단순 딜레이로 fallback
         """
-
-        # 락 TTL: REQUEST_DELAY보다 약간 길게 설정 (안전 마진)
-        lock_ttl = REQUEST_DELAY + 0.1  # 초 단위 (Django cache timeout은 초 단위)
-        max_retries = 10
-        retry_backoff = 0.01  # 10ms
-
-        # 분산 락 획득 시도
-        lock_acquired = False
-        for attempt in range(max_retries):
-            # cache.add는 키가 존재하지 않을 때만 True 반환 (원자적 연산)
-            lock_acquired = cache.add(
-                KIS_RATE_LIMIT_LOCK_KEY, "locked", timeout=lock_ttl
-            )
-            if lock_acquired:
-                break
-
-            # 락 획득 실패 시 짧은 backoff 후 재시도
-            if attempt < max_retries - 1:
-                time.sleep(retry_backoff)
-            else:
-                logger.warning(
-                    "KIS rate limit 락 획득 실패 (최대 재시도 횟수 초과). "
-                    "락이 해제될 때까지 대기합니다."
-                )
-                # 최종 시도 실패 시 락이 해제될 때까지 대기
-                while not cache.add(
-                    KIS_RATE_LIMIT_LOCK_KEY, "locked", timeout=lock_ttl
-                ):
-                    time.sleep(retry_backoff)
-                lock_acquired = True
-                break
-
         try:
-            # 락 획득 후 마지막 요청 시간 조회 및 업데이트
-            last_request_time = cache.get(KIS_LAST_REQUEST_TIME_KEY)
-            current_time = time.time()
+            # 락 TTL: REQUEST_DELAY보다 약간 길게 설정 (안전 마진)
+            lock_ttl = REQUEST_DELAY + 0.1  # 초 단위 (Django cache timeout은 초 단위)
+            max_retries = 10
+            retry_backoff = 0.01  # 10ms
 
-            if last_request_time:
-                elapsed = current_time - last_request_time
-                # 마지막 요청 이후 REQUEST_DELAY 시간이 지나지 않았으면 대기
-                if elapsed < REQUEST_DELAY:
-                    wait_time = REQUEST_DELAY - elapsed
-                    logger.debug(f"KIS API rate limit 대기: {wait_time:.3f}초")
-                    time.sleep(wait_time)
-                    current_time = time.time()
+            # 분산 락 획득 시도
+            lock_acquired = False
+            for attempt in range(max_retries):
+                # cache.add는 키가 존재하지 않을 때만 True 반환 (원자적 연산)
+                try:
+                    lock_acquired = cache.add(
+                        KIS_RATE_LIMIT_LOCK_KEY, "locked", timeout=lock_ttl
+                    )
+                    if lock_acquired:
+                        break
+                except Exception:
+                    # 캐시 연결 오류 시 락 획득 실패로 간주
+                    break
 
-            # 현재 시간을 마지막 요청 시간으로 저장 (타임아웃 1초)
-            cache.set(KIS_LAST_REQUEST_TIME_KEY, current_time, timeout=1)
+                # 락 획득 실패 시 짧은 backoff 후 재시도
+                if attempt < max_retries - 1:
+                    time.sleep(retry_backoff)
+                else:
+                    logger.warning(
+                        "KIS rate limit 락 획득 실패 (최대 재시도 횟수 초과). "
+                        "락이 해제될 때까지 대기합니다."
+                    )
+                    # 최종 시도 실패 시 락이 해제될 때까지 대기
+                    try:
+                        while not cache.add(
+                            KIS_RATE_LIMIT_LOCK_KEY, "locked", timeout=lock_ttl
+                        ):
+                            time.sleep(retry_backoff)
+                        lock_acquired = True
+                        break
+                    except Exception:
+                        # 캐시 연결 오류 시 락 획득 실패
+                        break
 
-        finally:
-            # 락 해제 (항상 실행되도록 보장)
-            if lock_acquired:
-                cache.delete(KIS_RATE_LIMIT_LOCK_KEY)
+            try:
+                # 락 획득 후 마지막 요청 시간 조회 및 업데이트
+                last_request_time = cache.get(KIS_LAST_REQUEST_TIME_KEY)
+                current_time = time.time()
+
+                if last_request_time:
+                    elapsed = current_time - last_request_time
+                    # 마지막 요청 이후 REQUEST_DELAY 시간이 지나지 않았으면 대기
+                    if elapsed < REQUEST_DELAY:
+                        wait_time = REQUEST_DELAY - elapsed
+                        logger.debug(f"KIS API rate limit 대기: {wait_time:.3f}초")
+                        time.sleep(wait_time)
+                        current_time = time.time()
+
+                # 현재 시간을 마지막 요청 시간으로 저장 (타임아웃 1초)
+                try:
+                    cache.set(KIS_LAST_REQUEST_TIME_KEY, current_time, timeout=1)
+                except Exception:
+                    # 캐시 저장 실패 시 무시
+                    pass
+
+            finally:
+                # 락 해제 (항상 실행되도록 보장)
+                if lock_acquired:
+                    try:
+                        cache.delete(KIS_RATE_LIMIT_LOCK_KEY)
+                    except Exception:
+                        # 캐시 삭제 실패 시 무시
+                        pass
+        except Exception as e:
+            # 캐시 연결 오류 시 단순 딜레이로 fallback
+            logger.debug(f"캐시 기반 rate limit 실패, 단순 딜레이 사용: {e}")
+            time.sleep(REQUEST_DELAY)
 
     def get_stock_quote(self, stock_code: str) -> Optional[dict]:
         """
@@ -306,6 +337,17 @@ class KISQuoteClient:
         """
         시가총액 조회
 
+        KIS API 응답 구조 (get_stock_quote):
+        - output: 시세 정보 딕셔너리
+        - hts_avls: HTS 시가총액 (억 단위, 문자열, 콤마 포함 가능)
+        - stck_prpr: 현재가 (원 단위)
+        - lstg_stcnt: 상장주식수 (주 단위)
+        - 예: "500,000" → 500,000억원 → 50,000,000,000,000원
+
+        검증 방법:
+        1. hts_avls 필드 사용 (우선)
+        2. 현재가 × 상장주식수로 계산하여 검증 (hts_avls가 없거나 검증 필요 시)
+
         Args:
             stock_code: 종목코드 (6자리)
 
@@ -314,22 +356,101 @@ class KISQuoteClient:
         """
         quote = self.get_stock_quote(stock_code)
         if not quote:
+            logger.warning(f"KIS 시세 조회 실패: {stock_code}")
             return None
 
         # hts_avls: HTS 시가총액 (억 단위)
+        # KIS API 공식 문서 기준: hts_avls는 억 단위로 제공됨
         hts_avls = quote.get("hts_avls")
-        if not hts_avls:
-            logger.warning(f"시가총액 필드(hts_avls) 없음: {stock_code}")
-            return None
 
-        try:
-            # 억 단위 → 원 단위 변환
-            market_amount = int(hts_avls.replace(",", "")) * 100_000_000
-            logger.debug(f"시가총액 조회 완료: {stock_code} → {market_amount:,}원")
-            return market_amount
-        except (ValueError, AttributeError) as e:
-            logger.error(f"시가총액 파싱 실패 ({stock_code}): {hts_avls}, {e}")
-            return None
+        # 대체 계산을 위한 필드 확인
+        stck_prpr = quote.get("stck_prpr")  # 현재가
+        lstg_stcnt = quote.get("lstg_stcnt")  # 상장주식수
+
+        # hts_avls 우선 사용
+        if hts_avls:
+            try:
+                # 문자열에서 콤마 제거 후 정수 변환
+                hts_avls_clean = str(hts_avls).replace(",", "").strip()
+                if not hts_avls_clean:
+                    logger.warning(f"시가총액 값이 비어있음: {stock_code}")
+                    return None
+
+                # 억 단위 → 원 단위 변환
+                # 1억 = 100,000,000원
+                market_amount = int(hts_avls_clean) * 100_000_000
+
+                # 검증: 현재가 × 상장주식수로 계산하여 비교 (가능한 경우)
+                if stck_prpr and lstg_stcnt:
+                    try:
+                        current_price = int(str(stck_prpr).replace(",", "").strip())
+                        shares_outstanding = int(
+                            str(lstg_stcnt).replace(",", "").strip()
+                        )
+                        calculated_market_cap = current_price * shares_outstanding
+
+                        # 오차율 계산 (5% 이내면 정상으로 간주)
+                        diff = abs(market_amount - calculated_market_cap)
+                        diff_percent = (
+                            (diff / calculated_market_cap * 100)
+                            if calculated_market_cap > 0
+                            else 0
+                        )
+
+                        if diff_percent > 5:
+                            logger.warning(
+                                f"시가총액 검증 경고 ({stock_code}): "
+                                f"hts_avls 기반={market_amount:,}원, "
+                                f"계산값(현재가×상장주식수)={calculated_market_cap:,}원, "
+                                f"오차율={diff_percent:.2f}%"
+                            )
+                        else:
+                            logger.debug(
+                                f"시가총액 검증 통과 ({stock_code}): "
+                                f"hts_avls={market_amount:,}원, 계산값={calculated_market_cap:,}원, "
+                                f"오차율={diff_percent:.2f}%"
+                            )
+                    except (ValueError, TypeError) as e:
+                        logger.debug(
+                            f"시가총액 검증 계산 실패 ({stock_code}): {e} "
+                            f"(stck_prpr={stck_prpr}, lstg_stcnt={lstg_stcnt})"
+                        )
+
+                logger.debug(
+                    f"시가총액 조회 완료: {stock_code} → {hts_avls}억원 = {market_amount:,}원"
+                )
+                return market_amount
+            except (ValueError, TypeError, AttributeError) as e:
+                logger.error(
+                    f"시가총액 파싱 실패 ({stock_code}): hts_avls={hts_avls}, 타입={type(hts_avls)}, 오류: {e}"
+                )
+                # 파싱 실패 시 대체 계산 시도
+                pass
+
+        # hts_avls가 없거나 파싱 실패 시 대체 계산: 현재가 × 상장주식수
+        if stck_prpr and lstg_stcnt:
+            try:
+                current_price = int(str(stck_prpr).replace(",", "").strip())
+                shares_outstanding = int(str(lstg_stcnt).replace(",", "").strip())
+                market_amount = current_price * shares_outstanding
+
+                logger.info(
+                    f"시가총액 대체 계산 ({stock_code}): "
+                    f"현재가({current_price:,}원) × 상장주식수({shares_outstanding:,}주) = {market_amount:,}원"
+                )
+                return market_amount
+            except (ValueError, TypeError) as e:
+                logger.error(
+                    f"시가총액 대체 계산 실패 ({stock_code}): "
+                    f"stck_prpr={stck_prpr}, lstg_stcnt={lstg_stcnt}, 오류: {e}"
+                )
+
+        # 모든 방법 실패
+        logger.warning(
+            f"시가총액 필드(hts_avls) 없음: {stock_code}, "
+            f"사용 가능한 필드: {list(quote.keys())}"
+        )
+        return None
 
 
 # 싱글톤 인스턴스
