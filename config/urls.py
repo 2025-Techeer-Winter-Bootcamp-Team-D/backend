@@ -32,6 +32,8 @@ def main_page(request):
 
 
 urlpatterns = [
+    # Prometheus metrics (최상단에 위치해야 함)
+    path("", include("django_prometheus.urls")),
     # Admin
     path("admin/", admin.site.urls),
     # Health Check
@@ -54,5 +56,5 @@ urlpatterns = [
     path("api/industries/", include("industries.urls")),
     path("api/comparisons/", include("comparisons.urls")),
     path("api/news/", include("news.urls")),
-    path("api/indices/", include("indices.urls"))
+    path("api/indices/", include("indices.urls")),
 ]

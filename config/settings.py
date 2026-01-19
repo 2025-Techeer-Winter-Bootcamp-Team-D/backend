@@ -41,6 +41,7 @@ ALLOWED_HOSTS = ["*"]
 
 INSTALLED_APPS = [
     "daphne",  # Channels ASGI 서버 (INSTALLED_APPS 최상단)
+    "django_prometheus",  # Prometheus 메트릭 (INSTALLED_APPS 상단에 위치)
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -66,6 +67,7 @@ INSTALLED_APPS = [
 ASGI_APPLICATION = "config.asgi.application"
 
 MIDDLEWARE = [
+    "django_prometheus.middleware.PrometheusBeforeMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -73,6 +75,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "django_prometheus.middleware.PrometheusAfterMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -152,7 +155,7 @@ if os.getenv("DATABASE_URL"):
     db_url = urlparse(os.getenv("DATABASE_URL"))
     DATABASES = {
         "default": {
-            "ENGINE": "django.db.backends.postgresql",
+            "ENGINE": "django_prometheus.db.backends.postgresql",
             "NAME": db_url.path[1:],  # Remove leading '/'
             "USER": db_url.username,
             "PASSWORD": db_url.password,
@@ -163,7 +166,7 @@ if os.getenv("DATABASE_URL"):
 else:
     DATABASES = {
         "default": {
-            "ENGINE": "django.db.backends.postgresql",
+            "ENGINE": "django_prometheus.db.backends.postgresql",
             "NAME": os.getenv("POSTGRES_DB", "postgres"),
             "USER": os.getenv("POSTGRES_USER", "postgres"),
             "PASSWORD": os.getenv("POSTGRES_PASSWORD", ""),
@@ -217,8 +220,8 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 # KIS API Rate Limit: 초당 2회 제한 준수
 # KIS API를 호출하는 모든 태스크에 대해 rate limit 적용
 CELERY_TASK_ANNOTATIONS = {
-    'companies.tasks.kis_market_amount.sync_market_amount': {'rate_limit': '2/s'},
-    'companies.tasks.dart_sync.sync_company_info_from_dart': {'rate_limit': '2/s'},
+    "companies.tasks.kis_market_amount.sync_market_amount": {"rate_limit": "2/s"},
+    "companies.tasks.dart_sync.sync_company_info_from_dart": {"rate_limit": "2/s"},
 }
 
 # =============================================================================
@@ -266,16 +269,23 @@ if NEWS_BATCH_ENABLED:
         },
     }
 
-# DART 기업 정보 동기화: 주 1회 (일요일 새벽 3시)
+# DART 동기화: 모두 일 1회 실행 (새벽 3시 통일)
 if DART_SYNC_ENABLED:
-    CELERY_BEAT_SCHEDULE["sync-dart-company-info-weekly"] = {
+    # DART 기업 정보 동기화: 일 1회 (새벽 3시)
+    CELERY_BEAT_SCHEDULE["sync-dart-company-info-daily"] = {
         "task": "companies.tasks.dart_sync.sync_all_company_info",
-        "schedule": crontab(day_of_week=0, hour=3, minute=0),
+        "schedule": crontab(hour=3, minute=0),
     }
-    # DART 보고서 목록 동기화: 일 1회 (새벽 4시)
+    # DART 재무제표 동기화: 일 1회 (새벽 3시) - 최근 3년치
+    CELERY_BEAT_SCHEDULE["sync-dart-financial-statements-daily"] = {
+        "task": "companies.tasks.dart_sync.sync_all_financial_statements",
+        "schedule": crontab(hour=3, minute=0),
+        "kwargs": {"years": 3},
+    }
+    # DART 보고서 목록 동기화: 일 1회 (새벽 3시)
     CELERY_BEAT_SCHEDULE["sync-dart-reports-daily"] = {
         "task": "companies.tasks.dart_sync.sync_all_reports",
-        "schedule": crontab(hour=4, minute=0),
+        "schedule": crontab(hour=3, minute=0),
     }
 
 # 시가총액 갱신: 평일 장 마감 후 (16:10)
