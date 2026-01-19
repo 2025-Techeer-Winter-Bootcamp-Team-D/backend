@@ -109,7 +109,7 @@
       "tableColumn": "",
       "targets": [
         {
-          "expr": "sum(irate(django_http_requests_total_by_transport_total{namespace=~\"$namespace\", app=~\"^$app$\"}[1m]))",
+          "expr": "sum(irate(django_http_requests_total_by_transport_total[1m]))",
           "format": "time_series",
           "intervalFactor": 1,
           "refId": "A"

@@ -1279,18 +1279,18 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate(node_disk_bytes_read{instance=~\"$server.*\"}[$interval])) by (device)",
+              "expr": "sum(rate(node_disk_read_bytes_total{instance=~\"$server.*\"}[$interval])) by (device)",
               "intervalFactor": 2,
               "legendFormat": "OUT on /{{device}}",
-              "metric": "node_disk_bytes_read",
+              "metric": "node_disk_read_bytes_total",
               "refId": "A",
               "step": 600
             },
             {
-              "expr": "sum(rate(node_disk_bytes_written{instance=~\"$server.*\"}[$interval])) by (device)",
+              "expr": "sum(rate(node_disk_written_bytes_total{instance=~\"$server.*\"}[$interval])) by (device)",
               "intervalFactor": 2,
               "legendFormat": "IN on /{{device}}",
-              "metric": "",
+              "metric": "node_disk_written_bytes_total",
               "refId": "B",
               "step": 600
             },

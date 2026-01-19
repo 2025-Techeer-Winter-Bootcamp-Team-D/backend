@@ -303,7 +303,7 @@
       "tableColumn": "",
       "targets": [
         {
-          "expr": "sum(100 * (redis_memory_used_bytes{instance=~\"$instance\"}  / redis_memory_max_bytes{instance=~\"$instance\"}))",
+          "expr": "sum(100 * (redis_memory_used_bytes{instance=~\"$instance\"}  / clamp_min(redis_memory_max_bytes{instance=~\"$instance\"}, 1)))",
           "format": "time_series",
           "intervalFactor": 2,
           "legendFormat": "",
@@ -700,7 +700,7 @@
           "expr": "sum(rate(redis_net_input_bytes_total{instance=~\"$instance\"}[5m]))",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "{{ input }}",
+          "legendFormat": "input",
           "refId": "A",
           "step": 240
         },
@@ -709,7 +709,7 @@
           "format": "time_series",
           "interval": "",
           "intervalFactor": 2,
-          "legendFormat": "{{ output }}",
+          "legendFormat": "output",
           "refId": "B",
           "step": 240
         }
