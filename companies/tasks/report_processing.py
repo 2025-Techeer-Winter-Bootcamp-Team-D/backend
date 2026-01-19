@@ -110,13 +110,41 @@ def extract_report_info_task(self, data: dict[str, Any]) -> dict[str, Any] | Non
             refined_content, report_name, company_name
         )
 
-        # 주요 키워드 추출
-        primary_keyword = extracted_info.get("primary_keyword", "")
+        # 주요 키워드 추출 및 검증/정규화
+        raw_keyword = extracted_info.get("primary_keyword", "")
+        primary_keyword = None
+
+        if raw_keyword:
+            try:
+                # 문자열로 변환
+                if not isinstance(raw_keyword, str):
+                    primary_keyword = str(raw_keyword)
+                else:
+                    primary_keyword = raw_keyword
+
+                # 공백 제거
+                primary_keyword = primary_keyword.strip()
+
+                # 최대 길이 제한 (200자)
+                if len(primary_keyword) > 200:
+                    primary_keyword = primary_keyword[:200]
+                    logger.warning(
+                        f"primary_keyword가 200자를 초과하여 잘랐습니다: {report_id}"
+                    )
+
+                # 빈 문자열이면 None으로 설정
+                if not primary_keyword:
+                    primary_keyword = None
+            except Exception as e:
+                logger.error(
+                    f"primary_keyword 변환 실패: {report_id} - {e}", exc_info=True
+                )
+                primary_keyword = None
 
         # DB 업데이트 (extracted_info JSON 및 primary_keyword 저장)
         Report.objects.filter(id=report_id).update(
             extracted_info=extracted_info,
-            primary_keyword=primary_keyword if primary_keyword else None,
+            primary_keyword=primary_keyword,
         )
 
         # 매출 구성이 있으면 별도 테이블에도 저장
