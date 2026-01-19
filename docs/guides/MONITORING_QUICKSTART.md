@@ -21,15 +21,17 @@
   5. Node Exporter Full
 
 ### 접속 방법
-- **Grafana UI**: http://localhost:3000
+
+- **Grafana UI**: <http://localhost:3000>
   - Username: `admin`
   - Password: `admin`
-- **Prometheus UI**: http://localhost:9090
-- **Django Metrics**: http://localhost:8000/metrics
+- **Prometheus UI**: <http://localhost:9090>
+- **Django Metrics**: <http://localhost:8000/internal/metrics>
 
 ---
 
 ## 목차
+
 1. [모니터링 시스템 확인](#1-모니터링-시스템-확인)
 2. [대시보드 사용 가이드](#2-대시보드-사용-가이드)
 3. [추가 대시보드 설정](#3-추가-대시보드-설정)
@@ -43,7 +45,7 @@
 
 ### 1.1 Grafana 대시보드 접속
 
-1. 브라우저에서 http://localhost:3000 접속
+1. 브라우저에서 <http://localhost:3000> 접속
 2. 로그인 (Username: `admin`, Password: `admin`)
 3. 좌측 메뉴 → **Dashboards** 클릭
 
@@ -143,14 +145,6 @@ docker-compose restart grafana
 
 ---
 
-## 4. 기본 알림 설정
-
-**(준비 중 - Phase 1 다음 단계)**
-
-AlertManager 설정 및 알림 규칙은 Phase 1의 다음 단계에서 구축됩니다.
-
----
-
 ## 5. 로그 확인
 
 ### 5.1 서비스 로그 확인
@@ -242,8 +236,8 @@ docker-compose restart prometheus
 ### 1.4 메트릭 확인
 
 브라우저에서 다음 URL 접속:
-- Django 메트릭: http://localhost:8000/metrics
-- Prometheus UI: http://localhost:9090
+- Django 메트릭: <http://localhost:8000/internal/metrics>
+- Prometheus UI: <http://localhost:9090>
 
 Prometheus UI에서 Status → Targets 확인하여 `django-app`이 UP 상태인지 확인.
 
@@ -272,7 +266,7 @@ curl -s 'http://localhost:9090/api/v1/query?query=container_memory_usage_bytes' 
 Grafana에서 컨테이너 ID 기반 대시보드를 생성합니다.
 
 #### 단계 1: 새 대시보드 생성
-1. Grafana (http://localhost:3000) 접속
+1. Grafana (<http://localhost:3000>) 접속
 2. 좌측 메뉴 → **Dashboards** → **New** → **New dashboard**
 3. **Add visualization** 클릭
 4. 데이터 소스로 **Prometheus** 선택
@@ -331,7 +325,7 @@ count(container_last_seen{id=~"/docker/.*"})
 
 ### 3.1 Grafana 접속
 
-http://localhost:3000 접속 후 로그인 (admin/admin)
+<http://localhost:3000> 접속 후 로그인 (admin/admin)
 
 ### 3.2 데이터 소스 추가
 
@@ -631,8 +625,8 @@ docker-compose restart prometheus
 
 ### 4.6 알림 확인
 
-- AlertManager UI: http://localhost:9093
-- Prometheus Alerts: http://localhost:9090/alerts
+- AlertManager UI: <http://localhost:9093>
+- Prometheus Alerts: <http://localhost:9090/alerts>
 
 ---
 
@@ -784,7 +778,7 @@ docker-compose logs prometheus
 - Slack Webhook URL 확인
 - AlertManager 설정 파일 문법 확인
 - AlertManager 로그 확인: `docker-compose logs alertmanager`
-- 알림 규칙 활성화 확인: http://localhost:9090/alerts
+- 알림 규칙 활성화 확인: <http://localhost:9090/alerts>
 
 ---
 

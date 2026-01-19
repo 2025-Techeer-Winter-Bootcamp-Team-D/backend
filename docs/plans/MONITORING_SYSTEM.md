@@ -86,6 +86,7 @@
 ### 2.2 서비스 구성
 
 #### 애플리케이션 서비스
+
 | 서비스 | 컨테이너명 | 포트 | 설명 |
 |--------|-----------|------|------|
 | Django App | django | 8000 | 메인 API 서버 (Daphne ASGI) |
@@ -94,6 +95,7 @@
 | Subscribe Handler | subscribe-handler | - | 실시간 구독 처리 |
 
 #### 데이터 처리 서비스
+
 | 서비스 | 컨테이너명 | 포트 | 설명 |
 |--------|-----------|------|------|
 | KIS Publisher | kis-publisher | - | 주식 시세 데이터 수집 |
@@ -101,6 +103,7 @@
 | KIS Mock Server | kis-mock-server | 8080 | 테스트용 Mock 서버 |
 
 #### 데이터 저장소
+
 | 서비스 | 컨테이너명 | 포트 | 설명 |
 |--------|-----------|------|------|
 | TimescaleDB | postgres-timescaledb | 5432 | 시계열 데이터베이스 |
@@ -108,7 +111,8 @@
 | OpenSearch | opensearch | 9200, 9600 | 검색 및 로그 분석 |
 
 ### 2.3 기존 설정 파일
-```
+
+```text
 prometheus/
 └── prometheus.yml      # Prometheus 설정 (scrape 대상 정의)
 ```
@@ -147,7 +151,8 @@ prometheus/
 
 **해결 방안**:
 
-**옵션 1: 현재 메트릭 구조에 맞는 대시보드 사용 (권장)**
+#### 옵션 1: 현재 메트릭 구조에 맞는 대시보드 사용 (권장)
+
 - 현재 수집 중인 메트릭 확인:
   ```bash
   curl -s 'http://localhost:9090/api/v1/query?query=container_memory_usage_bytes{id=~"/docker/.*"}'
@@ -161,12 +166,13 @@ prometheus/
   rate(container_cpu_usage_seconds_total{id=~"/docker/.*"}[5m])
   ```
 
-**옵션 2: 커스텀 대시보드 생성**
+#### 옵션 2: 커스텀 대시보드 생성
+
 - Grafana Provisioning을 통한 자동 대시보드 배포
 - `grafana/provisioning/dashboards/` 디렉토리 설정
 - 컨테이너 ID 기반 패널 구성
 
-**옵션 3: 외부 cAdvisor 대시보드 활용 불가**
+#### 옵션 3: 외부 cAdvisor 대시보드 활용 불가
 - 공식 대시보드(ID: 193)는 Docker 메타데이터가 필요
 - macOS Docker Desktop 제약으로 인해 제한적
 
