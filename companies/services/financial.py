@@ -258,19 +258,26 @@ class FinancialService:
                         break
 
             if key:
-                # 이미 값이 있으면 건너뛰기 (첫 번째 유효한 값만 사용)
-                if key in financial_data:
-                    continue
                 # 금액 문자열을 정수로 변환 (예: "302231000000000" -> 302231000000000)
                 try:
                     if thstrm_amount and thstrm_amount != "":
                         value = int(thstrm_amount)
-                        # 0이 아닌 값만 저장 (0 값은 무시)
+                        # 0이 아닌 값만 고려 (0 값은 무시)
                         if value != 0:
-                            financial_data[key] = value
-                            logger.debug(
-                                f"재무 지표 추출: {key} = {value} ({account_nm}, {account_id})"
-                            )
+                            # 동일 key에 여러 값이 있는 경우 가장 큰 값을 선택 (연결재무제표)
+                            if key in financial_data:
+                                # 기존 값보다 큰 값만 업데이트
+                                if value > financial_data[key]:
+                                    financial_data[key] = value
+                                    logger.debug(
+                                        f"재무 지표 업데이트 (더 큰 값): {key} = {value} ({account_nm}, {account_id})"
+                                    )
+                            else:
+                                # 첫 번째 값 저장
+                                financial_data[key] = value
+                                logger.debug(
+                                    f"재무 지표 추출: {key} = {value} ({account_nm}, {account_id})"
+                                )
                 except (ValueError, TypeError) as e:
                     logger.warning(
                         f"Invalid amount format: {account_nm} ({account_id}) = {thstrm_amount}, error: {e}"
@@ -479,25 +486,27 @@ class FinancialService:
         return saved_compositions
 
     def get_financial_statements(
-        self, company: Company, years: Optional[List[int]] = None
+        self, company: Company, years: Optional[int] = None
     ) -> List[FinancialStatement]:
         """
         기업의 재무제표 조회
 
         Args:
             company: Company 인스턴스
-            years: 조회할 연도 리스트 (None이면 최근 3년)
+            years: 조회할 최근 연도 수 (None이면 최근 3년, 예: 3이면 최근 3년치)
 
         Returns:
             FinancialStatement 인스턴스 리스트
         """
         if years is None:
-            # 최근 3년 조회
-            current_year = datetime.now().year
-            years = [current_year - i for i in range(3)]
+            years = 3  # 기본값: 최근 3년
+
+        # 최근 N년치 연도 리스트 생성
+        current_year = datetime.now().year
+        year_list = [current_year - i for i in range(years)]
 
         financial_statements = FinancialStatement.objects.filter(
-            company=company, fiscal_year__in=years
+            company=company, fiscal_year__in=year_list
         ).order_by("-fiscal_year", "-report_code")
 
         return list(financial_statements)
