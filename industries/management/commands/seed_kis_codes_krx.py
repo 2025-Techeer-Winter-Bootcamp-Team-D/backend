@@ -1,4 +1,18 @@
-       industries_data = [
+"""
+KRX 기반 KIS 코드로 Industry 테이블 시드
+
+사용법:
+    python manage.py seed_kis_codes_krx
+"""
+from django.core.management.base import BaseCommand
+from industries.models import Industry
+
+
+class Command(BaseCommand):
+    help = "KRX 기반 KIS 코드로 Industry 테이블을 시드합니다"
+
+    def handle(self, *args, **options):
+        industries_data = [
             # --- A. 농업, 임업 및 어업 (통합 지수 사용) ---
             {"name": "농업/어업", "induty_code": "0027", "description": "KOSPI 농림수산업 통합 지수"},
 
@@ -37,3 +51,35 @@
             {"name": "코스닥", "induty_code": "1001", "description": "KOSDAQ 종합 지수"},
             {"name": "KRX 300", "induty_code": "2001", "description": "코스피/코스닥 통합 우량 300 지수"},
         ]
+
+        created_count = 0
+        updated_count = 0
+
+        for industry_data in industries_data:
+            induty_code = industry_data.get("induty_code")
+            name = industry_data["name"]
+            description = industry_data["description"]
+
+            industry, created = Industry.objects.update_or_create(
+                induty_code=induty_code,
+                defaults={
+                    "name": name,
+                    "description": description,
+                    "is_deleted": False,
+                },
+            )
+
+            if created:
+                created_count += 1
+                self.stdout.write(
+                    self.style.SUCCESS(f"✓ 생성: {name} ({induty_code})")
+                )
+            else:
+                updated_count += 1
+                self.stdout.write(f"✓ 업데이트: {name} ({induty_code})")
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"\n완료: {created_count}개 생성, {updated_count}개 업데이트"
+            )
+        )

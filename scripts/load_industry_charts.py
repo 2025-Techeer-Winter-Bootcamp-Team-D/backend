@@ -7,8 +7,12 @@
 import os
 import sys
 import django
+from pathlib import Path
 
-sys.path.insert(0, '/home/jangh/Techeer/backend')
+# 스크립트 파일의 위치를 기준으로 프로젝트 루트 계산
+script_dir = Path(__file__).resolve().parent
+project_root = script_dir.parent
+sys.path.insert(0, str(project_root))
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django.setup()
 
@@ -39,8 +43,11 @@ def load_industry_charts():
         
         try:
             with transaction.atomic():
+                # 1년치 원본 데이터 수집
+                raw_data = service.fetch_1y_history_raw(industry.induty_code)
+                
                 # 1년치 차트 데이터 생성
-                charts = service.get_industry_charts_1year(industry.induty_code)
+                charts = service.get_industry_charts_1y(raw_data)
                 
                 # 기존 데이터 삭제 (갱신용)
                 IndustryChart1d.objects.filter(industry=industry).delete()
