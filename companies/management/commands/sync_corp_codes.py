@@ -142,7 +142,18 @@ class Command(BaseCommand):
         # STEP 1: KisIndustry 테이블 채우기
         self.stdout.write("STEP 1: KIS 업종 마스터 적재 중...")
         if not dry_run:
-            res_idx = requests.get(base_url + "idxcode.mst.zip")
+            try:
+                res_idx = requests.get(base_url + "idxcode.mst.zip", timeout=10)
+            except requests.exceptions.Timeout:
+                self.stdout.write(
+                    self.style.ERROR("KIS 업종 마스터 다운로드 타임아웃 (10초 초과)")
+                )
+                raise
+            except requests.exceptions.RequestException as e:
+                self.stdout.write(
+                    self.style.ERROR(f"KIS 업종 마스터 다운로드 실패: {e}")
+                )
+                raise
             with zipfile.ZipFile(io.BytesIO(res_idx.content)) as z:
                 content = z.read(z.namelist()[0])
                 kis_count = 0
@@ -173,7 +184,22 @@ class Command(BaseCommand):
                 {"name": "KOSPI", "file": "kospi_code.mst.zip"},
                 {"name": "KOSDAQ", "file": "kosdaq_code.mst.zip"},
             ]:
-                res_stk = requests.get(base_url + target["file"])
+                try:
+                    res_stk = requests.get(base_url + target["file"], timeout=10)
+                except requests.exceptions.Timeout:
+                    self.stdout.write(
+                        self.style.ERROR(
+                            f"{target['name']} 종목 마스터 다운로드 타임아웃 (10초 초과)"
+                        )
+                    )
+                    raise
+                except requests.exceptions.RequestException as e:
+                    self.stdout.write(
+                        self.style.ERROR(
+                            f"{target['name']} 종목 마스터 다운로드 실패: {e}"
+                        )
+                    )
+                    raise
                 with zipfile.ZipFile(io.BytesIO(res_stk.content)) as z:
                     content = z.read(z.namelist()[0])
                     for line in content.splitlines():

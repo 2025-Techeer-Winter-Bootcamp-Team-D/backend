@@ -15,6 +15,9 @@ logger = logging.getLogger(__name__)
 # 안전 마진을 두어 600ms로 설정 (초당 약 1.67회)
 REQUEST_DELAY = 0.6  # 600ms 딜레이 (초당 2회 제한 준수)
 
+# HTTP 요청 타임아웃 (초)
+REQUEST_TIMEOUT = 10
+
 # 분산 락 및 마지막 요청 시간 관리용 Redis 키
 KIS_RATE_LIMIT_LOCK_KEY = "kis_api_rate_limit_lock"
 KIS_LAST_REQUEST_TIME_KEY = "kis_api_last_request_time"
@@ -66,7 +69,14 @@ class KISIndexService:
                 "appsecret": self.app_secret,
             }
 
-            res = requests.post(url, data=json.dumps(data))
+            try:
+                res = requests.post(url, data=json.dumps(data), timeout=REQUEST_TIMEOUT)
+            except requests.exceptions.Timeout:
+                logger.error("KIS 토큰 발급 요청 타임아웃")
+                raise Exception("KIS 토큰 발급 요청 타임아웃")
+            except requests.exceptions.RequestException as e:
+                logger.error(f"KIS 토큰 발급 요청 실패: {e}")
+                raise Exception(f"KIS 토큰 발급 요청 실패: {e}")
 
             if res.status_code == 200:
                 new_token = res.json().get("access_token")
@@ -110,9 +120,7 @@ class KISIndexService:
             else:
                 # 최종 시도 실패 시 락이 해제될 때까지 대기 (타임아웃 포함)
                 logger.debug("KIS rate limit 락 획득 대기 중...")
-                while not cache.add(
-                    KIS_RATE_LIMIT_LOCK_KEY, "locked", timeout=lock_ttl
-                ):
+                while True:
                     elapsed = time.time() - start_time
                     if elapsed > max_wait_time:
                         logger.warning(
@@ -120,8 +128,12 @@ class KISIndexService:
                             "강제로 진행합니다."
                         )
                         break
+
+                    if cache.add(KIS_RATE_LIMIT_LOCK_KEY, "locked", timeout=lock_ttl):
+                        lock_acquired = True
+                        break
+
                     time.sleep(retry_backoff)
-                lock_acquired = True
                 break
 
         try:
@@ -183,7 +195,16 @@ class KISIndexService:
         if end_date:
             params["FID_INPUT_DATE_2"] = end_date
 
-        res = requests.get(url, headers=headers, params=params)
+        try:
+            res = requests.get(
+                url, headers=headers, params=params, timeout=REQUEST_TIMEOUT
+            )
+        except requests.exceptions.Timeout:
+            logger.error(f"KIS API 호출 타임아웃: {industry_code}")
+            raise Exception(f"KIS API 호출 타임아웃: {industry_code}")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"KIS API 호출 실패: {industry_code} - {e}")
+            raise Exception(f"KIS API 호출 실패: {industry_code} - {e}")
 
         if res.status_code == 200:
             res_json = res.json()
