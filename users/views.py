@@ -2,7 +2,7 @@ import logging
 from django.contrib.auth.models import User
 from rest_framework import generics, status, viewsets, mixins
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import Favorite
 from .serializers import FavoriteSerializer
 from companies.models import Company
@@ -22,6 +22,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 class SignupView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
+    permission_classes = [AllowAny]
 
     @extend_schema(
         summary="회원가입",
@@ -36,6 +37,7 @@ class SignupView(generics.CreateAPIView):
 # --로그인--
 class LoginView(generics.GenericAPIView):
     serializer_class = LoginSerializer
+    permission_classes = [AllowAny]
 
     @extend_schema(
         summary="로그인",
