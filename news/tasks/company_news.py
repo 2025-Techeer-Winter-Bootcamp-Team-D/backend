@@ -126,6 +126,14 @@ def crawl_company_news_task(
                 failed_count += 1
                 continue
 
+            # 2.5. 뉴스 본문에서 기업명이 실제로 언급되는지 확인
+            if not _is_content_relevant_to_company(title, refined_content, company):
+                logger.debug(
+                    f"[CompanyNews] Skipping article (not relevant): {title[:30]}..."
+                )
+                skipped_count += 1
+                continue
+
             # 3. 요약 생성
             summary_result = summarizer.get_summary_only(refined_content)
             summary = summary_result.get("summary", "")
@@ -370,3 +378,45 @@ def sync_company_news_task(
             raise self.retry(exc=e, countdown=2**self.request.retries)
 
         return {"success": 0, "error": str(e)}
+
+
+def _is_content_relevant_to_company(title: str, content: str, company) -> bool:
+    """
+    뉴스 제목과 본문에서 기업명이 실제로 언급되는지 확인합니다.
+
+    Args:
+        title: 뉴스 제목
+        content: 뉴스 본문
+        company: Company 모델 인스턴스
+
+    Returns:
+        bool: 관련성이 있으면 True, 없으면 False
+    """
+    # 검색할 텍스트 (제목 + 본문 앞부분)
+    search_text = (title or "") + " " + (content[:2000] if content else "")
+
+    if not search_text.strip():
+        return False
+
+    # 회사명과 변형 버전 확인
+    company_name = company.company_name
+    if not company_name:
+        return False
+
+    # 회사명이 텍스트에 포함되어 있는지 확인
+    if company_name in search_text:
+        return True
+
+    # 접미사 제거 버전도 확인
+    suffixes = ["주식회사", "(주)", "㈜", " Inc.", " Corp.", " Co., Ltd."]
+    for suffix in suffixes:
+        if company_name.endswith(suffix):
+            clean_name = company_name[: -len(suffix)].strip()
+            if clean_name and len(clean_name) >= 2 and clean_name in search_text:
+                return True
+        elif suffix in company_name:
+            clean_name = company_name.replace(suffix, "", 1).strip()
+            if clean_name and len(clean_name) >= 2 and clean_name in search_text:
+                return True
+
+    return False
