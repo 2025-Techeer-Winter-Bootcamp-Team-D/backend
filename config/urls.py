@@ -32,12 +32,13 @@ def main_page(request):
 
 
 urlpatterns = [
-    # Prometheus metrics (최상단에 위치해야 함)
-    path("", include("django_prometheus.urls")),
+    # Prometheus metrics (내부 전용 경로로 제한)
+    # /internal/metrics 경로로 접근 가능 (프로덕션에서는 nginx/로드밸런서에서 IP 제한 필요)
+    path("internal/", include("django_prometheus.urls")),
+    # Health Check
+    path("health/", health_check, name="health_check"),
     # Admin
     path("admin/", admin.site.urls),
-    # Health Check
-    path("health/", health_check, name="health-check"),
     # API Schema & Documentation
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path(

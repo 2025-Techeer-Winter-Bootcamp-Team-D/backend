@@ -310,7 +310,7 @@ services:
     networks:
       - django-network
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin # 초기 비밀번호
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_SERVER_ROOT_URL=http://localhost:3000
     depends_on:
       prometheus:
