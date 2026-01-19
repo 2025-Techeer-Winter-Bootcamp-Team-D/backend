@@ -683,7 +683,14 @@ class Command(BaseCommand):
                 or not KisIndustry.objects.exists()
             )
 
-            if needs_mapping:
+            if skip_industry_mapping:
+                self.stdout.write(
+                    self.style.WARNING(
+                        "업종 매핑을 건너뜁니다 (--skip-industry-mapping 옵션)."
+                    )
+                )
+                ticker_to_kis = {}
+            elif needs_mapping:
                 self.stdout.write(
                     self.style.WARNING(
                         "업종 매핑 데이터가 없습니다. 매핑 데이터를 로드합니다..."
@@ -726,6 +733,25 @@ class Command(BaseCommand):
                             induty_code=induty_code,
                             is_deleted=False,
                         ).first()
+
+                        # KisIndustry는 있지만 Industry가 없는 경우 생성
+                        if industry is None:
+                            kis_industry = KisIndustry.objects.get(kis_code=induty_code)
+                            if not dry_run:
+                                industry = Industry.objects.create(
+                                    induty_code=induty_code,
+                                    name=kis_industry.name,
+                                    is_deleted=False,
+                                )
+                                logger.info(
+                                    f"Industry 생성: {induty_code} - {kis_industry.name}"
+                                )
+                            else:
+                                self.stdout.write(
+                                    f"  [DRY RUN] Industry 생성 예정: {induty_code} - {kis_industry.name}"
+                                )
+                                # dry_run이어도 updated_companies를 증가시키지 않음
+                                continue
 
                         if industry and company.industry != industry:
                             if not dry_run:
