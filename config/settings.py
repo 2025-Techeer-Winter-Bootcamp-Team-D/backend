@@ -344,6 +344,8 @@ NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET") or None
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or None
 # 선택 API 키: Jina는 무료 티어로도 동작 가능
 JINA_API_KEY = os.getenv("JINA_API_KEY") or None
+# Logo.dev API 키
+LOGO_DEV_PUB_KEY = os.getenv("LOGO_DEV_PUB_KEY") or None
 
 
 # Password validation

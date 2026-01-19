@@ -11,7 +11,7 @@ class IndustrySerializer(serializers.ModelSerializer):
 
 class IndustryRankingSerializer(serializers.ModelSerializer):
     # 명세서의 industryId는 Industry 모델의 industry_id값을 가져옵니다.
-    industryId = serializers.IntegerField(source="industry.industry_id")
+    industryId = serializers.CharField(source="industry.induty_code")
 
     # 명세서의 name은 Industry 모델의 name값을 가져옵니다.
     name = serializers.CharField(source="industry.name")
