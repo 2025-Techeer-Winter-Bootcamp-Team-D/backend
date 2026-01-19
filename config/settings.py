@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     "channels",  # Django Channels
+    "corsheaders",
     # 만든 앱 등록
     "industries",
     "companies",
@@ -70,6 +71,7 @@ MIDDLEWARE = [
     "django_prometheus.middleware.PrometheusBeforeMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -242,6 +244,11 @@ REPORT_PROCESSING_ENABLED = (
     os.getenv("REPORT_PROCESSING_ENABLED", "false").lower() == "true"
 )
 
+# 마켓 지수 데이터 동기화 활성화 설정
+MARKET_INDEX_SYNC_ENABLED = (
+    os.getenv("MARKET_INDEX_SYNC_ENABLED", "true").lower() == "true"
+)
+
 # =============================================================================
 # Celery Beat Schedule (주기적 작업 스케줄링)
 # =============================================================================
@@ -295,6 +302,13 @@ CELERY_BEAT_SCHEDULE["sync-market-amount-daily"] = {
     "task": "companies.tasks.kis_market_amount.sync_all_market_amount",
     "schedule": crontab(day_of_week="1-5", hour=16, minute=10),
 }
+
+# 마켓 지수 동기화 스케줄
+if MARKET_INDEX_SYNC_ENABLED:
+    CELERY_BEAT_SCHEDULE["sync-market-indices-test"] = {
+        "task": "indices.tasks.sync_indices_daily",
+        "schedule": crontab(hour=5, minute=0),  # 새벽 5시
+    }
 
 # =============================================================================
 # 주가 데이터 동기화 스케줄 (Continuous Aggregate → 통합 테이블)
@@ -396,15 +410,8 @@ AUTHENTICATION_BACKENDS = [
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-
-# 마켓 지수 데이터 동기화 활성화 설정
-MARKET_INDEX_SYNC_ENABLED = (
-    os.getenv("MARKET_INDEX_SYNC_ENABLED", "true").lower() == "true"
-)
-
-# 마켓 지수 동기화 스케줄
-if MARKET_INDEX_SYNC_ENABLED:
-    CELERY_BEAT_SCHEDULE["sync-market-indices-test"] = {
-        "task": "indices.tasks.sync_indices_daily",
-        "schedule": crontab(hour=5, minute=0),  # 새벽 5시
-    }
+# CORS Configuration
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",  # 프런트엔드 개발 서버
+    "http://127.0.0.1:5173",
+]
