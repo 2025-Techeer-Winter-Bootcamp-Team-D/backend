@@ -28,6 +28,7 @@ def save_to_db_task(self, articles: List[Dict[str, Any]]) -> List[Dict[str, Any]
     - author: 저자/기자
     - press: 언론사
     - keywords: 키워드 목록
+    - sentiment: 감성 (positive/neutral/negative, 요약에서 추출)
     - published_at: 발행일
 
     저장하지 않는 항목:
@@ -61,6 +62,7 @@ def save_to_db_task(self, articles: List[Dict[str, Any]]) -> List[Dict[str, Any]
                         "author": article.get("author"),
                         "press": article.get("press"),
                         "keywords": article.get("keywords", []),
+                        "sentiment": article.get("sentiment"),
                         "published_at": article.get("published_at"),
                     },
                 )
@@ -80,6 +82,13 @@ def save_to_db_task(self, articles: List[Dict[str, Any]]) -> List[Dict[str, Any]
                         news.press = article.get("press")
                     if article.get("keywords") and not news.keywords:
                         news.keywords = article.get("keywords", [])
+                    if (
+                        article.get("sentiment")
+                        and article.get("sentiment")
+                        in ["positive", "neutral", "negative"]
+                        and not news.sentiment
+                    ):
+                        news.sentiment = article.get("sentiment")
                     news.save()
                     logger.info(
                         f"[DB Save] [{idx}/{len(articles)}] 기존 뉴스 업데이트: news_id={news.news_id}"

@@ -15,20 +15,17 @@ logger = logging.getLogger(__name__)
 
 def _trigger_report_processing(report: Report):
     """
-    보고서 자동 처리 트리거 (사업보고서 및 반기보고서)
+    보고서 자동 처리 트리거 (사업보고서만)
 
     Args:
         report: Report 인스턴스
     """
     from companies.tasks.report_processing import process_single_report_pipeline
 
-    # 보고서 이름에 "사업보고서" 또는 "반기보고서"가 포함되어 있으면 자동 처리
-    if "사업보고서" in report.report_name or "반기보고서" in report.report_name:
-        report_type = (
-            "사업보고서" if "사업보고서" in report.report_name else "반기보고서"
-        )
+    # 보고서 이름에 "사업보고서"가 포함되어 있으면 자동 처리
+    if "사업보고서" in report.report_name:
         logger.info(
-            f"{report_type} 자동 처리 트리거: {report.rcept_no} - {report.report_name}"
+            f"사업보고서 자동 처리 트리거: {report.rcept_no} - {report.report_name}"
         )
         process_single_report_pipeline.delay(report.id)
     else:
@@ -137,7 +134,7 @@ class ReportsService:
                             )
                             all_reports.append(report)
 
-                            # 사업보고서 자동 처리 트리거
+                            # 사업보고서만 자동 처리 트리거
                             if created:
                                 _trigger_report_processing(report)
                         except (KeyError, ValueError) as e:

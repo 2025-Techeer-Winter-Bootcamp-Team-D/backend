@@ -245,6 +245,13 @@ class Report(models.Model):
     extracted_info = models.JSONField(
         null=True, blank=True, verbose_name="구조화된 추출 정보"
     )
+    primary_keyword = models.CharField(
+        max_length=200,
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="주요 키워드",
+    )
     embedding = models.JSONField(null=True, blank=True, verbose_name="벡터 임베딩")
     processed_at = models.DateTimeField(
         null=True, blank=True, verbose_name="처리 완료 시간"

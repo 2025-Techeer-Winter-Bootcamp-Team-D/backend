@@ -233,40 +233,33 @@ def sync_stock_history(request, stock_code: str):
 
 
 @extend_schema(
-    summary="여러 종목 주가 히스토리 동기화 (관리자용)",
+    summary="전체 기업 주가 히스토리 동기화 (관리자용)",
     description="""
-    yfinance API를 통해 여러 종목의 과거 OHLCV 데이터를 동기화합니다.
+    yfinance API를 통해 DB에 있는 전체 기업의 과거 OHLCV 데이터를 동기화합니다.
     
-    **참고:** 시장 정보는 각 종목의 Company.market 필드에서 자동으로 조회됩니다.
+    **동작 방식:**
+    - DB에 있는 모든 기업(stock_code가 있고 is_deleted=False)을 대상으로 동기화합니다.
+    - 시장 정보는 각 종목의 Company.market 필드에서 자동으로 조회됩니다.
     
-    **요청 본문:**
-    ```json
-    {
-        "stock_codes": ["005930", "000660", "035720"],
-        "intervals": ["1d"]
-    }
-    ```
+    **쿼리 파라미터:**
+    - `intervals`: 동기화할 시간 단위 (콤마 구분: 1m,15m,1h,1d). 기본값: 전체 (1m,15m,1h,1d)
+    
+    **예시:**
+    - `/api/core/admin/stocks/sync-history/` - 전체 시간 단위 동기화
+    - `/api/core/admin/stocks/sync-history/?intervals=1d` - 1일봉만 동기화
+    - `/api/core/admin/stocks/sync-history/?intervals=1h,1d` - 1시간봉, 1일봉 동기화
     
     **참고:** yfinance 데이터는 실시간 스트리밍에서 빠질 수 있는 정보를 보완하기 위해 항상 기존 데이터를 덮어씁니다.
     """,
-    request={
-        "application/json": {
-            "type": "object",
-            "properties": {
-                "stock_codes": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "종목코드 목록",
-                },
-                "intervals": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "시간 단위 목록",
-                },
-            },
-            "required": ["stock_codes"],
-        }
-    },
+    parameters=[
+        OpenApiParameter(
+            name="intervals",
+            type=str,
+            location=OpenApiParameter.QUERY,
+            description="동기화할 시간 단위 (콤마 구분: 1m,15m,1h,1d). 기본값: 전체",
+            required=False,
+        ),
+    ],
     responses={
         202: OpenApiResponse(description="동기화 작업 시작됨"),
         400: OpenApiResponse(description="잘못된 요청"),
@@ -278,33 +271,36 @@ def sync_stock_history(request, stock_code: str):
 @permission_classes([IsAdminUser])
 def sync_multiple_stocks_history(request):
     """
-    여러 종목 주가 히스토리 동기화 API
+    전체 기업 주가 히스토리 동기화 API
+
+    DB에 있는 모든 기업을 대상으로 동기화합니다.
+    intervals는 쿼리 파라미터로 받으며, 없으면 전체 시간 단위를 동기화합니다.
     """
-    stock_codes = request.data.get("stock_codes", [])
-    intervals = request.data.get("intervals", None)
+    from companies.models import Company
+
+    # DB에서 전체 기업 조회 (market 정보가 있는 기업만)
+    companies = Company.objects.filter(
+        is_deleted=False,
+        stock_code__isnull=False,
+        market__isnull=False,
+    ).exclude(stock_code="", market="")
+    stock_codes = list(companies.values_list("stock_code", flat=True))
 
     if not stock_codes:
         return Response(
-            {"error": "stock_codes is required"},
+            {"error": "동기화할 기업이 없습니다."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    if len(stock_codes) > 100:
-        return Response(
-            {"error": "Maximum 100 stocks per request"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    # intervals 쿼리 파라미터 파싱
+    intervals_param = request.query_params.get("intervals", None)
+    if intervals_param:
+        intervals = [i.strip() for i in intervals_param.split(",")]
+    else:
+        intervals = None  # 기본값: 전체
 
     valid_intervals = ["1m", "15m", "1h", "1d"]
     if intervals is not None:
-        if not isinstance(intervals, list):
-            return Response(
-                {
-                    "error": "intervals must be a list",
-                    "valid_intervals": valid_intervals,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
         if len(intervals) == 0:
             intervals = None
         else:
