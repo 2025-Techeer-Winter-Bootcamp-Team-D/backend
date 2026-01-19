@@ -14,11 +14,23 @@ class Command(BaseCommand):
         service = KISIndexService()
         
         if industry_id:
-            industries = Industry.objects.filter(pk=industry_id)
+            industries = Industry.objects.filter(pk=industry_id).exclude(
+                induty_code__isnull=True
+            ).exclude(induty_code="")
         else:
-            industries = Industry.objects.filter(is_deleted=False)
+            industries = Industry.objects.filter(is_deleted=False).exclude(
+                induty_code__isnull=True
+            ).exclude(induty_code="")
 
         for industry in industries:
+            if not industry.induty_code or not industry.induty_code.strip():
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"⚠️ {industry.name}의 업종코드가 없어 건너뜁니다."
+                    )
+                )
+                continue
+            
             self.stdout.write(f"🚀 {industry.name} 데이터 수집 시작...")
             raw_data = service.fetch_1y_history_raw(industry.induty_code)
             charts = service.get_industry_charts_1y(raw_data)

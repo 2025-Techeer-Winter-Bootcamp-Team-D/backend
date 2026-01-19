@@ -5,7 +5,7 @@ from celery import shared_task
 from django.utils import timezone
 from industries.models import Industry
 from industries.services.kis_index_service import KISIndexService
-from datetime import timedelta, datetime
+from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -17,11 +17,13 @@ def sync_industry_charts_daily():
     최근 데이터를 가져와서 진행 중인 봉(3일, 주봉 등)을 업데이트합니다.
     """
     service = KISIndexService()
-    industries = Industry.objects.filter(is_deleted=False).exclude(
-        induty_code__isnull=True
+    industries = (
+        Industry.objects.filter(is_deleted=False)
+        .exclude(induty_code__isnull=True)
+        .exclude(induty_code="")
     )
 
-    now = datetime.now()
+    now = timezone.now()
     end_date = now.strftime("%Y%m%d")
     start_date = (now - timedelta(days=10)).strftime("%Y%m%d")
 
@@ -35,7 +37,11 @@ def sync_industry_charts_daily():
 
     for industry in industries:
         try:
-            clean_code = industry.induty_code.strip()
+            clean_code = industry.induty_code.strip() if industry.induty_code else ""
+            if not clean_code:
+                logger.debug(f"건너뜀: {industry.name} - 업종코드가 없습니다.")
+                continue
+
             print(f"📡 {industry.name}({industry.induty_code}) 데이터 요청 중...")
             raw_data = service.fetch_index_history(
                 clean_code, start_date=start_date, end_date=end_date
