@@ -37,6 +37,9 @@ daphne>=4.0,<5.0
 # Django Extensions
 django-extensions
 
+# Prometheus
+django-prometheus>=2.3.1
+
 # Web Scraping & Parsing
 beautifulsoup4==4.12.2
 lxml>=5.0.0

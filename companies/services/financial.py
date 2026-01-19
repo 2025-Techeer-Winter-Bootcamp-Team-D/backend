@@ -215,14 +215,49 @@ class FinancialService:
             "ifrs-full_Equity": "total_equity",  # 총자본
         }
 
+        # 금융회사 등 특수한 경우를 위한 account_id 매핑 추가
+        # 금융회사는 매출액 대신 영업수익 등을 사용할 수 있음
+        account_code_map_extended = {
+            **account_code_map,
+            # 금융회사 매출 관련 계정과목 코드 (추가 가능)
+            "dart_TotalRevenue": "revenue",  # 총수익
+            "dart_OperatingRevenues": "revenue",  # 영업수익
+        }
+
+        # 계정과목명 기반 매핑 (account_id가 없거나 다른 경우 대비)
+        account_nm_keywords = {
+            "revenue": ["매출액", "매출", "영업수익", "영업수익(손익계산서상)", "수익"],
+            "operating_profit": ["영업이익", "영업손익"],
+            "net_income": ["당기순이익", "순이익", "당기순손익"],
+            "total_assets": ["총자산", "자산총계"],
+            "total_liabilities": ["총부채", "부채총계"],
+            "total_equity": ["총자본", "자본총계", "자본"],
+        }
+
         for account in account_list:
             account_nm = account.get("account_nm", "")
             account_id = account.get("account_id", "")
             thstrm_amount = account.get("thstrm_amount", "")  # 당기금액
 
-            # 계정과목 코드로 매핑
-            if account_id in account_code_map:
-                key = account_code_map[account_id]
+            # 계정과목 코드로 먼저 매핑 시도
+            key = None
+            if account_id in account_code_map_extended:
+                key = account_code_map_extended[account_id]
+            # account_id 매핑 실패 시 계정과목명으로 매핑 시도
+            elif account_nm:
+                account_nm_upper = account_nm.upper()
+                for field, keywords in account_nm_keywords.items():
+                    # 이미 값이 있으면 건너뛰기 (첫 번째 유효한 값만 사용)
+                    if field in financial_data:
+                        continue
+                    for keyword in keywords:
+                        if keyword in account_nm or keyword.upper() in account_nm_upper:
+                            key = field
+                            break
+                    if key:
+                        break
+
+            if key:
                 # 이미 값이 있으면 건너뛰기 (첫 번째 유효한 값만 사용)
                 if key in financial_data:
                     continue

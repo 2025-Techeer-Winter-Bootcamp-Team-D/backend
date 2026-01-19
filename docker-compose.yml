@@ -26,6 +26,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: redis
+    command: redis-server --maxmemory 768mb --maxmemory-policy allkeys-lru
     networks:
       - django-network
     ports:
@@ -146,7 +147,7 @@ services:
       - PYTHONUNBUFFERED=1
       - KRX_SYMBOLS_CSV_PATH=/app/companies_data.csv
       - KIS_SYMBOL_LIMIT=50
-      - KIS_USE_TEST_MODE=true
+      - KIS_USE_TEST_MODE=false
       - KIS_TEST_WS_URL=ws://kis-mock-server:8080
       - KIS_MAX_RECONNECT=3
     depends_on:
@@ -274,10 +275,119 @@ services:
       - django-network
     restart: always
 
+  # 모니터링 서비스
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/console_templates'
+    ports:
+      - "9090:9090"
+    networks:
+      - django-network
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: always
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - django-network
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    restart: always
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - "9100:9100"
+    networks:
+      - django-network
+    restart: always
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor
+    container_name: cadvisor
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "8081:8080" # kis-mock-server(8080)와 충돌 피하기 위해 호스트 포트 8081 사용
+    networks:
+      - django-network
+    restart: always
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres-exporter
+    environment:
+      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-postgres}?sslmode=disable
+    ports:
+      - "9187:9187"
+    networks:
+      - django-network
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: redis-exporter
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+    ports:
+      - "9121:9121"
+    networks:
+      - django-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+
 volumes:
   postgres_data:
   redis_data:
   opensearch_data:
+  prometheus_data:
+  grafana_data:
 networks:
   django-network:
     driver: bridge

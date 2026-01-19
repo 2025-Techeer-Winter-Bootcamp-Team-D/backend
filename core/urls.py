@@ -1,14 +1,11 @@
 from django.urls import path
 from .views import (
-    health_check,
     sync_stock_history,
     sync_multiple_stocks_history,
     sync_realtime_prices,
 )
 
 urlpatterns = [
-    # Health Check
-    path("health/", health_check, name="health_check"),
     # Admin - Stock Data Sync
     path(
         "admin/stocks/<str:stock_code>/sync-history/",
