@@ -2,7 +2,7 @@ import logging
 from django.contrib.auth.models import User
 from rest_framework import generics, status, viewsets, mixins
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import Favorite
 from .serializers import FavoriteSerializer
 from companies.models import Company
@@ -22,9 +22,11 @@ from rest_framework_simplejwt.exceptions import TokenError
 class SignupView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
+    permission_classes = [AllowAny]
 
     @extend_schema(
         summary="회원가입",
+        tags=["User"],
         request=RegisterSerializer,
         responses={201: RegisterSerializer},
     )
@@ -35,8 +37,13 @@ class SignupView(generics.CreateAPIView):
 # --로그인--
 class LoginView(generics.GenericAPIView):
     serializer_class = LoginSerializer
+    permission_classes = [AllowAny]
 
-    @extend_schema(summary="로그인", request=LoginSerializer)
+    @extend_schema(
+        summary="로그인",
+        request=LoginSerializer,
+        tags=["User"],
+    )
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -67,6 +74,7 @@ class LogoutView(generics.GenericAPIView):
                 "required": ["refresh"],
             }
         },
+        tags=["User"],
     )
     def post(self, request, *args, **kwargs):
         refresh_token = request.data.get("refresh")
@@ -80,7 +88,9 @@ class LogoutView(generics.GenericAPIView):
         try:
             token = RefreshToken(refresh_token)
             token.blacklist()
-            return Response({"detail": "Successfully logged out."}, status=status.HTTP_200_OK) # 메시지 수정
+            return Response(
+                {"detail": "Successfully logged out."}, status=status.HTTP_200_OK
+            )  # 메시지 수정
         except TokenError:
             return Response(
                 {"message": "Invalid token or already logged out."},
@@ -95,9 +105,9 @@ logger = logging.getLogger(__name__)
 
 
 @extend_schema_view(
-    list=extend_schema(summary="즐겨찾기 목록 조회"),
-    create=extend_schema(summary="즐겨찾기 추가"),
-    destroy=extend_schema(summary="즐겨찾기 삭제"),
+    list=extend_schema(summary="즐겨찾기 목록 조회", tags=["User"]),
+    create=extend_schema(summary="즐겨찾기 추가", tags=["User"]),
+    destroy=extend_schema(summary="즐겨찾기 삭제", tags=["User"]),
 )
 class FavoriteViewSet(
     mixins.ListModelMixin,

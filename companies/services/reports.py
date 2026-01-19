@@ -13,6 +13,30 @@ from companies.services.dart_api import DartAPIClient, DartAPIError
 logger = logging.getLogger(__name__)
 
 
+def _trigger_report_processing(report: Report):
+    """
+    보고서 자동 처리 트리거 (사업보고서 및 반기보고서)
+
+    Args:
+        report: Report 인스턴스
+    """
+    from companies.tasks.report_processing import process_single_report_pipeline
+
+    # 보고서 이름에 "사업보고서" 또는 "반기보고서"가 포함되어 있으면 자동 처리
+    if "사업보고서" in report.report_name or "반기보고서" in report.report_name:
+        report_type = (
+            "사업보고서" if "사업보고서" in report.report_name else "반기보고서"
+        )
+        logger.info(
+            f"{report_type} 자동 처리 트리거: {report.rcept_no} - {report.report_name}"
+        )
+        process_single_report_pipeline.delay(report.id)
+    else:
+        logger.debug(
+            f"일반 보고서 (처리 안함): {report.rcept_no} - {report.report_name}"
+        )
+
+
 class ReportsService:
     """보고서 서비스"""
 
@@ -24,17 +48,15 @@ class ReportsService:
         company: Company,
         days: int = 365,
         report_type: Optional[str] = None,
-        incremental: bool = True,
         report_types: Optional[List[str]] = None,
     ) -> List[Report]:
         """
-        DART API에서 보고서 목록을 조회하여 Report 모델에 저장
+        DART API에서 보고서 목록을 조회하여 Report 모델에 저장 (항상 전체 동기화)
 
         Args:
             company: Company 인스턴스
-            days: 조회할 기간 (일 단위, 기본값: 365일, incremental=True일 때는 fallback으로만 사용)
+            days: 조회할 기간 (일 단위, 기본값: 365일)
             report_type: 공시유형 필터 (단일 타입, report_types와 함께 사용 불가)
-            incremental: 증분 동기화 여부 (기본값: True, 마지막 동기화 이후 보고서만)
             report_types: 공시유형 필터 리스트 (예: ["A", "B"], None이면 전체)
 
         Returns:
@@ -50,28 +72,8 @@ class ReportsService:
             )
 
         try:
-            # 증분 동기화: 마지막 동기화 날짜 확인
-            if incremental:
-                # 해당 기업의 가장 최근 보고서 날짜 확인
-                latest_report = (
-                    Report.objects.filter(company=company)
-                    .order_by("-submitted_at")
-                    .first()
-                )
-                if latest_report:
-                    start_date = latest_report.submitted_at
-                    logger.info(
-                        f"증분 동기화: 마지막 동기화 날짜 이후 ({start_date}) 보고서만 조회"
-                    )
-                else:
-                    # 보고서가 없으면 days 기간으로 fallback
-                    start_date = datetime.now().date() - timedelta(days=days)
-                    logger.info(
-                        f"증분 동기화: 기존 보고서 없음, {days}일 기간으로 조회"
-                    )
-            else:
-                # 전체 동기화: days 기간 사용
-                start_date = datetime.now().date() - timedelta(days=days)
+            # 전체 동기화: days 기간 사용 (항상 덮어쓰기)
+            start_date = datetime.now().date() - timedelta(days=days)
 
             end_date = datetime.now().date()
             bgn_de = start_date.strftime("%Y%m%d")
@@ -134,6 +136,10 @@ class ReportsService:
                                 },
                             )
                             all_reports.append(report)
+
+                            # 사업보고서 자동 처리 트리거
+                            if created:
+                                _trigger_report_processing(report)
                         except (KeyError, ValueError) as e:
                             logger.warning(
                                 f"보고서 데이터 파싱 오류: {item.get('rcept_no', 'unknown')} - {e}"

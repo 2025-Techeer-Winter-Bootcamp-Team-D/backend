@@ -1,3 +1,6 @@
+# industries/views.py
+import logging
+
 from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import AllowAny
@@ -25,6 +28,10 @@ from industries.serializers import (
 )
 from news.serializers import IndustryNewsSerializer 
 from news.models import CompanyNews
+from news.serializers import IndustryNewsSerializer
+
+logger = logging.getLogger(__name__)
+
 
 class IndustryCompanyRankView(APIView):
     @extend_schema(
@@ -55,7 +62,7 @@ class IndustryCompanyRankView(APIView):
                 ),
             ),
         },
-        tags=["Industry"],
+        tags=["Rankings"],
     )
     def get(self, request, industry_id):
         # 1. 산업 존재 여부 확인 (없으면 404 에러 코드 형식에 맞춰 반환)
@@ -133,7 +140,7 @@ class IndustryCompanyRankView(APIView):
         ),
         404: OpenApiResponse(description="industry_rankings Not Found")
     },
-    tags=["Ranking"]
+    tags=["Rankings"]
 )
 @api_view(["GET"])
 def get_industry_rankings(request):
@@ -212,7 +219,7 @@ def get_industry_rankings(request):
             ),
         ),
     },
-    tags=["Industry"],
+    tags=["News"],
 )
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -404,3 +411,141 @@ class IndustryBackfillView(APIView):
 
         return Response({"message": f"{msg} 데이터 적재 작업이 시작되었습니다."}, status=202)
 
+
+# ------------산업 전망 분석--------------------------
+@extend_schema(
+    summary="산업 전망 분석",
+    description="""
+    특정 산업의 뉴스와 관련 기업 보고서를 분석하여 투자 전망을 제공합니다.
+
+    **분석 결과:**
+    - 낙관 시나리오: 긍정적 전망 및 성장 동력
+    - 중립 시나리오: 현 상황 유지 및 불확실성
+    - 비관 시나리오: 부정적 전망 및 하락 리스크
+
+    **캐싱:** 동일 산업 요청 시 1시간 동안 캐시된 결과 반환
+    """,
+    parameters=[
+        OpenApiParameter(
+            name="industry_id",
+            type=int,
+            location=OpenApiParameter.PATH,
+            description="산업 ID",
+        ),
+        OpenApiParameter(
+            name="days_back",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            description="검색 기간 (일, 기본값: 30)",
+            required=False,
+        ),
+        OpenApiParameter(
+            name="max_news",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            description="최대 뉴스 수 (기본값: 20, 최대: 50)",
+            required=False,
+        ),
+        OpenApiParameter(
+            name="max_reports",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            description="최대 보고서 수 (기본값: 10, 최대: 20)",
+            required=False,
+        ),
+        OpenApiParameter(
+            name="top_companies",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            description="보고서 수집 대상 상위 기업 수 (기본값: 10, 최대: 20)",
+            required=False,
+        ),
+    ],
+    responses={
+        200: OpenApiResponse(description="분석 성공"),
+        404: OpenApiResponse(description="산업을 찾을 수 없음"),
+        503: OpenApiResponse(description="분석 서비스 일시 불가"),
+    },
+    tags=["Industry - Analysis"],
+)
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def get_industry_outlook(request, industry_id):
+    """산업 전망 분석 API"""
+    from industries.services.outlook import (
+        IndustryOutlookService,
+        QuotaExceededError,
+        LLMServiceError,
+    )
+
+    # 산업 조회
+    try:
+        industry = Industry.objects.get(pk=industry_id, is_deleted=False)
+    except Industry.DoesNotExist:
+        return Response(
+            {"status": 404, "error": "Industry not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    # 파라미터 파싱
+    try:
+        days_back = min(int(request.query_params.get("days_back", 30)), 90)
+        max_news = min(int(request.query_params.get("max_news", 20)), 50)
+        max_reports = min(int(request.query_params.get("max_reports", 10)), 20)
+        top_companies = min(int(request.query_params.get("top_companies", 10)), 20)
+    except (ValueError, TypeError):
+        return Response(
+            {"status": 400, "error": "파라미터는 정수여야 합니다."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # 분석 수행
+    try:
+        service = IndustryOutlookService()
+        result = service.analyze_outlook(
+            industry=industry,
+            days_back=days_back,
+            max_news=max_news,
+            max_reports=max_reports,
+            top_companies=top_companies,
+        )
+
+        return Response(
+            {
+                "status": 200,
+                "message": "산업 전망 분석 성공",
+                "data": result,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    except QuotaExceededError as e:
+        logger.warning(f"산업 전망 분석 쿼터 초과: {industry_id}")
+        return Response(
+            {
+                "status": 429,
+                "error": str(e),
+                "retry_after": 3600,
+            },
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
+    except LLMServiceError as e:
+        logger.error(f"산업 전망 분석 LLM 오류: {industry_id}")
+        return Response(
+            {
+                "status": 503,
+                "error": str(e),
+            },
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+    except Exception as e:
+        logger.exception(f"산업 전망 분석 오류: {industry_id}")
+        return Response(
+            {
+                "status": 500,
+                "error": "분석 서비스를 일시적으로 사용할 수 없습니다",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

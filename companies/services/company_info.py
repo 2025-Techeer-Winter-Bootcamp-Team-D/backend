@@ -121,8 +121,17 @@ class CompanyInfoService:
                     )
 
             # KIS REST API를 통해 시가총액 갱신 (실패해도 전체 동기화는 계속)
+            market_amount_synced = False
             try:
-                self._sync_market_amount(company)
+                market_amount_synced = self._sync_market_amount(company)
+                if market_amount_synced:
+                    logger.info(
+                        f"시가총액 갱신 성공: {company.stock_code} → {company.market_amount:,}원"
+                    )
+                else:
+                    logger.warning(
+                        f"시가총액 갱신 실패 (값 없음): {company.stock_code} - 기존 값 유지"
+                    )
             except Exception as e:
                 # 시가총액 갱신 실패는 일시적 오류일 수 있으므로 로그만 남기고 계속 진행
                 logger.warning(

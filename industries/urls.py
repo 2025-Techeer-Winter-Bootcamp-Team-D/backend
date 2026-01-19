@@ -6,6 +6,7 @@ from .views import (
     get_industry_indices,       
     IndustryChartView,          
     IndustryBackfillView,      
+    get_industry_outlook,
 )
 
 urlpatterns = [
@@ -14,7 +15,9 @@ urlpatterns = [
     
     # 산업 뉴스 조회 (동료 작업분)
     path('<int:industry_id>/news/', get_industry_news, name='industry_news'),
-    
+  
+    path('<int:industry_id>/outlook/', get_industry_outlook, name='industry_outlook'),
+  
     # 전체 산업 순위 목록
     path('rankings/industries/', get_industry_rankings, name='industry_rankings'),
     

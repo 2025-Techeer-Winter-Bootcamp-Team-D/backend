@@ -127,6 +127,18 @@
   - 태그: `Ranking`
   - 설명: 최신 기준 날짜의 기업 순위 리스트 조회
 
+#### 기업 전망 분석
+- **GET** `/api/companies/{stock_code}/outlook/`
+  - 기업 전망 분석
+  - 인증: 불필요
+  - 태그: `Company`
+  - 쿼리 파라미터:
+    - `days_back`: 검색 기간 (일, 기본값: 30, 최대: 90)
+    - `max_news`: 최대 뉴스 수 (기본값: 10, 최대: 20)
+    - `max_reports`: 최대 보고서 수 (기본값: 5, 최대: 10)
+  - 설명: 기업 뉴스와 공시 보고서를 분석하여 투자 전망, 상승 여력, 투자 신호 제공
+  - 캐싱: 1시간 TTL
+
 #### 관리자 전용 API
 - **POST** `/api/companies/{stock_code}/sync/`
   - DART 데이터 동기화 (관리자용)
@@ -172,6 +184,7 @@
 
 ### 산업 API (`/api/industries/`)
 
+#### 산업 정보
 - **GET** `/api/industries/{industry_id}/companies`
   - 산업별 기업 순위 조회
   - 인증: 불필요
@@ -181,6 +194,28 @@
   - 산업 순위 조회
   - 인증: 불필요
   - 태그: `Industry`
+
+#### 산업 뉴스
+- **GET** `/api/industries/{industry_id}/news/`
+  - 산업 뉴스 조회
+  - 인증: 불필요
+  - 태그: `Industry`
+  - 쿼리 파라미터:
+    - `page`: 페이지 번호 (기본값: 1)
+    - `page_size`: 페이지당 뉴스 수 (기본값: 20, 최대: 100)
+
+#### 산업 전망 분석
+- **GET** `/api/industries/{industry_id}/outlook/`
+  - 산업 전망 분석
+  - 인증: 불필요
+  - 태그: `Industry`
+  - 쿼리 파라미터:
+    - `days_back`: 검색 기간 (일, 기본값: 30, 최대: 90)
+    - `max_news`: 최대 뉴스 수 (기본값: 20, 최대: 50)
+    - `max_reports`: 최대 보고서 수 (기본값: 10, 최대: 20)
+    - `top_companies`: 보고서 수집 대상 상위 기업 수 (기본값: 10, 최대: 20)
+  - 설명: 산업 관련 뉴스와 소속 기업 보고서를 분석하여 낙관/중립/비관 시나리오 제공
+  - 캐싱: 1시간 TTL
 
 ---
 
@@ -677,4 +712,4 @@ python scripts/test_<script_name>.py
 
 ---
 
-**최종 업데이트:** 2025-01-16
+**최종 업데이트:** 2026-01-18

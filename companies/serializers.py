@@ -82,6 +82,38 @@ class FinancialStatementSerializer(serializers.ModelSerializer):
 
     report_type = serializers.SerializerMethodField()
 
+    # Decimal 필드를 숫자로 직렬화 (문자열이 아닌)
+    roe = serializers.DecimalField(
+        max_digits=10, decimal_places=2, coerce_to_string=False, allow_null=True
+    )
+    debt_ratio = serializers.DecimalField(
+        max_digits=10, decimal_places=2, coerce_to_string=False, allow_null=True
+    )
+    per = serializers.DecimalField(
+        max_digits=10, decimal_places=2, coerce_to_string=False, allow_null=True
+    )
+    pbr = serializers.DecimalField(
+        max_digits=10, decimal_places=2, coerce_to_string=False, allow_null=True
+    )
+    dividend_yield = serializers.DecimalField(
+        max_digits=10, decimal_places=2, coerce_to_string=False, allow_null=True
+    )
+    eps = serializers.DecimalField(
+        max_digits=15, decimal_places=2, coerce_to_string=False, allow_null=True
+    )
+    operating_profit_margin = serializers.DecimalField(
+        max_digits=10, decimal_places=2, coerce_to_string=False, allow_null=True
+    )
+    yoy_revenue = serializers.DecimalField(
+        max_digits=10, decimal_places=2, coerce_to_string=False, allow_null=True
+    )
+    yoy_operating_profit = serializers.DecimalField(
+        max_digits=10, decimal_places=2, coerce_to_string=False, allow_null=True
+    )
+    yoy_net_income = serializers.DecimalField(
+        max_digits=10, decimal_places=2, coerce_to_string=False, allow_null=True
+    )
+
     class Meta:
         model = FinancialStatement
         fields = [
@@ -93,6 +125,18 @@ class FinancialStatementSerializer(serializers.ModelSerializer):
             "total_assets",
             "total_liabilities",
             "total_equity",
+            # 계산된 재무 지표
+            "roe",
+            "debt_ratio",
+            "per",
+            "pbr",
+            "dividend_yield",
+            "eps",
+            "operating_profit_margin",
+            "yoy_revenue",
+            "yoy_operating_profit",
+            "yoy_net_income",
+            "metrics_calculated_at",
         ]
 
     def get_report_type(self, obj):
@@ -109,9 +153,18 @@ class FinancialStatementSerializer(serializers.ModelSerializer):
 class RevenueCompositionSerializer(serializers.ModelSerializer):
     """매출 구성 Serializer"""
 
+    ratio = serializers.SerializerMethodField()
+
     class Meta:
         model = RevenueComposition
         fields = ["segment_name", "revenue", "ratio"]
+
+    def get_ratio(self, obj):
+        """ratio를 소수점 형태(0.58)로 반환 (백분율 58%를 0.58로 변환)"""
+        if obj.ratio is not None:
+            # DB에 저장된 ratio는 백분율(%)이므로 소수점으로 변환
+            return float(obj.ratio) / 100.0
+        return None
 
 
 class CompanyFinancialsSerializer(serializers.Serializer):

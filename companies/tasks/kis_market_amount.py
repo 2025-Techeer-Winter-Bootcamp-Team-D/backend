@@ -10,6 +10,7 @@ import requests
 
 from companies.models import Company
 from companies.services.company_info import CompanyInfoService
+from companies.tasks.financial_metrics import calculate_financial_metrics_task
 
 logger = logging.getLogger(__name__)
 
@@ -22,14 +23,16 @@ class RetryableError(Exception):
 
 # API Rate Limit 대응: 요청 간 딜레이 (초)
 # KIS API는 초당 2회로 제한되어 있으므로 최소 500ms 딜레이 필요
-# 안전 마진을 두어 600ms로 설정 (초당 약 1.67회)
-REQUEST_DELAY = 0.6
+# 네트워크 지연 및 안전 마진을 위해 520ms로 설정 (초당 약 1.92회)
+REQUEST_DELAY = 0.52
 
 
-@shared_task(bind=True, max_retries=3)
+@shared_task(bind=True, max_retries=3, rate_limit="2/s")
 def sync_market_amount(self, stock_code: str):
     """
     단건 시가총액 갱신
+
+    Rate Limit: 초당 2회 (KIS API 제한 준수)
 
     Args:
         stock_code: 종목코드
@@ -42,6 +45,14 @@ def sync_market_amount(self, stock_code: str):
 
         if success:
             logger.info(f"시가총액 갱신 완료: {stock_code}")
+
+            # 시가총액 업데이트 성공 후 최근 3년치 재무 지표 재계산
+            from datetime import datetime
+
+            current_year = datetime.now().year
+            for year in range(current_year - 3, current_year):
+                calculate_financial_metrics_task.delay(stock_code, year)
+                logger.debug(f"재무 지표 재계산 작업 등록: {stock_code} ({year}년)")
         else:
             logger.warning(f"시가총액 갱신 실패 (값 없음): {stock_code}")
 
