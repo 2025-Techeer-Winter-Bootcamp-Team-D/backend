@@ -42,6 +42,7 @@ ALLOWED_HOSTS = ["*"]
 INSTALLED_APPS = [
     "daphne",  # Channels ASGI 서버 (INSTALLED_APPS 최상단)
     "django_prometheus",  # Prometheus 메트릭 (INSTALLED_APPS 상단에 위치)
+    "corsheaders",  # CORS 헤더 처리 (INSTALLED_APPS 상단에 위치)
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -69,6 +70,7 @@ ASGI_APPLICATION = "config.asgi.application"
 
 MIDDLEWARE = [
     "django_prometheus.middleware.PrometheusBeforeMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "corsheaders.middleware.CorsMiddleware",
