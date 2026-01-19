@@ -278,10 +278,12 @@ def sync_multiple_stocks_history(request):
     """
     from companies.models import Company
 
-    # DB에서 전체 기업 조회
+    # DB에서 전체 기업 조회 (market 정보가 있는 기업만)
     companies = Company.objects.filter(
-        is_deleted=False, stock_code__isnull=False
-    ).exclude(stock_code="")
+        is_deleted=False,
+        stock_code__isnull=False,
+        market__isnull=False,
+    ).exclude(stock_code="", market="")
     stock_codes = list(companies.values_list("stock_code", flat=True))
 
     if not stock_codes:
