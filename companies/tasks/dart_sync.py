@@ -159,21 +159,24 @@ def sync_all_company_info():
         try:
             sync_company_info_from_dart.delay(company.stock_code)
         except Exception as e:
-            logger.error(f"기업 정보 동기화 작업 등록 실패: {company.stock_code} - {e}")
+            logger.exception("기업 정보 동기화 작업 등록 실패: %s", company.stock_code)
 
     logger.info(f"전체 기업 정보 동기화 작업 등록 완료: {total}개")
 
 
 @shared_task
-def sync_all_financial_statements(years: int = 3):
+def sync_all_financial_statements(years: int = 3, batch_size: int = 50):
     """
     모든 기업의 재무제표 동기화 (주기적 실행용)
     재무제표 동기화 시 배당 정보 및 재무 지표 계산도 함께 수행됩니다.
 
     Args:
         years: 동기화할 연도 수 (기본값: 3, 최근 3년)
+        batch_size: 한 번에 처리할 기업 수 (기본값: 50)
     """
     from datetime import datetime
+    from celery import group
+    from celery.exceptions import Reject
 
     current_year = datetime.now().year
     companies = Company.objects.filter(is_deleted=False, corp_code__isnull=False)
@@ -183,15 +186,31 @@ def sync_all_financial_statements(years: int = 3):
     )
 
     task_count = 0
-    for company in companies:
-        try:
-            # 현재부터 과거 N년치 재무제표 동기화 작업 등록
-            for year_offset in range(years):
-                target_year = current_year - year_offset
-                sync_financial_statements.delay(company.stock_code, target_year)
-                task_count += 1
-        except Exception as e:
-            logger.error(f"재무제표 동기화 작업 등록 실패: {company.stock_code} - {e}")
+    # 배치 단위로 기업을 처리
+    for i in range(0, total, batch_size):
+        batch = companies[i:i + batch_size]
+        tasks = []
+
+        for company in batch:
+            try:
+                # 현재부터 과거 N년치 재무제표 동기화 작업 등록
+                for year_offset in range(years):
+                    target_year = current_year - year_offset
+                    # countdown을 사용하여 작업을 시간차로 분산
+                    countdown_offset = (i // batch_size) * 60 + year_offset * 10
+                    task = sync_financial_statements.apply_async(
+                        args=[company.stock_code, target_year],
+                        countdown=countdown_offset
+                    )
+                    tasks.append(task)
+                    task_count += 1
+            except (Reject, ConnectionError) as e:
+                # 특정 예외만 처리 (Celery 연결 오류 등)
+                logger.exception("재무제표 동기화 작업 등록 실패: %s", company.stock_code)
+
+        logger.info(
+            f"배치 {i // batch_size + 1} 완료: {len(batch)}개 기업, {len(tasks)}개 작업 등록"
+        )
 
     logger.info(
         f"전체 기업 재무제표 동기화 작업 등록 완료: {total}개 기업, 총 {task_count}개 작업"
