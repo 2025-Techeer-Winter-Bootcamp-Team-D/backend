@@ -25,8 +25,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 # KIS API 설정 (환경 변수에서 읽어오기)
-KIS_APP_KEY = os.getenv('KIS_APP_KEY')
-KIS_APP_SECRET = os.getenv('KIS_APP_SECRET')
+KIS_APP_KEY = os.getenv("KIS_APP_KEY")
+KIS_APP_SECRET = os.getenv("KIS_APP_SECRET")
 
 DART_API_KEY = os.getenv("DART_API_KEY")
 NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
@@ -266,12 +266,12 @@ CELERY_BEAT_SCHEDULE = {
         },
     },
     "sync-industry-charts-daily": {
+        # 오후 4시 10분에 실행
         "task": "industries.tasks.index_sync.sync_industry_charts_daily",
-        "schedule": crontab(hour=16, minute=10),  # 매일 오전 4시 10분에 실행
+        "schedule": crontab(hour=16, minute=10),  # 매일 오후 4시 10분에 실행
     },
 }
 
-    }
 
 # DART 동기화: 모두 일 1회 실행 (새벽 3시 통일)
 if DART_SYNC_ENABLED:
