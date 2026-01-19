@@ -24,6 +24,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # .env 파일 로드
 load_dotenv(BASE_DIR / ".env")
 
+# KIS API 설정 (환경 변수에서 읽어오기)
+KIS_APP_KEY = os.getenv("KIS_APP_KEY")
+KIS_APP_SECRET = os.getenv("KIS_APP_SECRET")
+
+DART_API_KEY = os.getenv("DART_API_KEY")
+NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
@@ -53,19 +59,15 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
-    "channels",  # Django Channels
     # 만든 앱 등록
     "industries",
     "companies",
+    "comparisons",
+    "indices",
     "core",
     "news",
     "users",
-    "comparisons",
-    "indices",
 ]
-
-# ASGI Application
-ASGI_APPLICATION = "config.asgi.application"
 
 MIDDLEWARE = [
     "django_prometheus.middleware.PrometheusBeforeMiddleware",
@@ -252,30 +254,24 @@ MARKET_INDEX_SYNC_ENABLED = (
 
 # =============================================================================
 # Celery Beat Schedule (주기적 작업 스케줄링)
-# =============================================================================
-# 배치 작업은 위의 활성화 설정에 따라 조건부로 등록됩니다.
-
-CELERY_BEAT_SCHEDULE = {}
-
-# 뉴스 크롤링: 매 3시간마다 실행
-if NEWS_BATCH_ENABLED:
-    CELERY_BEAT_SCHEDULE["crawl-news-every-3-hours"] = {
-        "task": "news.tasks.workflows.scheduled_crawl_news",
+# 뉴스 크롤링: 매 3시간마다 실행 (오전 9시, 12시, 오후 3시, 6시, 9시, 자정)
+# 필요에 따라 주기를 조정할 수 있습니다 (예: 1시간, 6시간 등)
+CELERY_BEAT_SCHEDULE = {
+    "crawl-news-every-3-hours": {
+        "task": "news.tasks.workflows.scheduled_crawl_news",  # Canvas 워크플로우 사용
         "schedule": 3 * 60 * 60,  # 3시간 (초 단위)
         "kwargs": {
-            "keywords": [
-                "경제",
-                "증권",
-                "기업",
-                "IT",
-                "기술",
-                "산업",
-                "무역",
-                "금융",
-            ],
+            "keywords": ["AI", "반도체", "삼성전자", "SK하이닉스"],  # 기본 키워드
             "max_articles_per_keyword": 10,
         },
-    }
+    },
+    "sync-industry-charts-daily": {
+        # 오후 4시 10분에 실행
+        "task": "industries.tasks.index_sync.sync_industry_charts_daily",
+        "schedule": crontab(hour=16, minute=10),  # 매일 오후 4시 10분에 실행
+    },
+}
+
 
 # DART 동기화: 모두 일 1회 실행 (새벽 3시 통일)
 if DART_SYNC_ENABLED:
@@ -348,11 +344,7 @@ NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET") or None
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or None
 # 선택 API 키: Jina는 무료 티어로도 동작 가능
 JINA_API_KEY = os.getenv("JINA_API_KEY") or None
-DART_API_KEY = os.getenv("DART_API_KEY") or None
 
-# Logo.dev API (기업 로고 이미지)
-# 무료 tier: 월 50만 요청 (attribution 필요)
-LOGO_DEV_PUB_KEY = os.getenv("LOGO_DEV_PUB_KEY") or None
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
@@ -379,6 +371,7 @@ AUTH_PASSWORD_VALIDATORS = [
 LANGUAGE_CODE = "ko-kr"
 
 TIME_ZONE = "Asia/Seoul"
+
 
 USE_TZ = True
 

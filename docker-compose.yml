@@ -204,6 +204,8 @@ services:
         condition: service_healthy
       opensearch:
         condition: service_healthy
+    volumes:
+      - .:/app
     networks:
       - django-network
     restart: always
@@ -230,6 +232,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - .:/app
     networks:
       - django-network
     restart: always

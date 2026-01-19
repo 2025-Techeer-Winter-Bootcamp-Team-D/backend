@@ -6,6 +6,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 app = Celery("config")
 app.config_from_object("django.conf:settings", namespace="CELERY")
 app.autodiscover_tasks()
+app.autodiscover_tasks(['industries'])
 
 # 태스크를 명시적으로 import하여 등록 보장
 # Django 앱이 로드된 후에 import하도록 지연 (순환 import 방지)
