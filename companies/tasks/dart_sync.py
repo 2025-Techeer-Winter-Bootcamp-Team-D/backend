@@ -84,7 +84,9 @@ def sync_financial_statements(self, stock_code: str, year: int):
                 sync_dividend_and_calculate_task,
             )
 
-            logger.info(f"배당 정보 동기화 및 재무 지표 계산 시작: {stock_code} ({year}년)")
+            logger.info(
+                f"배당 정보 동기화 및 재무 지표 계산 시작: {stock_code} ({year}년)"
+            )
             sync_dividend_and_calculate_task.delay(stock_code, year)
 
     except Company.DoesNotExist:
@@ -160,6 +162,40 @@ def sync_all_company_info():
             logger.error(f"기업 정보 동기화 작업 등록 실패: {company.stock_code} - {e}")
 
     logger.info(f"전체 기업 정보 동기화 작업 등록 완료: {total}개")
+
+
+@shared_task
+def sync_all_financial_statements(years: int = 3):
+    """
+    모든 기업의 재무제표 동기화 (주기적 실행용)
+    재무제표 동기화 시 배당 정보 및 재무 지표 계산도 함께 수행됩니다.
+
+    Args:
+        years: 동기화할 연도 수 (기본값: 3, 최근 3년)
+    """
+    from datetime import datetime
+
+    current_year = datetime.now().year
+    companies = Company.objects.filter(is_deleted=False, corp_code__isnull=False)
+    total = companies.count()
+    logger.info(
+        f"전체 기업 재무제표 동기화 시작: {total}개 기업, 최근 {years}년 ({current_year - years + 1}~{current_year}년)"
+    )
+
+    task_count = 0
+    for company in companies:
+        try:
+            # 현재부터 과거 N년치 재무제표 동기화 작업 등록
+            for year_offset in range(years):
+                target_year = current_year - year_offset
+                sync_financial_statements.delay(company.stock_code, target_year)
+                task_count += 1
+        except Exception as e:
+            logger.error(f"재무제표 동기화 작업 등록 실패: {company.stock_code} - {e}")
+
+    logger.info(
+        f"전체 기업 재무제표 동기화 작업 등록 완료: {total}개 기업, 총 {task_count}개 작업"
+    )
 
 
 @shared_task
