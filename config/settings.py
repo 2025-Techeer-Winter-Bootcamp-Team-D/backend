@@ -54,7 +54,6 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     "channels",  # Django Channels
-    "corsheaders",
     # 만든 앱 등록
     "industries",
     "companies",
