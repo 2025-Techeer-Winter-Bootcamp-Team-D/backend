@@ -27,7 +27,7 @@ class SummarizeService:
 
     def get_summary_only(self, perfect_text):
         """
-        본문을 3줄로 요약하여 JSON으로 반환
+        본문을 3줄로 요약하고 감성분석을 수행하여 JSON으로 반환
 
         프롬프트 인젝션 방지를 위해:
         - 입력 텍스트를 명확한 구분자로 분리
@@ -41,21 +41,27 @@ class SummarizeService:
             logger.warning(f"입력 텍스트가 {max_input_length}자를 초과하여 잘랐습니다.")
 
         # 프롬프트 인젝션 방지를 위해 입력 텍스트를 명확한 구분자로 분리
-        prompt = """다음 뉴스 본문을 읽고 핵심 내용을 3줄 이내로 요약하여 JSON 형식으로 응답하세요.
+        prompt = """다음 뉴스 본문을 읽고 핵심 내용을 3줄 이내로 요약하고, 이 뉴스의 감성을 분석하여 JSON 형식으로 응답하세요.
 추가적인 분석이나 의견은 배제하십시오.
 
 응답 형식:
 {{
-    "summary": "3줄 이내 요약 내용"
+    "summary": "3줄 이내 요약 내용",
+    "sentiment": "positive" 또는 "neutral" 또는 "negative"
 }}
 
-아래 "=== 본문 시작 ==="와 "=== 본문 끝 ===" 사이의 텍스트만 요약하세요.
+감성 분석 기준:
+- positive: 긍정적 전망, 호재, 상승, 성장, 긍정적 기업 소식
+- neutral: 중립적 보도, 사실 전달, 변동 없음
+- negative: 부정적 전망, 악재, 하락, 우려, 부정적 기업 소식
+
+아래 "=== 본문 시작 ==="와 "=== 본문 끝 ===" 사이의 텍스트만 요약하고 감성을 분석하세요.
 
 === 본문 시작 ===
 {input_text}
 === 본문 끝 ===
 
-위 본문을 요약하여 JSON 형식으로 응답하세요.""".format(
+위 본문을 요약하고 감성을 분석하여 JSON 형식으로 응답하세요.""".format(
             input_text=perfect_text
         )
 
@@ -98,14 +104,17 @@ class SummarizeService:
                 except json.JSONDecodeError:
                     pass
 
-            # JSON 형식이 아니면 그냥 텍스트로 반환
-            return {"summary": text}
+            # JSON 형식이 아니면 그냥 텍스트로 반환 (감성은 중립)
+            return {"summary": text, "sentiment": "neutral"}
         except Exception as e:
             error_message = str(e)
             # 쿼터 초과(429) 에러 명시적 처리
             if "429" in error_message or "quota" in error_message.lower():
                 logger.warning(f"Gemini API 쿼터 초과: 요약 생성 불가")
-                return {"summary": "Gemini API 토큰 부족으로 요약 생성 실패"}
+                return {
+                    "summary": "Gemini API 토큰 부족으로 요약 생성 실패",
+                    "sentiment": "neutral",
+                }
             else:
                 logger.error(f"Summarization failed: {error_message}")
-                return {"summary": "요약 생성 실패"}
+                return {"summary": "요약 생성 실패", "sentiment": "neutral"}

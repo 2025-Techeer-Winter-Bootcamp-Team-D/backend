@@ -134,12 +134,16 @@ def crawl_company_news_task(
                 skipped_count += 1
                 continue
 
-            # 3. 요약 생성
+            # 3. 요약 생성 (감성분석 포함)
             summary_result = summarizer.get_summary_only(refined_content)
             summary = summary_result.get("summary", "")
+            sentiment = summary_result.get("sentiment", "neutral")
 
             # 4. 메타데이터 추출
             metadata = metadata_extractor.extract_all(url, refined_content)
+
+            # 키워드 처리: 메타데이터 키워드만 사용 (가장 중요한 키워드는 primary_keyword에 별도 저장)
+            keywords = metadata.get("keywords", [])
 
             # 5. News 테이블에 저장 (get_or_create)
             news, news_created = News.objects.get_or_create(
@@ -150,7 +154,12 @@ def crawl_company_news_task(
                     "content": refined_content,
                     "author": metadata.get("author"),
                     "press": metadata.get("press"),
-                    "keywords": metadata.get("keywords", []),
+                    "keywords": keywords,
+                    "sentiment": (
+                        sentiment
+                        if sentiment in ["positive", "neutral", "negative"]
+                        else "neutral"
+                    ),
                     "published_at": published_at,
                 },
             )
@@ -169,6 +178,13 @@ def crawl_company_news_task(
                     updated = True
                 if metadata.get("keywords") and not news.keywords:
                     news.keywords = metadata.get("keywords", [])
+                    updated = True
+                if (
+                    sentiment
+                    and sentiment in ["positive", "neutral", "negative"]
+                    and not news.sentiment
+                ):
+                    news.sentiment = sentiment
                     updated = True
                 if updated:
                     news.save()

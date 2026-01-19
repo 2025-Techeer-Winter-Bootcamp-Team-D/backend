@@ -43,9 +43,7 @@ def refine_and_summarize_single_article_task(
 
         # raw_content 유효성 검증
         if not raw_content:
-            logger.warning(
-                f"[Process] raw_content 없음: {url[:50]}..."
-            )
+            logger.warning(f"[Process] raw_content 없음: {url[:50]}...")
             return None
 
         refiner_service = RefineService()
@@ -56,9 +54,7 @@ def refine_and_summarize_single_article_task(
 
         # 정제 결과 검증: 정제가 실패하거나 결과가 없으면 요약하지 않음
         if not refined_content:
-            logger.warning(
-                f"[Process] 본문 정제 실패: {url[:50]}..."
-            )
+            logger.warning(f"[Process] 본문 정제 실패: {url[:50]}...")
             return None
 
         # 정제된 본문 길이 검증 (너무 짧으면 요약 의미 없음)
@@ -73,31 +69,36 @@ def refine_and_summarize_single_article_task(
             f"[Process] 본문 정제 완료: {len(refined_content)}자 - {url[:50]}..."
         )
 
-        # 2단계: 정제가 완료된 텍스트로만 요약 생성
+        # 2단계: 정제가 완료된 텍스트로만 요약 생성 (감성분석 포함)
         # 정제된 텍스트(refined_content)를 사용하여 요약 진행
         summarizer_service = SummarizeService()
         summary_result = summarizer_service.get_summary_only(refined_content)
         summary_text = summary_result.get("summary", "")
+        sentiment = summary_result.get("sentiment", "neutral")
 
-        # 3단계: 메타데이터 추출 (저자, 언론사, 키워드)
+        # 3단계: 메타데이터 추출 (저자, 언론사, 기타 키워드)
         # 예외 발생 시에도 기사 처리를 계속 진행하도록 안전한 기본값 사용
         metadata = {}
         try:
             metadata_extractor = MetadataExtractorService()
             metadata = metadata_extractor.extract_all(url, refined_content)
         except Exception as e:
-            logger.warning(
-                f"메타데이터 추출 실패 (기사 처리는 계속 진행): {url} - {e}"
-            )
+            logger.warning(f"메타데이터 추출 실패 (기사 처리는 계속 진행): {url} - {e}")
             # 안전한 기본값 설정
             metadata = {"author": None, "press": None, "keywords": []}
+
+        # 키워드 처리: 메타데이터 키워드만 사용 (가장 중요한 키워드는 primary_keyword에 별도 저장)
+        keywords = metadata.get("keywords", [])
 
         # 결과 추가
         article["refined_content"] = refined_content
         article["summary"] = summary_text
+        article["sentiment"] = (
+            sentiment if sentiment in ["positive", "neutral", "negative"] else "neutral"
+        )
         article["author"] = metadata.get("author")
         article["press"] = metadata.get("press")
-        article["keywords"] = metadata.get("keywords", [])
+        article["keywords"] = keywords
 
         logger.debug(f"[Process] 정제, 요약 및 메타데이터 추출 성공: {url[:50]}...")
         return article

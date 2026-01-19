@@ -69,6 +69,7 @@ class News(models.Model):
     - author: 저자/기자
     - press: 언론사
     - keywords: 키워드 목록
+    - sentiment: 감성 (positive/neutral/negative, 요약에서 추출)
     - published_at: 발행일
     - created_at: 생성 시간
     - updated_at: 수정 시간
@@ -95,6 +96,19 @@ class News(models.Model):
     )
 
     keywords = models.JSONField(default=list, blank=True, verbose_name="키워드 목록")
+
+    sentiment = models.CharField(
+        max_length=20,
+        null=True,
+        blank=True,
+        db_index=True,
+        choices=[
+            ("positive", "긍정"),
+            ("neutral", "중립"),
+            ("negative", "부정"),
+        ],
+        verbose_name="감성",
+    )
 
     published_at = models.DateTimeField(null=True, blank=True, verbose_name="발행일")
 

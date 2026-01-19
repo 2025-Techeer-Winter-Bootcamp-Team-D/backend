@@ -20,6 +20,7 @@ class NewsSerializer(serializers.ModelSerializer):
             "author",
             "press",
             "keywords",
+            "sentiment",
             "published_at",
             "created_at",
         ]
@@ -40,6 +41,7 @@ class NewsDetailSerializer(serializers.ModelSerializer):
             "author",
             "press",
             "keywords",
+            "sentiment",
             "published_at",
             "created_at",
             "updated_at",
@@ -62,6 +64,7 @@ class CompanyNewsSerializer(serializers.ModelSerializer):
     author = serializers.CharField(source="news.author", read_only=True)
     press = serializers.CharField(source="news.press", read_only=True)
     keywords = serializers.JSONField(source="news.keywords", read_only=True)
+    sentiment = serializers.CharField(source="news.sentiment", read_only=True)
     published_at = serializers.DateTimeField(source="news.published_at", read_only=True)
 
     class Meta:
@@ -74,6 +77,7 @@ class CompanyNewsSerializer(serializers.ModelSerializer):
             "author",
             "press",
             "keywords",
+            "sentiment",
             "published_at",
             "created_at",
         ]
@@ -96,6 +100,7 @@ class CompanyNewsDetailSerializer(serializers.ModelSerializer):
     author = serializers.CharField(source="news.author", read_only=True)
     press = serializers.CharField(source="news.press", read_only=True)
     keywords = serializers.JSONField(source="news.keywords", read_only=True)
+    sentiment = serializers.CharField(source="news.sentiment", read_only=True)
     published_at = serializers.DateTimeField(source="news.published_at", read_only=True)
     updated_at = serializers.DateTimeField(source="news.updated_at", read_only=True)
 
@@ -110,6 +115,7 @@ class CompanyNewsDetailSerializer(serializers.ModelSerializer):
             "author",
             "press",
             "keywords",
+            "sentiment",
             "published_at",
             "created_at",
             "updated_at",
@@ -132,6 +138,7 @@ class IndustryNewsSerializer(serializers.ModelSerializer):
     author = serializers.CharField(source="news.author", read_only=True)
     press = serializers.CharField(source="news.press", read_only=True)
     keywords = serializers.JSONField(source="news.keywords", read_only=True)
+    sentiment = serializers.CharField(source="news.sentiment", read_only=True)
     published_at = serializers.DateTimeField(source="news.published_at", read_only=True)
 
     # 기업 정보 추가
@@ -148,6 +155,7 @@ class IndustryNewsSerializer(serializers.ModelSerializer):
             "author",
             "press",
             "keywords",
+            "sentiment",
             "published_at",
             "stock_code",
             "company_name",
