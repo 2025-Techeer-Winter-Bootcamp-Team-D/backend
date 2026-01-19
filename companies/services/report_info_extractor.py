@@ -50,13 +50,14 @@ class ReportInfoExtractorService:
 요구사항:
 1. 보고서 유형을 파악하고, 해당 유형에 맞는 핵심 정보를 추출
 2. 한 줄 요약(one_line)은 50자 이내로 핵심만
-3. key_info는 보고서 유형에 따라 다름:
-   - 사업보고서: 매출액, 영업이익, 주요사업, 향후전망
-   - 반기보고서: 매출액, 영업이익, 주요사업, 향후전망
-   - 자기주식취득: 취득주식수, 금액, 기간, 목적
-   - 타법인주식취득: 투자대상, 금액, 목적, 기간
-   - 배당결정: 배당종류, 금액, 기준일
-   - 기타: 변동내용, 일자, 금액 등 핵심사항
+3. key_info는 보고서 유형에 따라 중요도가 높은 항목 최대 5개만 추출:
+   - 사업보고서: 매출액, 당기순이익, 주요사업, 향후전망, 위험요소 등 (중요도 높은 5개)
+   - 반기보고서: 매출액, 당기순이익, 주요사업, 향후전망, 주요변동사항 등 (중요도 높은 5개)
+   - 자기주식취득: 취득주식수, 금액, 기간, 목적, 결의일 등 (중요도 높은 5개)
+   - 타법인주식취득: 투자대상, 금액, 목적, 기간, 결의일 등 (중요도 높은 5개)
+   - 배당결정: 배당종류, 금액, 기준일, 배당성향, 결의일 등 (중요도 높은 5개)
+   - 기타: 변동내용, 일자, 금액 등 핵심사항 (중요도 높은 5개)
+   **중요: key_info는 반드시 최대 5개까지만 추출하고, 중요도가 높은 항목을 우선 선택하세요.**
 4. 매출 구성(revenue_composition)은 사업보고서 또는 반기보고서에서 추출, 없으면 빈 배열
 
 응답 형식 (JSON만 출력):
@@ -95,7 +96,22 @@ class ReportInfoExtractorService:
                 start = text.find("{")
                 end = text.rfind("}") + 1
                 json_text = text[start:end]
-                return json.loads(json_text)
+                extracted_info = json.loads(json_text)
+
+                # key_info가 5개를 초과하면 중요도가 높은 5개만 선택
+                if "key_info" in extracted_info and isinstance(
+                    extracted_info["key_info"], dict
+                ):
+                    key_info = extracted_info["key_info"]
+                    if len(key_info) > 5:
+                        logger.warning(
+                            f"key_info가 5개를 초과 ({len(key_info)}개): "
+                            f"중요도 높은 5개만 선택"
+                        )
+                        # 딕셔너리의 처음 5개 항목만 선택 (Python 3.7+에서는 삽입 순서 보장)
+                        extracted_info["key_info"] = dict(list(key_info.items())[:5])
+
+                return extracted_info
 
             return {"error": "JSON 파싱 실패"}
         except json.JSONDecodeError as e:

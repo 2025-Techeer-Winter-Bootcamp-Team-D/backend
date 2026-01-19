@@ -109,15 +109,14 @@ def sync_financial_statements(self, stock_code: str, year: int):
 
 @shared_task(bind=True, max_retries=3)
 def sync_company_reports(
-    self, stock_code: str, days: int = 365, incremental: bool = True
+    self, stock_code: str, days: int = 365
 ):
     """
-    DART에서 보고서 목록 동기화 (증분 동기화, 주요 공시만)
+    DART에서 보고서 목록 동기화 (전체 동기화, 주요 공시만)
 
     Args:
         stock_code: 종목코드
-        days: 조회할 기간 (일 단위, 기본값: 365일, incremental=True일 때는 fallback으로만 사용)
-        incremental: 증분 동기화 여부 (기본값: True, 마지막 동기화 이후 보고서만)
+        days: 조회할 기간 (일 단위, 기본값: 365일)
     """
     try:
         company = Company.objects.get(pk=stock_code, is_deleted=False)
@@ -127,13 +126,13 @@ def sync_company_reports(
             return
 
         service = ReportsService()
-        # 증분 동기화 + 주요 공시만 (정기공시 + 주요사항보고)
+        # 전체 동기화 + 주요 공시만 (정기공시 + 주요사항보고)
         reports = service.sync_reports(
-            company, days=days, incremental=incremental, report_types=["A", "B"]
+            company, days=days, report_types=["A", "B"]
         )
 
         logger.info(
-            f"보고서 동기화 완료: {stock_code} ({len(reports)}건, 증분 동기화: {incremental})"
+            f"보고서 동기화 완료: {stock_code} ({len(reports)}건)"
         )
 
     except Company.DoesNotExist:
@@ -221,17 +220,17 @@ def sync_all_financial_statements(years: int = 3, batch_size: int = 50):
 def sync_all_reports():
     """
     모든 기업의 보고서 목록 동기화 (주기적 실행용)
-    증분 동기화 + 주요 공시만 (정기공시 + 주요사항보고)
+    전체 동기화 + 주요 공시만 (정기공시 + 주요사항보고)
     """
     companies = Company.objects.filter(is_deleted=False, corp_code__isnull=False)
     total = companies.count()
     logger.info(
-        f"전체 기업 보고서 동기화 시작: {total}개 기업 (증분 동기화, 주요 공시만)"
+        f"전체 기업 보고서 동기화 시작: {total}개 기업 (전체 동기화, 주요 공시만)"
     )
 
     for company in companies:
         try:
-            sync_company_reports.delay(company.stock_code, days=365, incremental=True)
+            sync_company_reports.delay(company.stock_code, days=365)
         except Exception as e:
             logger.error(f"보고서 동기화 작업 등록 실패: {company.stock_code} - {e}")
 

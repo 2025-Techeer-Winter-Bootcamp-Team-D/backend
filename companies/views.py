@@ -132,10 +132,10 @@ def _should_sync_company(company) -> bool:
             description="조회할 기업의 종목코드 (예: 005930)",
         ),
         OpenApiParameter(
-            name="year",
+            name="years",
             type=int,
             location=OpenApiParameter.QUERY,
-            description="조회할 연도 (기본값: 최근 3년)",
+            description="조회할 최근 연도 수 (기본값: 3, 예: 3이면 최근 3년치 데이터 조회)",
             required=False,
         ),
     ],
@@ -154,21 +154,41 @@ def get_company_financials(request, stock_code):
         # FinancialService를 사용하여 재무제표 조회
         financial_service = FinancialService()
 
-        # 연도 파라미터 처리
-        year_param = request.query_params.get("year")
+        # 연도 파라미터 처리 (최근 N년)
+        years_param = request.query_params.get("years")
         years = None
-        if year_param:
+        if years_param:
             try:
-                years = [int(year_param)]
+                years = int(years_param)
+                if years < 1 or years > 10:
+                    return Response(
+                        {
+                            "status": 400,
+                            "error": "years 파라미터는 1~10 사이의 정수여야 합니다.",
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
             except ValueError:
                 return Response(
-                    {"status": 400, "error": "year 파라미터는 정수여야 합니다."},
+                    {"status": 400, "error": "years 파라미터는 정수여야 합니다."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-        # 재무제표 조회 (최근 3년 또는 지정 연도)
+        # 보고서 코드 파라미터 처리 (기본값: 11011 사업보고서만)
+        # 11011: 사업보고서, 11012: 반기보고서, 11013: 1분기보고서, 11014: 3분기보고서
+        report_code_param = request.query_params.get("report_code", "11011")
+        if report_code_param not in ["11011", "11012", "11013", "11014"]:
+            return Response(
+                {
+                    "status": 400,
+                    "error": "report_code 파라미터는 11011(사업), 11012(반기), 11013(1분기), 11014(3분기) 중 하나여야 합니다.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 재무제표 조회 (최근 N년, 지정된 보고서 코드)
         financial_statements = financial_service.get_financial_statements(
-            company, years
+            company, years, report_code=report_code_param
         )
 
         # 매출 구성 조회 (최신 연도)
@@ -516,7 +536,13 @@ def sync_company_from_dart(request, stock_code):
             try:
                 service = CompanyInfoService()
                 service.sync_company_info(company)
-                results["info"] = "기업 정보 동기화 완료 (시가총액 포함)"
+                # 시가총액 갱신 여부 확인
+                market_amount_status = (
+                    f"시가총액: {company.market_amount:,}원"
+                    if company.market_amount
+                    else "시가총액: 미갱신"
+                )
+                results["info"] = f"기업 정보 동기화 완료 ({market_amount_status})"
             except Exception as e:
                 error_msg = f"기업 정보 동기화 실패: {str(e)}"
                 errors.append(error_msg)
@@ -646,17 +672,12 @@ def sync_company_from_dart(request, stock_code):
         if sync_reports:
             try:
                 days = int(request.query_params.get("days", 365))
-                incremental = (
-                    request.query_params.get("incremental", "true").lower() == "true"
-                )
                 service = ReportsService()
-                # 증분 동기화 + 주요 공시만 (정기공시 + 주요사항보고)
+                # 전체 동기화 + 주요 공시만 (정기공시 + 주요사항보고)
                 reports = service.sync_reports(
-                    company, days=days, incremental=incremental, report_types=["A", "B"]
+                    company, days=days, report_types=["A", "B"]
                 )
-                results["reports"] = (
-                    f"보고서 {len(reports)}건 동기화 완료 (증분: {incremental})"
-                )
+                results["reports"] = f"보고서 {len(reports)}건 동기화 완료"
             except Exception as e:
                 error_msg = f"보고서 동기화 실패: {str(e)}"
                 errors.append(error_msg)
