@@ -3,7 +3,7 @@ import logging
 
 from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
 from rest_framework import status, serializers
 from drf_spectacular.utils import extend_schema, OpenApiResponse, inline_serializer, OpenApiParameter
@@ -390,9 +390,7 @@ class IndustryChartView(APIView):
 # ================관리자 전용 데이터 적재 API=====================
 
 class IndustryBackfillView(APIView):
-    # 테스트 편의를 위해 인증/권한 일시 해제
-    authentication_classes = [] 
-    permission_classes = [] 
+    permission_classes = [IsAdminUser] 
 
     @extend_schema(
         tags=["Admin - Industrial index"],
@@ -401,8 +399,21 @@ class IndustryBackfillView(APIView):
         ]
     )
     def post(self, request):
-        # 1. 쿼리 파라미터에서 industry_id 추출
-        industry_id = request.query_params.get('industry_id')
+        # 1. 쿼리 파라미터에서 industry_id 추출 및 검증
+        industry_id_str = request.query_params.get('industry_id')
+        industry_id = None
+        
+        if industry_id_str:
+            try:
+                industry_id = int(industry_id_str)
+            except (ValueError, TypeError):
+                return Response(
+                    {
+                        "status": 400,
+                        "message": "잘못된 industry_id 형식입니다. 정수여야 합니다.",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         
         # 2. 태스크 호출 시 id 전달 (.delay 안에 인자 넣기)
         backfill_industry_charts_task.delay(industry_id=industry_id)
