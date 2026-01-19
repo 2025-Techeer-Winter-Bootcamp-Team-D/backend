@@ -104,14 +104,20 @@ def extract_report_info_task(self, data: dict[str, Any]) -> dict[str, Any] | Non
         report_name = data["report_name"]
         submitted_at = data.get("submitted_at", "")
 
-        # 1회 호출로 요약 + 매출 구성 통합 추출
+        # 1회 호출로 요약 + 매출 구성 + 주요 키워드 통합 추출
         extractor = ReportInfoExtractorService()
         extracted_info = extractor.extract_info(
             refined_content, report_name, company_name
         )
 
-        # DB 업데이트 (extracted_info JSON으로 저장)
-        Report.objects.filter(id=report_id).update(extracted_info=extracted_info)
+        # 주요 키워드 추출
+        primary_keyword = extracted_info.get("primary_keyword", "")
+
+        # DB 업데이트 (extracted_info JSON 및 primary_keyword 저장)
+        Report.objects.filter(id=report_id).update(
+            extracted_info=extracted_info,
+            primary_keyword=primary_keyword if primary_keyword else None,
+        )
 
         # 매출 구성이 있으면 별도 테이블에도 저장
         revenue_composition = extracted_info.get("revenue_composition", [])

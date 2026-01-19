@@ -59,6 +59,7 @@ class ReportInfoExtractorService:
    - 기타: 변동내용, 일자, 금액 등 핵심사항 (중요도 높은 5개)
    **중요: key_info는 반드시 최대 5개까지만 추출하고, 중요도가 높은 항목을 우선 선택하세요.**
 4. 매출 구성(revenue_composition)은 사업보고서 또는 반기보고서에서 추출, 없으면 빈 배열
+5. primary_keyword는 이 보고서에서 가장 중요하다고 생각하는 키워드 하나를 추출 (예: "신규사업 진출", "M&A", "배당 인상" 등)
 
 응답 형식 (JSON만 출력):
 {{
@@ -73,6 +74,7 @@ class ReportInfoExtractorService:
     "항목1": "값1",
     "항목2": "값2"
   }},
+  "primary_keyword": "가장 중요한 키워드 하나",
   "revenue_composition": [
     {{"segment": "사업부문명", "revenue": 금액(원), "ratio": 비율}}
   ]

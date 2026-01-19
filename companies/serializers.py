@@ -212,6 +212,7 @@ class ReportDetailSerializer(serializers.ModelSerializer):
             "submitted_at",
             "report_url",
             "extracted_info",
+            "primary_keyword",
             "created_at",
         ]
 
