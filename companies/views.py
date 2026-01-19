@@ -1077,13 +1077,40 @@ def get_company_rankings(request):
         .first()
     )
     if not latest_date:
-        return Response(
-            {"status": 404, "message": "company_rankings not found"},
-            status=status.HTTP_404_NOT_FOUND,
-        )
-    # 데이터 조회
+        # 순위 데이터가 없으면 자동으로 생성
+        from django.core.management import call_command
+
+        try:
+            call_command("update_company_rankings")
+            # 생성 후 다시 조회
+            latest_date = (
+                CompanyRanking.objects.filter(is_deleted=False)
+                .order_by("-base_date")
+                .values_list("base_date", flat=True)
+                .first()
+            )
+        except Exception as e:
+            logger.error(f"기업 순위 생성 실패: {e}")
+            return Response(
+                {
+                    "status": 500,
+                    "message": f"기업 순위 생성 중 오류가 발생했습니다: {str(e)}",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        if not latest_date:
+            return Response(
+                {"status": 404, "message": "company_rankings not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+    # 데이터 조회 (삭제되지 않은 기업만 조회)
     rankings = (
-        CompanyRanking.objects.filter(base_date=latest_date, is_deleted=False)
+        CompanyRanking.objects.filter(
+            base_date=latest_date,
+            is_deleted=False,
+            stock_code__is_deleted=False,
+        )
         .select_related("stock_code")
         .order_by("rank")
     )
