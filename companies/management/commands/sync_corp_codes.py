@@ -21,12 +21,17 @@ DART 고유번호 목록 동기화 Management Command
 """
 
 from django.core.management.base import BaseCommand
-from django.db import transaction
+from django.db import transaction, connection
+from django.db.models import Count
 from companies.models import Company
 from companies.services.dart_api import DartAPIClient, DartAPIError
 from companies.services.corp_code_parser import CorpCodeParser
-from industries.models import KsicCategory
+from companies.services.industry_mapper import IndustryMapper
+from industries.models import KsicCategory, Industry, KisIndustry
 import logging
+import requests
+import zipfile
+import io
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +128,302 @@ class Command(BaseCommand):
             help="동기화할 최대 기업 수 (0=무제한, 기본값: 0)",
         )
 
+    def _load_kis_master_and_mapping(self, dry_run=False):
+        """
+        KIS 마스터 및 종목-업종 매핑을 메모리 딕셔너리로 로드
+        IndustryMapping 테이블 없이 메모리에서 직접 계산
+        """
+        self.stdout.write(self.style.SUCCESS("\n" + "=" * 50))
+        self.stdout.write("KIS 마스터 및 종목-업종 매핑 로드 중...")
+        self.stdout.write("=" * 50)
+
+        base_url = "https://new.real.download.dws.co.kr/common/master/"
+
+        # STEP 1: KisIndustry 테이블 채우기
+        self.stdout.write("STEP 1: KIS 업종 마스터 적재 중...")
+        if not dry_run:
+            res_idx = requests.get(base_url + "idxcode.mst.zip")
+            with zipfile.ZipFile(io.BytesIO(res_idx.content)) as z:
+                content = z.read(z.namelist()[0])
+                kis_count = 0
+                for line in content.splitlines():
+                    if len(line) < 45:
+                        continue
+                    kis_code = line[1:5].decode("cp949", errors="ignore").strip()
+                    name = line[5:45].decode("cp949", errors="ignore").strip()
+                    if kis_code:
+                        KisIndustry.objects.update_or_create(
+                            kis_code=kis_code, defaults={"name": name}
+                        )
+                        kis_count += 1
+                self.stdout.write(
+                    self.style.SUCCESS(f"  ✓ {kis_count}개 KIS 업종 코드 적재 완료")
+                )
+        else:
+            self.stdout.write("  [DRY RUN] KIS 업종 마스터 적재 스킵")
+
+        # STEP 2: 종목-업종 매핑을 메모리 딕셔너리로 생성 (테이블 사용 안 함)
+        self.stdout.write("STEP 2: 종목-업종 매핑 메모리 적재 중...")
+        # ticker -> kis_code 매핑 딕셔너리
+        ticker_to_kis = {}
+
+        if not dry_run:
+            mapping_count = 0
+            for target in [
+                {"name": "KOSPI", "file": "kospi_code.mst.zip"},
+                {"name": "KOSDAQ", "file": "kosdaq_code.mst.zip"},
+            ]:
+                res_stk = requests.get(base_url + target["file"])
+                with zipfile.ZipFile(io.BytesIO(res_stk.content)) as z:
+                    content = z.read(z.namelist()[0])
+                    for line in content.splitlines():
+                        if len(line) < 100 or line[61:63] != b"ST":
+                            continue
+                        ticker = (
+                            line[1:7].decode("cp949", errors="ignore").strip().zfill(6)
+                        )
+
+                        # 중분류(68:72)가 없으면 대분류(64:68)를 사용
+                        mid_code = line[68:72].decode("cp949", errors="ignore").strip()
+                        large_code = (
+                            line[64:68].decode("cp949", errors="ignore").strip()
+                        )
+
+                        kis_code = mid_code if mid_code != "0000" else large_code
+
+                        if kis_code and kis_code != "0000":
+                            # KisIndustry에 존재하는지 확인
+                            if KisIndustry.objects.filter(kis_code=kis_code).exists():
+                                ticker_to_kis[ticker] = kis_code
+                                mapping_count += 1
+                self.stdout.write(
+                    self.style.SUCCESS(f"  ✓ {target['name']} 종목-업종 매핑 적재 완료")
+                )
+            self.stdout.write(
+                self.style.SUCCESS(f"  ✓ 총 {mapping_count}개 종목-업종 매핑 (메모리)")
+            )
+        else:
+            self.stdout.write("  [DRY RUN] 종목-업종 매핑 적재 스킵")
+
+        self.stdout.write(self.style.SUCCESS("=" * 50 + "\n"))
+        return ticker_to_kis
+
+    def _create_ksic_mapping(self, ticker_to_kis, dry_run=False):
+        """
+        Company 테이블 기반으로 KSIC → KIS 매핑 생성
+        IndustryMapping 테이블 없이 메모리 딕셔너리 사용
+        """
+        self.stdout.write("\n" + "=" * 50)
+        self.stdout.write("KSIC → KIS 매핑 생성 중...")
+        self.stdout.write("=" * 50)
+
+        # STEP 3: Company 테이블에서 KSIC 코드 수집 및 KsicCategory 생성
+        self.stdout.write("STEP 3: KSIC 카테고리 생성 중...")
+        if not dry_run:
+            unique_ksic_codes = (
+                Company.objects.filter(induty_code__isnull=False)
+                .values_list("induty_code", flat=True)
+                .distinct()
+            )
+            ksic_count = 0
+            for code in unique_ksic_codes:
+                KsicCategory.objects.get_or_create(ksic_code=code)
+                ksic_count += 1
+            self.stdout.write(
+                self.style.SUCCESS(f"  ✓ {ksic_count}개 KSIC 카테고리 생성 완료")
+            )
+        else:
+            self.stdout.write("  [DRY RUN] KSIC 카테고리 생성 스킵")
+
+        # STEP 4: KSIC → KIS 매핑 생성 (메모리 딕셔너리 사용)
+        self.stdout.write("STEP 4: KSIC → KIS 매핑 생성 중...")
+        if not dry_run:
+            mapping_created = 0
+            for cat in KsicCategory.objects.all():
+                # 해당 KSIC 코드를 가진 기업들의 종목코드 수집
+                tickers = list(
+                    Company.objects.filter(induty_code=cat.ksic_code).values_list(
+                        "stock_code", flat=True
+                    )
+                )
+                if not tickers:
+                    continue
+
+                # 메모리 딕셔너리에서 통계 계산
+                kis_counts = {}
+                for ticker in tickers:
+                    kis_code = ticker_to_kis.get(ticker)
+                    if kis_code and kis_code != "0001":  # 종합지수 제외
+                        kis_counts[kis_code] = kis_counts.get(kis_code, 0) + 1
+
+                if kis_counts:
+                    # 가장 많이 나타나는 KIS 코드 찾기
+                    best_kis_code = max(kis_counts.items(), key=lambda x: x[1])[0]
+                    kis_obj = KisIndustry.objects.filter(kis_code=best_kis_code).first()
+
+                    if kis_obj:
+                        cat.representative_kis_id = kis_obj.kis_code
+                        cat.name = kis_obj.name
+                        cat.save()
+                        mapping_created += 1
+
+            self.stdout.write(
+                self.style.SUCCESS(f"  ✓ {mapping_created}개 KSIC → KIS 매핑 생성 완료")
+            )
+        else:
+            self.stdout.write("  [DRY RUN] KSIC → KIS 매핑 생성 스킵")
+
+        self.stdout.write(self.style.SUCCESS("=" * 50 + "\n"))
+
+    def _seed_kis_industries(self, dry_run=False):
+        """
+        Industry 테이블에 KIS 코드 기반 Industry 생성
+        seed_kis_codes.py의 핵심 로직을 통합
+        """
+        self.stdout.write("Industry 테이블에 KIS 코드 기반 Industry 생성 중...")
+
+        # KIS 기반 산업 분류 데이터
+        industries_data = [
+            # --- A. 농업, 임업 및 어업 (통합 지수 사용) ---
+            {
+                "name": "농업/어업",
+                "induty_code": "0027",
+                "description": "KOSPI 농림수산업 통합 지수",
+            },
+            # --- C. 제조업 (KOSPI/KOSDAQ 주요 지수) ---
+            {
+                "name": "제조업",
+                "induty_code": "1015",
+                "description": "코스닥 제조 지수",
+            },
+            {
+                "name": "음식료품",
+                "induty_code": "0006",
+                "description": "KOSPI 음식료품 업종 지수",
+            },
+            {
+                "name": "화학/정유",
+                "induty_code": "0009",
+                "description": "KOSPI 화학 및 석유정제 통합 지수",
+            },
+            {
+                "name": "의약품",
+                "induty_code": "0010",
+                "description": "KOSPI 의약품 업종 지수 (바이오 포함)",
+            },
+            {
+                "name": "전기전자",
+                "induty_code": "0014",
+                "description": "KOSPI 전기전자 지수 (반도체/IT 핵심)",
+            },
+            {
+                "name": "운수장비",
+                "induty_code": "0015",
+                "description": "KOSPI 운수장비 지수 (자동차/조선)",
+            },
+            {
+                "name": "반도체(코스닥)",
+                "induty_code": "1047",
+                "description": "KOSDAQ 반도체 업종 지수",
+            },
+            {
+                "name": "IT(코스닥)",
+                "induty_code": "1012",
+                "description": "KOSDAQ IT 업종지수",
+            },
+            # --- F. 건설업 ---
+            {
+                "name": "건설업",
+                "induty_code": "0018",
+                "description": "KOSPI 건설업 업종 지수",
+            },
+            # --- G. 도매 및 소매업 ---
+            {
+                "name": "유통업",
+                "induty_code": "0016",
+                "description": "KOSPI 유통업 및 소매 지수",
+            },
+            # --- H. 운수 및 창고업 ---
+            {
+                "name": "운수창고",
+                "induty_code": "0019",
+                "description": "KOSPI 육상/해상/항공 운송 통합 지수",
+            },
+            # --- J. 정보통신업 ---
+            {
+                "name": "통신업",
+                "induty_code": "0020",
+                "description": "KOSPI 통신업 업종 지수",
+            },
+            {
+                "name": "소프트웨어",
+                "induty_code": "1042",
+                "description": "KOSDAQ 소프트웨어 지수",
+            },
+            # --- K. 금융 및 보험업 ---
+            {
+                "name": "금융업",
+                "induty_code": "0021",
+                "description": "KOSPI 금융업 통합 지수",
+            },
+            {
+                "name": "보험",
+                "induty_code": "0025",
+                "description": "KOSPI 보험 업종 지수",
+            },
+            # --- M. 전문, 과학 및 기술 서비스업 ---
+            {
+                "name": "서비스업",
+                "induty_code": "0026",
+                "description": "KOSPI 서비스업 및 연구개발 통합 지수",
+            },
+            # --- 대표 시장 지수 (추가 권장) ---
+            {"name": "코스피", "induty_code": "0001", "description": "KOSPI 종합 지수"},
+            {
+                "name": "코스닥",
+                "induty_code": "1001",
+                "description": "KOSDAQ 종합 지수",
+            },
+            {
+                "name": "KRX 300",
+                "induty_code": "2001",
+                "description": "코스피/코스닥 통합 우량 300 지수",
+            },
+        ]
+
+        created_count = 0
+        skipped_count = 0
+
+        for industry_data in industries_data:
+            induty_code = industry_data.get("induty_code")
+            name = industry_data["name"]
+            description = industry_data["description"]
+
+            # KIS 코드로 이미 존재하는 Industry가 있는지 확인
+            if induty_code:
+                existing = Industry.objects.filter(
+                    induty_code=induty_code, is_deleted=False
+                ).first()
+                if existing:
+                    skipped_count += 1
+                    continue
+
+                # 새로운 Industry 생성 (KIS 코드 사용)
+                if not dry_run:
+                    Industry.objects.create(
+                        name=name,
+                        induty_code=induty_code,
+                        description=description,
+                    )
+                created_count += 1
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"  ✓ {created_count}개 Industry 생성 완료"
+                + (f" ({skipped_count}개 건너뜀)" if skipped_count > 0 else "")
+            )
+        )
+
     def handle(self, *args, **options):
         update_existing = options["update_existing"]
         dry_run = options["dry_run"]
@@ -199,7 +500,13 @@ class Command(BaseCommand):
                     )
                 )
 
-            if skip_industry_mapping:
+            # STEP 1: Industry 테이블에 KIS 코드 기반 Industry 생성
+            if not skip_industry_mapping:
+                self.stdout.write("\n" + "=" * 50)
+                self.stdout.write("STEP 1: Industry 테이블 KIS 코드 기반 Industry 생성")
+                self.stdout.write("=" * 50)
+                self._seed_kis_industries(dry_run=dry_run)
+            else:
                 self.stdout.write(
                     self.style.WARNING(
                         "업종코드 조회를 건너뜁니다. 빠른 동기화를 위해 권장됩니다. "
@@ -208,6 +515,21 @@ class Command(BaseCommand):
                 )
 
             # Company 생성/업데이트
+            created_count = 0
+            updated_count = 0
+            skipped_count = 0
+            error_count = 0
+
+            if dry_run:
+                self.stdout.write(
+                    self.style.WARNING("DRY RUN 모드: 실제로 저장하지 않습니다.")
+                )
+
+            # STEP 2: Company 생성/업데이트 (원본 KSIC 코드만 저장, 매핑은 나중에)
+            self.stdout.write("\n" + "=" * 50)
+            self.stdout.write("STEP 2: Company 생성/업데이트 (원본 KSIC 코드 저장)")
+            self.stdout.write("=" * 50)
+
             created_count = 0
             updated_count = 0
             skipped_count = 0
@@ -227,29 +549,31 @@ class Command(BaseCommand):
                 try:
                     # 각 기업을 개별 트랜잭션으로 처리
                     with transaction.atomic():
-                        # 업종코드 조회 (옵션)
-                        industry_code = None
+                        # 업종코드 조회 (원본 KSIC 코드만 저장, 매핑은 나중에)
+                        raw_ksic_code = None
+
                         if not skip_industry_mapping:
                             try:
                                 company_info = dart_client.get_company_info(corp_code)
-                                raw_ksic = str(company_info.get("induty_code", "")).strip()
-                            
+                                raw_ksic = str(
+                                    company_info.get("induty_code", "")
+                                ).strip()
+
                                 if len(raw_ksic) >= 3:
-                                    ksic_3digit = raw_ksic[:3] # KSIC 3자리 추출 (예: 261)
-                                
-                                    # 2. [핵심] DB에서 이 KSIC가 어떤 KIS 지수와 매핑되어 있는지 조회
-                                    ksic_obj = KsicCategory.objects.filter(ksic_code=ksic_3digit).first()
-                                
-                                    if ksic_obj and ksic_obj.representative_kis_id:
-                                        # 매핑된 KIS 코드(예: 0013)를 최종 저장용으로 확정
-                                        target_kis_code = ksic_obj.representative_kis_id
-                                        self.stdout.write(f"  🔍 매핑 찾음: {corp_name}({ksic_3digit}) -> KIS:{target_kis_code}")
-                                    else:
-                                        # 매핑이 없다면 일단 원본 KSIC라도 저장 (선택 사항)
-                                        target_kis_code = ksic_3digit
-                                        self.stdout.write(f"  ⚠️ 매핑 없음: {corp_name}({ksic_3digit}) 원본 유지")
+                                    # KSIC 코드를 3자리로 정규화하여 저장
+                                    raw_ksic_code = raw_ksic[:3]
+                                    self.stdout.write(
+                                        f"  📋 {corp_name}: KSIC 코드 {raw_ksic_code} 조회 완료"
+                                    )
                             except Exception as e:
-                                self.stdout.write(self.style.WARNING(f"  ! {corp_name} 업종 조회 실패: {e}")) 
+                                self.stdout.write(
+                                    self.style.WARNING(
+                                        f"  ! {corp_name} 업종 조회 실패: {e}"
+                                    )
+                                )
+                                logger.warning(
+                                    f"업종 조회 실패: {corp_name} ({corp_code}) - {e}"
+                                )
 
                         # 기존 기업 확인
                         company, created = Company.objects.get_or_create(
@@ -257,7 +581,8 @@ class Command(BaseCommand):
                             defaults={
                                 "corp_code": corp_code,
                                 "company_name": corp_name,
-                                "induty_code": target_kis_code,
+                                "induty_code": raw_ksic_code,  # 원본 KSIC 코드만 저장
+                                "industry": None,  # 매핑은 나중에
                                 "description": "",
                             },
                         )
@@ -265,13 +590,11 @@ class Command(BaseCommand):
                         if created:
                             created_count += 1
                             if not dry_run:
-                                industry_info = (
-                                    f", 업종코드: {industry_code}"
-                                    if industry_code
-                                    else ""
+                                ksic_info = (
+                                    f", KSIC: {raw_ksic_code}" if raw_ksic_code else ""
                                 )
                                 self.stdout.write(
-                                    f"  생성: {stock_code} - {corp_name} (corp_code: {corp_code}{industry_info})"
+                                    f"  생성: {stock_code} - {corp_name} (corp_code: {corp_code}{ksic_info})"
                                 )
                         else:
                             # 기존 기업 업데이트
@@ -285,13 +608,13 @@ class Command(BaseCommand):
                                 needs_update = True
                                 update_messages.append(f"corp_code: {corp_code}")
 
-                            # 업종코드 업데이트
-                            if not skip_industry_mapping and industry_code:
-                                if company.induty_code != industry_code:
+                            # 업종코드 업데이트 (원본 KSIC 코드만, 매핑은 나중에)
+                            if not skip_industry_mapping and raw_ksic_code:
+                                if company.induty_code != raw_ksic_code:
                                     if not dry_run:
-                                        company.induty_code = industry_code
+                                        company.induty_code = raw_ksic_code
                                     needs_update = True
-                                    update_messages.append(f"업종코드: {industry_code}")
+                                    update_messages.append(f"KSIC: {raw_ksic_code}")
 
                             # company_name 업데이트
                             if company.company_name != corp_name:
@@ -319,6 +642,140 @@ class Command(BaseCommand):
                         )
                     )
                     logger.error(f"기업 처리 실패: {stock_code} - {e}", exc_info=True)
+
+            # STEP 3: KSIC → KIS 매핑 생성 및 Company 업데이트 (skip_industry_mapping이 False일 때만)
+            if not skip_industry_mapping:
+                self.stdout.write("\n" + "=" * 50)
+                self.stdout.write("STEP 3: KSIC → KIS 매핑 생성 및 Company 업데이트")
+                self.stdout.write("=" * 50)
+
+                # STEP 3-1: KIS 마스터 및 종목-업종 매핑 로드 (메모리)
+                needs_mapping = (
+                    not KsicCategory.objects.filter(
+                        representative_kis__isnull=False
+                    ).exists()
+                    or not KisIndustry.objects.exists()
+                )
+
+                if needs_mapping:
+                    self.stdout.write(
+                        self.style.WARNING(
+                            "업종 매핑 데이터가 없습니다. 매핑 데이터를 로드합니다..."
+                        )
+                    )
+                    ticker_to_kis = self._load_kis_master_and_mapping(dry_run=dry_run)
+                else:
+                    self.stdout.write(
+                        self.style.SUCCESS("업종 매핑 데이터가 이미 준비되어 있습니다.")
+                    )
+                    # 기존 매핑이 있어도 ticker_to_kis는 필요하므로 로드
+                    ticker_to_kis = self._load_kis_master_and_mapping(dry_run=dry_run)
+
+                # STEP 3-2: KSIC → KIS 매핑 생성
+                if ticker_to_kis:
+                    self._create_ksic_mapping(ticker_to_kis, dry_run=dry_run)
+
+                # STEP 3-3: Company의 induty_code를 KIS 코드로 업데이트
+                self.stdout.write("\n" + "=" * 50)
+                self.stdout.write(
+                    "STEP 3-3: Company 업종코드 KIS 변환 및 Industry 연결"
+                )
+                self.stdout.write("=" * 50)
+
+                updated_companies = 0
+                companies_to_update = Company.objects.filter(
+                    induty_code__isnull=False
+                ).exclude(induty_code="")
+
+                total_companies = companies_to_update.count()
+                self.stdout.write(
+                    f"총 {total_companies}개 기업의 업종코드를 변환합니다..."
+                )
+
+                for idx, company in enumerate(companies_to_update, 1):
+                    try:
+                        # Company의 induty_code가 KSIC 코드인지 확인
+                        induty_code = company.induty_code.strip()
+
+                        # 이미 KIS 코드인지 확인 (KisIndustry 테이블에 존재하는지 확인)
+                        if KisIndustry.objects.filter(kis_code=induty_code).exists():
+                            # 이미 KIS 코드인 경우, Industry만 연결
+                            industry = Industry.objects.filter(
+                                induty_code=induty_code,
+                                is_deleted=False,
+                            ).first()
+
+                            if industry and company.industry != industry:
+                                if not dry_run:
+                                    company.industry = industry
+                                    company.save()
+                                updated_companies += 1
+                            continue
+
+                        # KSIC 코드를 KIS 코드로 변환
+                        ksic_obj = KsicCategory.objects.filter(
+                            ksic_code=induty_code
+                        ).first()
+
+                        if ksic_obj and ksic_obj.representative_kis:
+                            target_kis_code = ksic_obj.representative_kis.kis_code
+
+                            # KIS 코드로 Industry 찾기
+                            industry = Industry.objects.filter(
+                                induty_code=target_kis_code,
+                                is_deleted=False,
+                            ).first()
+
+                            if not industry:
+                                # Industry가 없으면 생성
+                                kis_industry = ksic_obj.representative_kis
+                                if not dry_run:
+                                    industry = Industry.objects.create(
+                                        name=ksic_obj.name or kis_industry.name,
+                                        induty_code=target_kis_code,
+                                        description=f"KIS 지수 코드: {target_kis_code} (KSIC:{induty_code} 매핑)",
+                                    )
+                                else:
+                                    self.stdout.write(
+                                        f"  [{idx}/{total_companies}] Industry 생성 예정: {ksic_obj.name or kis_industry.name} (KIS:{target_kis_code})"
+                                    )
+                                    continue
+
+                            # Company 업데이트 (induty_code와 industry 모두 업데이트)
+                            needs_update = False
+                            if company.induty_code != target_kis_code:
+                                needs_update = True
+                            if company.industry != industry:
+                                needs_update = True
+
+                            if needs_update:
+                                if not dry_run:
+                                    company.induty_code = target_kis_code
+                                    company.industry = industry
+                                    company.save()
+
+                                updated_companies += 1
+                                if idx % 10 == 0 or idx == total_companies:
+                                    self.stdout.write(
+                                        f"  진행 중: {idx}/{total_companies} ({updated_companies}개 업데이트)"
+                                    )
+                        else:
+                            # 매핑이 없는 경우 로그만 출력 (스킵)
+                            if idx % 100 == 0:
+                                self.stdout.write(
+                                    f"  진행 중: {idx}/{total_companies} (매핑 없음: {company.company_name})"
+                                )
+                    except Exception as e:
+                        logger.warning(
+                            f"Company 업종코드 변환 실패: {company.stock_code} - {e}"
+                        )
+                        continue
+
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f"  ✓ {updated_companies}개 기업의 업종코드를 KIS 코드로 변환 완료"
+                    )
+                )
 
             # 결과 출력
             self.stdout.write("")
