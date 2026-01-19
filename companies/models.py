@@ -119,6 +119,46 @@ class FinancialStatement(models.Model):
         verbose_name="배당수익률",
         help_text="(연간 배당금 ÷ 현재 주가) × 100",
     )
+    eps = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="EPS (주당순이익)",
+        help_text="당기순이익 ÷ 발행주식수",
+    )
+    operating_profit_margin = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="영업이익률",
+        help_text="(영업이익 ÷ 매출액) × 100",
+    )
+    yoy_revenue = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="매출액 YoY",
+        help_text="전년 대비 매출액 성장률 (%)",
+    )
+    yoy_operating_profit = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="영업이익 YoY",
+        help_text="전년 대비 영업이익 성장률 (%)",
+    )
+    yoy_net_income = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="당기순이익 YoY",
+        help_text="전년 대비 당기순이익 성장률 (%)",
+    )
 
     # 메타 정보
     metrics_calculated_at = models.DateTimeField(
