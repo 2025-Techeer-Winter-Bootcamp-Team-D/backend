@@ -10,7 +10,6 @@ import logging
 
 from companies.models import Company
 from companies.services.dart_api import DartAPIClient, DartAPIError
-from companies.services.industry_mapper import IndustryMapper
 from companies.services.kis_quote import get_market_amount, get_kis_quote_client
 from companies.services.logo import get_logo_url
 
@@ -87,38 +86,7 @@ class CompanyInfoService:
                         f"지원하지 않는 시장 구분: {company.stock_code} → corp_cls={corp_cls}"
                     )
 
-            # 업종코드 저장 및 Industry 매핑
-            # DART API 응답 필드: induty_code
-            # 업종코드는 3자리까지만 사용 (KSIC 소분류 기준)
-            industry_code = data.get("induty_code")
-            if industry_code:
-                # DART API 응답이 숫자(int)일 수 있으므로 문자열로 변환
-                # 예: 64992 → "64992" → "649", 264 → "264"
-                industry_code_str = str(industry_code).strip()
-
-                # 숫자 형식의 업종코드를 3자리로 정규화
-                # 예: "64992" → "649", "26410" → "264", "264" → "264"
-                if industry_code_str.isdigit() and len(industry_code_str) > 3:
-                    industry_code_normalized = industry_code_str[:3]
-                    logger.debug(
-                        f"업종코드 정규화: {company.stock_code} → {industry_code_str} → {industry_code_normalized}"
-                    )
-                else:
-                    industry_code_normalized = industry_code_str
-
-                company.induty_code = industry_code_normalized
-
-                # 업종코드로 Industry 매핑
-                industry = IndustryMapper.get_industry_by_code(industry_code_normalized)
-                if industry:
-                    logger.info(
-                        f"업종코드 매핑 성공: {company.stock_code} → {industry_code} → {industry_code_normalized} → {industry.name}"
-                    )
-                else:
-                    logger.warning(
-                        f"업종코드 매핑 실패: {company.stock_code} → {industry_code} (정규화: {industry_code_normalized}) "
-                        f"(Industry를 찾을 수 없습니다. 업종코드는 저장되었습니다.)"
-                    )
+            # 업종코드는 sync_corp_codes에서만 관리하므로 여기서는 저장하지 않음
 
             # KIS REST API를 통해 시가총액 갱신 (실패해도 전체 동기화는 계속)
             market_amount_synced = False
