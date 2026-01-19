@@ -6,6 +6,7 @@
 사용법:
     python manage.py seed_industries
     python manage.py seed_industries --reset  # 기존 데이터 삭제 후 재생성
+
 """
 
 from django.core.management.base import BaseCommand
@@ -14,7 +15,7 @@ from industries.models import Industry
 
 class Command(BaseCommand):
     help = "kis 코드를 사용하여 산업 데이터를 초기화합니다."
-
+    
     def add_arguments(self, parser):
         parser.add_argument(
             "--reset",
@@ -24,7 +25,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         reset = options["reset"]
-
+        
         # KSIC 기반 KIS 산업 분류 데이터
         industries_data = [
             # --- A. 농업, 임업 및 어업 (통합 지수 사용) ---
@@ -52,7 +53,6 @@ class Command(BaseCommand):
             # --- J. 정보통신업 ---
             {"name": "통신업", "induty_code": "0020", "description": "KOSPI 통신업 업종 지수"},
             {"name": "소프트웨어", "induty_code": "1042", "description": "KOSDAQ 소프트웨어 지수"},
-        
 
             # --- K. 금융 및 보험업 ---
             {"name": "금융업", "induty_code": "0021", "description": "KOSPI 금융업 통합 지수"},
@@ -60,13 +60,13 @@ class Command(BaseCommand):
 
             # --- M. 전문, 과학 및 기술 서비스업 ---
             {"name": "서비스업", "induty_code": "0026", "description": "KOSPI 서비스업 및 연구개발 통합 지수"},
-            
+ 
             # --- 대표 시장 지수 (추가 권장) ---
             {"name": "코스피", "induty_code": "0001", "description": "KOSPI 종합 지수"},
             {"name": "코스닥", "induty_code": "1001", "description": "KOSDAQ 종합 지수"},
             {"name": "KRX 300", "induty_code": "2001", "description": "코스피/코스닥 통합 우량 300 지수"},
         ]
-    
+        
 
         if reset:
             self.stdout.write(self.style.WARNING("기존 산업 데이터 삭제 및 ID 초기화 중..."))
@@ -75,7 +75,7 @@ class Command(BaseCommand):
             from django.db import connection
             with connection.cursor() as cursor:
                 cursor.execute("TRUNCATE industry RESTART IDENTITY CASCADE;")
-                
+           
             self.stdout.write(self.style.SUCCESS("기존 데이터 삭제 및 ID 1번 초기화 완료"))
 
         created_count = 0
@@ -140,3 +140,4 @@ class Command(BaseCommand):
             self.stdout.write(f"  업데이트: {updated_count}개")
         self.stdout.write(f"  전체: {Industry.objects.count()}개")
         self.stdout.write(self.style.SUCCESS("=" * 50))
+        

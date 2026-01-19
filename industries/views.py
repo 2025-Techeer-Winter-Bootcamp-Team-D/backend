@@ -23,7 +23,7 @@ from industries.serializers import (
     IndustryIndexSerializer, 
     IndustryChartSerializer,
 )
-from news.serilalizers import IndustryNewsSerializer 
+from news.serializers import IndustryNewsSerializer 
 from news.models import CompanyNews
 
 class IndustryCompanyRankView(APIView):

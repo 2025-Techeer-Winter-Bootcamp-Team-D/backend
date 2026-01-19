@@ -28,6 +28,9 @@ load_dotenv(BASE_DIR / ".env")
 KIS_APP_KEY = os.getenv('KIS_APP_KEY')
 KIS_APP_SECRET = os.getenv('KIS_APP_SECRET')
 
+DART_API_KEY = os.getenv("DART_API_KEY")
+NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
@@ -56,6 +59,8 @@ INSTALLED_APPS = [
     # 만든 앱 등록
     "industries",
     "companies",
+    "comparisons",
+    "indices",
     "core",
     "news",
     "users",

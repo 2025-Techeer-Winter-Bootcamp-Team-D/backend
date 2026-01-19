@@ -25,10 +25,7 @@ class Industry(models.Model):
 class IndustryRanking(models.Model):
     ranking_id = models.BigIntegerField(primary_key=True)  # 순위 아이디
     industry = models.ForeignKey(
-        Industry,
-        on_delete=models.CASCADE,
-        related_name="rankings",
-        db_column="industry_id",
+        Industry, on_delete=models.CASCADE, related_name="rankings", db_column="industry_id"
     )  # 산업 아이디
     rank = models.IntegerField()  # 순위
     amount = models.BigIntegerField()  # 시가총액 합계
@@ -125,6 +122,15 @@ class KsicCategory(models.Model):
     ksic_code = models.CharField(max_length=5, primary_key=True) # '261' 등
     name = models.CharField(max_length=100, null=True, blank=True)
     
+    # 이 DART 업종을 대표하는 KIS 지수와 직접 연결
+    representative_kis = models.ForeignKey(
+        'KisIndustry', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name="ksic_categories"
+    )
+
     class Meta:
         db_table = "ksic_category"
 

@@ -25,6 +25,7 @@ from django.db import transaction
 from companies.models import Company
 from companies.services.dart_api import DartAPIClient, DartAPIError
 from companies.services.corp_code_parser import CorpCodeParser
+from industries.models import KsicCategory
 import logging
 
 logger = logging.getLogger(__name__)
@@ -230,35 +231,25 @@ class Command(BaseCommand):
                         industry_code = None
                         if not skip_industry_mapping:
                             try:
-                                # DART API에서 기업개황 조회하여 업종코드 가져오기
                                 company_info = dart_client.get_company_info(corp_code)
-                                # 업종코드 추출
-                                raw_industry_code = company_info.get("induty_code")
-                                if raw_industry_code:
-                                    # DART API 응답이 숫자(int)일 수 있으므로 문자열로 변환
-                                    # 업종코드를 3자리로 정규화 (KSIC 소분류 기준)
-                                    industry_code_str = str(raw_industry_code).strip()
-                                    # 숫자 형식의 업종코드를 3자리로 정규화
-                                    # 예: "64992" → "649", "26410" → "264", "264" → "264"
-                                    if (
-                                        industry_code_str.isdigit()
-                                        and len(industry_code_str) > 3
-                                    ):
-                                        industry_code = industry_code_str[:3]
-                                        if not dry_run:
-                                            self.stdout.write(
-                                                f"  업종코드 정규화: {stock_code} → {raw_industry_code} → {industry_code}"
-                                            )
+                                raw_ksic = str(company_info.get("induty_code", "")).strip()
+                            
+                                if len(raw_ksic) >= 3:
+                                    ksic_3digit = raw_ksic[:3] # KSIC 3자리 추출 (예: 261)
+                                
+                                    # 2. [핵심] DB에서 이 KSIC가 어떤 KIS 지수와 매핑되어 있는지 조회
+                                    ksic_obj = KsicCategory.objects.filter(ksic_code=ksic_3digit).first()
+                                
+                                    if ksic_obj and ksic_obj.representative_kis_id:
+                                        # 매핑된 KIS 코드(예: 0013)를 최종 저장용으로 확정
+                                        target_kis_code = ksic_obj.representative_kis_id
+                                        self.stdout.write(f"  🔍 매핑 찾음: {corp_name}({ksic_3digit}) -> KIS:{target_kis_code}")
                                     else:
-                                        industry_code = industry_code_str
-                                        if not dry_run:
-                                            self.stdout.write(
-                                                f"  업종코드 조회: {stock_code} → {industry_code}"
-                                            )
+                                        # 매핑이 없다면 일단 원본 KSIC라도 저장 (선택 사항)
+                                        target_kis_code = ksic_3digit
+                                        self.stdout.write(f"  ⚠️ 매핑 없음: {corp_name}({ksic_3digit}) 원본 유지")
                             except Exception as e:
-                                logger.warning(
-                                    f"기업개황 조회 실패 ({stock_code}): {e}. 업종코드 없이 진행."
-                                )
+                                self.stdout.write(self.style.WARNING(f"  ! {corp_name} 업종 조회 실패: {e}")) 
 
                         # 기존 기업 확인
                         company, created = Company.objects.get_or_create(
@@ -266,9 +257,7 @@ class Command(BaseCommand):
                             defaults={
                                 "corp_code": corp_code,
                                 "company_name": corp_name,
-                                "induty_code": (
-                                    industry_code if not skip_industry_mapping else None
-                                ),
+                                "induty_code": target_kis_code,
                                 "description": "",
                             },
                         )
