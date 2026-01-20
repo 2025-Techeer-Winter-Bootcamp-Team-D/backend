@@ -1,6 +1,7 @@
 """
 통합 정보 추출 서비스
 Gemini를 사용하여 보고서에서 구조화된 핵심 정보와 매출 구성을 한 번에 추출합니다.
+섹션별 파싱 및 기업 유형별 최적화된 프롬프트를 적용합니다.
 """
 
 import json
@@ -8,6 +9,8 @@ import logging
 
 from django.conf import settings
 from google import genai
+
+from .report_classifier import ReportClassifierService
 
 logger = logging.getLogger(__name__)
 
@@ -22,30 +25,107 @@ class ReportInfoExtractorService:
 
         self.client = genai.Client(api_key=api_key)
         self.model_name = "gemini-2.5-flash-lite"
+        self.classifier = ReportClassifierService()
 
     def extract_info(
-        self, refined_content: str, report_name: str, company_name: str
+        self,
+        refined_content: str,
+        report_name: str,
+        company_name: str,
+        section_content: str = "",
+        tables_markdown: str = "",
     ) -> dict:
         """
         정제된 본문에서 구조화된 정보와 매출 구성을 한 번에 추출
 
         Args:
-            refined_content: 정제된 보고서 본문
+            refined_content: 정제된 보고서 본문 (전체 또는 섹션)
             report_name: 보고서명 (유형 판단용)
             company_name: 기업명
+            section_content: 섹션별 추출된 내용 (선택사항)
+            tables_markdown: Markdown 형식의 표 데이터 (선택사항)
 
         Returns:
             구조화된 추출 정보 (JSON)
         """
+        # 1단계: 기업 유형 분류 (Agent A: Classifier)
+        content_sample = section_content if section_content else refined_content[:5000]
+        company_type = self.classifier.classify_company_type(
+            company_name, report_name, content_sample
+        )
+
+        # 2단계: 기업 유형별 최적화된 컨텍스트 구성
+        # 섹션별 추출된 내용이 있으면 우선 사용, 없으면 전체 내용 사용
+        if section_content:
+            main_content = section_content
+        else:
+            main_content = refined_content
+
+        # 표 데이터가 있으면 추가
+        if tables_markdown:
+            context = f"""{main_content}
+
+=== 표 데이터 (Markdown 형식) ===
+{tables_markdown}
+"""
+        else:
+            context = main_content
+
         # 입력 길이 제한
         max_input_length = 30000
-        if len(refined_content) > max_input_length:
-            refined_content = refined_content[:max_input_length]
+        if len(context) > max_input_length:
+            # 표 데이터는 우선 보존
+            if tables_markdown and len(tables_markdown) < max_input_length:
+                available_length = max_input_length - len(tables_markdown) - 100
+                context = (
+                    main_content[:available_length]
+                    + f"\n\n=== 표 데이터 (Markdown 형식) ===\n{tables_markdown}"
+                )
+            else:
+                context = context[:max_input_length]
+
+        # Step 4: Dynamic Info Extraction - 기업 유형별 최적화된 프롬프트 구성
+        company_type_name = self.classifier.COMPANY_TYPES.get(company_type, "기타")
+
+        # 기업 유형별 매출 구성 추출 가이드
+        if company_type == "financial_holding":
+            revenue_guide = """
+   - **금융지주사 특화 지시사항:**
+     * '연결 부문별 수익' 또는 '지배기업별 수익 현황' 섹션을 우선 탐색
+     * 자회사별 영업수익(Operating Revenue)을 부문으로 분류
+     * 은행, 증권, 보험, 카드 등 자회사 유형별로 그룹화
+     * 표 데이터에서 '지배기업', '자회사', '연결' 구분을 명확히 인식"""
+        elif company_type == "financial_individual":
+            revenue_guide = """
+   - **개별 금융사 특화 지시사항:**
+     * '영업종류별 현황' 또는 '수익별 현황' 섹션을 우선 탐색
+     * 영업수익(Operating Revenue) 기준으로 부문별 분류
+     * 은행: 대출이자수익, 수수료수익 등
+     * 증권: 매매수익, 수수료수익 등
+     * 보험: 보험료수익, 운용수익 등"""
+        elif company_type == "manufacturing":
+            revenue_guide = """
+   - **제조업 특화 지시사항:**
+     * '주요 제품 및 서비스' 또는 '매출 및 수주상황' 섹션을 우선 탐색
+     * 제품군별 또는 사업부문별 매출액 추출
+     * 표 데이터에서 제품명, 사업부문명을 정확히 인식"""
+        elif company_type == "service":
+            revenue_guide = """
+   - **서비스업 특화 지시사항:**
+     * '주요 서비스' 또는 '매출 및 수주상황' 섹션을 우선 탐색
+     * 서비스 유형별 또는 플랫폼별 매출액 추출
+     * 표 데이터에서 서비스명, 플랫폼명을 정확히 인식"""
+        else:
+            revenue_guide = """
+   - **기타 업종 지시사항:**
+     * '주요 사업' 또는 '매출 현황' 섹션을 우선 탐색
+     * 사업부문별 매출액 추출"""
 
         prompt = f"""다음 기업 보고서에서 핵심 정보를 구조화하여 추출하세요.
 
 기업명: {company_name}
 보고서명: {report_name}
+기업 유형: {company_type} ({company_type_name})
 
 요구사항:
 1. 보고서 유형을 파악하고, 해당 유형에 맞는 핵심 정보를 추출
@@ -58,7 +138,16 @@ class ReportInfoExtractorService:
    - 배당결정: 배당종류, 금액, 기준일, 배당성향, 결의일 등 (중요도 높은 5개)
    - 기타: 변동내용, 일자, 금액 등 핵심사항 (중요도 높은 5개)
    **중요: key_info는 반드시 최대 5개까지만 추출하고, 중요도가 높은 항목을 우선 선택하세요.**
-4. 매출 구성(revenue_composition)은 사업보고서 또는 반기보고서에서 추출, 없으면 빈 배열
+4. 매출 구성(revenue_composition) 추출 및 정규화 규칙:
+   - **대상 보고서:** 사업보고서, 반기/분기보고서 필수 추출.
+{revenue_guide}
+   - **데이터 우선순위:** 
+     1순위: 표(Table) 형태의 부문별 매출/수익 금액 및 비중 (Markdown 테이블 형식으로 제공됨).
+     2순위: 본문 텍스트 내에 언급된 부문별 금액.
+     3순위: 금액이 없고 비중(%)만 명시된 경우 해당 비율.
+   - **강제 산출:** '비중' 열이 없다면 `ratio = (항목별 금액 / 총합계) * 100` 을 직접 계산하여 소수점 둘째 자리까지 기입할 것.
+   - **예외 처리:** 만약 수치 데이터가 전무하여 빈 리스트를 반환해야 할 상황이라면, '비고' 성격의 객체를 생성하여 그 이유를 `segment`에 적고 리스트를 채울 것. (절대 `[]`만 반환하지 말 것)
+   - **중요:** 표 데이터가 Markdown 형식으로 제공된 경우, 표의 구조를 정확히 파악하여 행/열을 올바르게 해석하세요.
 5. primary_keyword는 이 보고서에서 가장 중요하다고 생각하는 키워드 하나를 추출 (예: "신규사업 진출", "M&A", "배당 인상" 등)
 
 응답 형식 (JSON만 출력):
@@ -81,7 +170,7 @@ class ReportInfoExtractorService:
 }}
 
 === 보고서 본문 시작 ===
-{refined_content}
+{context}
 === 보고서 본문 끝 ===
 
 위 보고서의 핵심 정보를 JSON으로 응답하세요."""
