@@ -40,7 +40,8 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "*").split(",")
+
 
 
 # Application definition
@@ -385,6 +386,11 @@ USE_I18N = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "static"
+
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
 
 JWT_SIGNING_KEY = os.getenv("JWT_SIGNING_KEY", SECRET_KEY)
 

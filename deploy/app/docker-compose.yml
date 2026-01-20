@@ -1,0 +1,231 @@
+version: '3.8'
+
+services:
+  nginx:
+    build: ./nginx
+    container_name: nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../../static:/app/static
+      - ../../media:/app/media
+      - ./nginx/conf.d:/etc/nginx/conf.d
+    depends_on:
+      - app
+    networks:
+      - app-network
+    restart: always
+
+  app:
+    # CI/CD: Use image in production
+    # image: ${IMAGE_NAME:-backend}:${IMAGE_TAG:-latest}
+    # Dev/Manual Deploy: Use build context
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: django
+    env_file:
+      - .env
+    # No ports exposed directly, consistent with Nginx gateway pattern
+    # ports:
+    #   - "8000:8000" 
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DB_HOST}:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+      - OPENSEARCH_HOST=${OPENSEARCH_HOST}:9200
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+    volumes:
+      - ../..:/app
+    networks:
+      - app-network
+    restart: always
+
+  subscribe-handler:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: subscribe-handler
+    env_file:
+      - .env
+    command: python manage.py subscribe_handler
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DB_HOST}:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+      - PYTHONUNBUFFERED=1
+    networks:
+      - app-network
+    restart: always
+
+  kis-publisher:
+    build:
+      context: ../..
+      dockerfile: ./kis-publisher/Dockerfile
+    container_name: kis-publisher
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DB_HOST}:5432/${POSTGRES_DB}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - PYTHONUNBUFFERED=1
+      - KRX_SYMBOLS_CSV_PATH=/app/companies_data.csv
+      - KIS_SYMBOL_LIMIT=50
+      # Production: Use Real KIS API
+      - KIS_USE_TEST_MODE=${KIS_USE_TEST_MODE:-false}
+      - KIS_APPKEY=${KIS_APPKEY}
+      - KIS_APPSECRET=${KIS_APPSECRET}
+      # Reconnect Logic
+      - KIS_MAX_RECONNECT=3
+    networks:
+      - app-network
+    restart: on-failure
+
+  persistence-worker:
+    build:
+      context: ../..
+      dockerfile: ./persistence-worker/Dockerfile
+    container_name: persistence-worker
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DB_HOST}:5432/${POSTGRES_DB}
+      - PYTHONUNBUFFERED=1
+      - TZ=Asia/Seoul
+    networks:
+      - app-network
+    restart: always
+
+  celery-worker:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: celery-worker
+    env_file:
+      - .env
+    command: celery -A config worker --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DB_HOST}:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+      - OPENSEARCH_HOST=${OPENSEARCH_HOST}:9200
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ../..:/app
+    networks:
+      - app-network
+    restart: always
+
+  celery-beat:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: celery-beat
+    env_file:
+      - .env
+    command: celery -A config beat --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DB_HOST}:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+      - PYTHONUNBUFFERED=1
+      - NEWS_BATCH_ENABLED=${NEWS_BATCH_ENABLED:-true}
+      - DART_SYNC_ENABLED=${DART_SYNC_ENABLED:-true}
+      - REPORT_PROCESSING_ENABLED=${REPORT_PROCESSING_ENABLED:-true}
+    volumes:
+      - ../..:/app
+    networks:
+      - app-network
+    restart: always
+
+  flower:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: celery-flower
+    env_file:
+      - .env
+    command: celery -A config flower --port=5555 --broker=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+    ports:
+      - "5555:5555"
+    environment:
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+    networks:
+      - app-network
+    restart: always
+
+  # Monitoring (Runs on App Node, Scrapes Data Node)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - app-network
+    restart: always
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana_data:/var/lib/grafana
+    networks:
+      - app-network
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+    restart: always
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - "9100:9100"
+    networks:
+      - app-network
+    restart: always
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor
+    container_name: cadvisor
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "8081:8080"
+    networks:
+      - app-network
+    restart: always
+
+networks:
+  app-network:
+    driver: bridge
