@@ -29,12 +29,14 @@ services:
   redis:
     image: redis:7-alpine
     container_name: redis
+    env_file:
+      - .env
     command: >
       sh -c '
-      if [ -z "$${REDIS_PASSWORD}" ]; then
+      if [ -z "$$REDIS_PASSWORD" ]; then
         echo "Error: REDIS_PASSWORD is not set. Exiting." && exit 1;
       fi;
-      exec redis-server --maxmemory 768mb --maxmemory-policy allkeys-lru --requirepass "$${REDIS_PASSWORD}"
+      exec redis-server --maxmemory 768mb --maxmemory-policy allkeys-lru --requirepass "$$REDIS_PASSWORD"
       '
     networks:
       - data-network
@@ -43,7 +45,7 @@ services:
     volumes:
       - ./redis_data:/data
     healthcheck:
-      test: [ "CMD-SHELL", "if [ -z \"$${REDIS_PASSWORD}\" ]; then exit 1; fi; redis-cli -a \"$${REDIS_PASSWORD}\" ping" ]
+      test: [ "CMD-SHELL", "if [ -z \"$$REDIS_PASSWORD\" ]; then exit 1; fi; redis-cli -a \"$$REDIS_PASSWORD\" ping" ]
       interval: 5s
       timeout: 3s
       retries: 5
