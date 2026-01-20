@@ -1,5 +1,4 @@
 import os, requests, logging, re
-import requests
 from django.db import transaction
 from companies.models import Company, RevenueComposition, FinancialStatement
 from .models import SankeyData
