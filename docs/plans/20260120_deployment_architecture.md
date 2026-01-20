@@ -12,7 +12,8 @@
 
 프로젝트 루트에 `deploy` 폴더를 생성하고, 계층별 구성을 명확히 합니다.
 
-```
+```text
+
 project_root/
 ├── deploy/
 │   ├── app/                      # [EC2 A: App Layer]
@@ -40,16 +41,16 @@ project_root/
 *안정적인 인프라스트럭처. CI/CD 배포 대상에서 제외(수동/별도 관리).*
 
 *   **포트 개방 (Inbound)**: App Instance의 Private IP에 대해서만 허용.
-    *   `5432` (Postgres), `6379` (Redis), `9200` (OpenSearch), `9100` (Node Exp), `9187` (Pg Exp), `9121` (Redis Exp).
+  *   `5432` (Postgres), `6379` (Redis), `9200` (OpenSearch), `9100` (Node Exp), `9187` (Pg Exp), `9121` (Redis Exp).
 *   **환경 변수 (`deploy/data/.env`)**:
-    *   `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
-    *   `OPENSEARCH_INITIAL_ADMIN_PASSWORD`
-    *   `TZ=Asia/Seoul`
+  *   `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
+  *   `OPENSEARCH_INITIAL_ADMIN_PASSWORD`
+  *   `TZ=Asia/Seoul`
 *   **docker-compose.yml 구성**:
-    *   `db`: `timescale/timescaledb:latest-pg16`
-    *   `redis`: `redis:7-alpine`
-    *   `opensearch`: `opensearchproject/opensearch` (단일 노드 모드)
-    *   `postgres-exporter`, `redis-exporter`, `node-exporter`
+  *   `db`: `timescale/timescaledb:latest-pg16`
+  *   `redis`: `redis:7-alpine`
+  *   `opensearch`: `opensearchproject/opensearch` (단일 노드 모드)
+  *   `postgres-exporter`, `redis-exporter`, `node-exporter`
 
 ### 3.2. 앱 계층 (App Layer) - EC2 Instance A
 *비즈니스 로직. CI/CD 파이프라인의 주요 배포 대상.*
