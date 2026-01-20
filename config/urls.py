@@ -26,7 +26,7 @@ from drf_spectacular.views import (
 from core.views import health_check
 
 
-# 임시 메인 페이지 함수수
+# 임시 메인 페이지 함수
 def main_page(request):
     return HttpResponse("메인 페이지입니다.")
 
@@ -58,4 +58,5 @@ urlpatterns = [
     path("api/comparisons/", include("comparisons.urls")),
     path("api/news/", include("news.urls")),
     path("api/indices/", include("indices.urls")),
+    path("api/sankeys/", include("sankeys.urls"))
 ]
