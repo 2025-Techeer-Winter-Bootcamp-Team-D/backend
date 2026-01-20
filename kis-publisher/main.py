@@ -172,7 +172,13 @@ async def run_publisher():
 
     # Redis 연결
     redis_host = os.getenv("REDIS_HOST", "redis")
-    redis_url = f"redis://{redis_host}:6379/0"
+    redis_password = os.getenv("REDIS_PASSWORD")
+    
+    if redis_password:
+        redis_url = f"redis://:{redis_password}@{redis_host}:6379/0"
+    else:
+        redis_url = f"redis://{redis_host}:6379/0"
+        
     redis_client = redis.from_url(redis_url)
     print(f"[INIT] Redis client connected: {redis_url}")
 
