@@ -38,7 +38,7 @@ NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
 from django.core.exceptions import ImproperlyConfigured
 
