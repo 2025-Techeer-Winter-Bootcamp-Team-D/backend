@@ -51,6 +51,28 @@ class ReportExtractorService:
             logger.error(f"보고서 본문 추출 실패: {rcept_no} - {e}")
             return None
 
+    def extract_xml_content(self, rcept_no: str) -> str | None:
+        """
+        DART에서 보고서 XML 원문 추출 (섹션별 파싱용)
+
+        Args:
+            rcept_no: 보고서 접수번호
+
+        Returns:
+            XML 원문 텍스트 (실패 시 None)
+        """
+        try:
+            xml_text = self.dart.document(rcept_no)
+            if xml_text:
+                logger.info(f"보고서 XML 원문 추출 성공: {rcept_no}")
+                return xml_text
+            else:
+                logger.warning(f"보고서 XML 가져오기 실패: {rcept_no}")
+                return None
+        except Exception as e:
+            logger.error(f"보고서 XML 원문 추출 실패: {rcept_no} - {e}")
+            return None
+
     def extract_all_documents(self, rcept_no: str) -> list[str]:
         """
         첨부된 모든 보고서 본문 추출

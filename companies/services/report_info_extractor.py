@@ -1,6 +1,7 @@
 """
 통합 정보 추출 서비스
-Gemini를 사용하여 보고서에서 구조화된 핵심 정보와 매출 구성을 한 번에 추출합니다.
+Gemini를 사용하여 보고서에서 구조화된 핵심 정보와 사업/수익 구성을 한 번에 추출합니다.
+섹션별 파싱을 적용합니다.
 """
 
 import json
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class ReportInfoExtractorService:
-    """통합 정보 추출 서비스 (요약 + 매출 구성)"""
+    """통합 정보 추출 서비스 (요약 + 사업/수익 구성)"""
 
     def __init__(self):
         api_key = settings.GEMINI_API_KEY
@@ -24,23 +25,55 @@ class ReportInfoExtractorService:
         self.model_name = "gemini-2.5-flash-lite"
 
     def extract_info(
-        self, refined_content: str, report_name: str, company_name: str
+        self,
+        refined_content: str,
+        report_name: str,
+        company_name: str,
+        section_content: str = "",
+        tables_markdown: str = "",
     ) -> dict:
         """
-        정제된 본문에서 구조화된 정보와 매출 구성을 한 번에 추출
+        정제된 본문에서 구조화된 정보와 사업/수익 구성을 한 번에 추출
 
         Args:
-            refined_content: 정제된 보고서 본문
+            refined_content: 정제된 보고서 본문 (전체 또는 섹션)
             report_name: 보고서명 (유형 판단용)
             company_name: 기업명
+            section_content: 섹션별 추출된 내용 (선택사항)
+            tables_markdown: Markdown 형식의 표 데이터 (선택사항)
 
         Returns:
             구조화된 추출 정보 (JSON)
         """
+        # 컨텍스트 구성
+        # 섹션별 추출된 내용이 있으면 우선 사용, 없으면 전체 내용 사용
+        if section_content:
+            main_content = section_content
+        else:
+            main_content = refined_content
+
+        # 표 데이터가 있으면 추가
+        if tables_markdown:
+            context = f"""{main_content}
+
+=== 표 데이터 (Markdown 형식) ===
+{tables_markdown}
+"""
+        else:
+            context = main_content
+
         # 입력 길이 제한
         max_input_length = 30000
-        if len(refined_content) > max_input_length:
-            refined_content = refined_content[:max_input_length]
+        if len(context) > max_input_length:
+            # 표 데이터는 우선 보존
+            if tables_markdown and len(tables_markdown) < max_input_length:
+                available_length = max_input_length - len(tables_markdown) - 100
+                context = (
+                    main_content[:available_length]
+                    + f"\n\n=== 표 데이터 (Markdown 형식) ===\n{tables_markdown}"
+                )
+            else:
+                context = context[:max_input_length]
 
         prompt = f"""다음 기업 보고서에서 핵심 정보를 구조화하여 추출하세요.
 
@@ -58,7 +91,13 @@ class ReportInfoExtractorService:
    - 배당결정: 배당종류, 금액, 기준일, 배당성향, 결의일 등 (중요도 높은 5개)
    - 기타: 변동내용, 일자, 금액 등 핵심사항 (중요도 높은 5개)
    **중요: key_info는 반드시 최대 5개까지만 추출하고, 중요도가 높은 항목을 우선 선택하세요.**
-4. 매출 구성(revenue_composition)은 사업보고서 또는 반기보고서에서 추출, 없으면 빈 배열
+4. 사업/수익 구성(revenue_composition) 추출:
+   - **제조업**: 부문별 매출액, 제품군별 매출, 사업부문별 매출 등
+   - **금융업**: 부문별 수익(이자수익, 수수료수익, 보험료수익, 운용수익 등), 자회사별 수익, 영업종류별 수익 등
+   - **서비스업**: 서비스 유형별 매출, 플랫폼별 수익 등
+   - **기타 업종**: 사업부문별 매출/수익, 주요 사업별 실적 등
+   - **중요**: 보고서에 "매출", "수익", "영업수익", "이자수익", "수수료수익" 등 어떤 용어를 사용하든 해당 부문별 데이터를 추출하세요.
+   - 표나 본문에서 부문별/사업별 금액이 있으면 반드시 추출하세요.
 5. primary_keyword는 이 보고서에서 가장 중요하다고 생각하는 키워드 하나를 추출 (예: "신규사업 진출", "M&A", "배당 인상" 등)
 
 응답 형식 (JSON만 출력):
@@ -81,7 +120,7 @@ class ReportInfoExtractorService:
 }}
 
 === 보고서 본문 시작 ===
-{refined_content}
+{context}
 === 보고서 본문 끝 ===
 
 위 보고서의 핵심 정보를 JSON으로 응답하세요."""
