@@ -9,12 +9,12 @@ RUN apk add --no-cache gcc musl-dev
 # Copy uv from official image (much faster than pip install)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-COPY requirements.txt .
+COPY kis-publisher/requirements.txt .
 RUN uv pip install --system --no-cache -r requirements.txt
 
-COPY main.py .
-COPY fetch_symbols.py .
-COPY companies_data.csv .
-COPY mock_server.py .
+COPY kis-publisher/main.py .
+COPY kis-publisher/fetch_symbols.py .
+COPY kis-publisher/companies_data.csv .
+COPY kis-publisher/mock_server.py .
 
 CMD ["python", "main.py"]
