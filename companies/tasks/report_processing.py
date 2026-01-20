@@ -5,10 +5,9 @@
 워크플로우:
 1. Extract Raw HTML/XML - OpenDartReader로 필요한 섹션(주로 II. 사업의 내용)만 타겟팅하여 추출
 2. Structure Preservation - HTML 표를 Markdown Table로 변환
-3. Classify Entity Type - 기업 유형을 [제조, 금융, 지주사, 기타]로 분류
-4. Dynamic Info Extraction - 분류 결과에 따라 서로 다른 프롬프트 주입
-5. Validation & Fallback - revenue_composition이 비어있다면 재무제표 API 호출 또는 재탐색
-6. Selective Embedding - key_info와 요약본만 임베딩하여 검색 효율 증대
+3. Dynamic Info Extraction - 보고서에서 구조화된 정보 추출
+4. Validation & Fallback - revenue_composition이 비어있다면 재무제표 API 호출 또는 재탐색
+5. Selective Embedding - key_info와 요약본만 임베딩하여 검색 효율 증대
 """
 
 import logging
