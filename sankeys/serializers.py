@@ -16,6 +16,8 @@ class SankeySerializer(serializers.ModelSerializer):
 
     def get_segments(self, obj):
         """왼쪽 노드: [ {name: '반도체', value: 100}, ... ]"""
+        if not obj.nodes:
+            return []
         # 중앙 매출액 노드로 들어오는 모든 source 값만 추출
         target_name = obj.nodes[0]['name']
         return [{"name": l['source'], "value": l['value']} for l in obj.links if l['target'] == target_name]

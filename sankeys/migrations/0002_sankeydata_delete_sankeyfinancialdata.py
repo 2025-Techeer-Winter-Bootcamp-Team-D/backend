@@ -3,6 +3,20 @@
 import django.db.models.deletion
 from django.db import migrations, models
 
+# 데이터를 이전하기 위한 함수 정의
+def migrate_old_data(apps, schema_editor):
+    OldModel = apps.get_model('sankeys', 'SankeyFinancialData')
+    NewModel = apps.get_model('sankeys', 'SankeyData')
+    
+    for old in OldModel.objects.all():
+        NewModel.objects.create(
+            company=old.company,
+            fiscal_year=old.fiscal_year,
+            nodes=old.nodes,
+            links=old.links,
+            is_loss=old.is_loss,
+            raw_values=old.raw_values,
+        )
 
 class Migration(migrations.Migration):
 
@@ -12,6 +26,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # 1. 먼저 새로운 모델을 생성합니다.
         migrations.CreateModel(
             name='SankeyData',
             fields=[
@@ -28,6 +43,11 @@ class Migration(migrations.Migration):
                 'unique_together': {('company', 'fiscal_year')},
             },
         ),
+        
+        # 2. 기존 데이터를 새 모델로 복사합니다. (DeleteModel 전에 실행되어야 함)
+        migrations.RunPython(migrate_old_data),
+
+        # 3. 데이터 복사가 완료된 후 이전 모델을 삭제합니다.
         migrations.DeleteModel(
             name='SankeyFinancialData',
         ),

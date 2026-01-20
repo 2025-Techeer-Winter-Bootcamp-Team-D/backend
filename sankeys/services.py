@@ -1,4 +1,5 @@
 import os, requests, logging, re
+import requests
 from django.db import transaction
 from companies.models import Company, RevenueComposition, FinancialStatement
 from .models import SankeyData
@@ -6,6 +7,8 @@ from .models import SankeyData
 logger = logging.getLogger(__name__)
 
 class SankeyDataService:
+   
+
     def __init__(self):
         self.api_key = os.getenv('DART_API_KEY')
         self.url = "https://opendart.fss.or.kr/api/fnlttSinglAcntAll.json"
@@ -29,6 +32,8 @@ class SankeyDataService:
                 failed_list.append(company.company_name)
         return {"success_count": success_count, "failed_companies": failed_list}
 
+    REQUEST_TIMEOUT = 30
+
     def sync_right_side(self, company, year=2024):
         """
         데이터 정합성 로직 유지: 수치 계산식 절대 안 건드림
@@ -45,10 +50,10 @@ class SankeyDataService:
 
             # 2. DART 데이터 낚기
             params = {'crtfc_key': self.api_key, 'corp_code': company.corp_code, 'bsns_year': str(year), 'reprt_code': '11011', 'fs_div': 'CFS'}
-            res = requests.get(self.url, params=params).json()
+            res = requests.get(self.url, params=params, timeout=self.REQUEST_TIMEOUT).json()
             if res.get('status') != '000':
                 params['fs_div'] = 'OFS'
-                res = requests.get(self.url, params=params).json()
+                res = requests.get(self.url, params=params, timeout=self.REQUEST_TIMEOUT).json()
             
             items = res.get('list', [])
             dart_raw = {'cogs': 0, 'sg_a': 0, 'net_income': 0}
