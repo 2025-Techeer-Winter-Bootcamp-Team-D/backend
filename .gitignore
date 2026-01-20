@@ -176,3 +176,10 @@ cython_debug/
 .claude/
 
 docs_cache/
+
+# Deployment Data Directories
+postgres_data/
+redis_data/
+opensearch_data/
+prometheus_data/
+grafana_data/
