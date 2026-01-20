@@ -77,8 +77,8 @@ services:
       - KIS_SYMBOL_LIMIT=50
       # Production: Use Real KIS API
       - KIS_USE_TEST_MODE=${KIS_USE_TEST_MODE:-false}
-      - KIS_APPKEY=${KIS_APPKEY}
-      - KIS_APPSECRET=${KIS_APPSECRET}
+      - KIS_APP_KEY=${KIS_APPKEY}
+      - KIS_APP_SECRET=${KIS_APPSECRET}
       # Reconnect Logic
       - KIS_MAX_RECONNECT=3
     networks:
