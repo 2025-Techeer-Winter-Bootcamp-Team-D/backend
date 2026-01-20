@@ -441,6 +441,7 @@ def get_report_detail(request, stock_code, rcept_no):
         404: OpenApiResponse(description="Company not found"),
     },
     tags=["Admin"],
+    request=None,
 )
 @api_view(["POST"])
 @permission_classes([IsAdminUser])
@@ -753,6 +754,7 @@ def sync_company_from_dart(request, stock_code):
         401: OpenApiResponse(description="Unauthorized"),
     },
     tags=["Admin"],
+    request=None,
 )
 @api_view(["POST"])
 @permission_classes([IsAdminUser])
@@ -1151,6 +1153,7 @@ def get_company_rankings(request):
         404: OpenApiResponse(description="Company not found"),
     },
     tags=["Reports"],
+    request=None,
 )
 @api_view(["POST"])
 @permission_classes([IsAdminUser])
@@ -1252,6 +1255,7 @@ def process_company_reports_view(request, stock_code):
         404: OpenApiResponse(description="Company or Report not found"),
     },
     tags=["Reports"],
+    request=None,
 )
 @api_view(["POST"])
 @permission_classes([IsAdminUser])
@@ -1745,6 +1749,7 @@ def get_company_news_detail(request, stock_code, news_id):
         404: OpenApiResponse(description="Company not found"),
     },
     tags=["Admin"],
+    request=None,
 )
 @api_view(["POST"])
 @permission_classes([IsAdminUser])

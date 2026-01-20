@@ -14,10 +14,11 @@ from .models import Comparison, ComparisonCompany
 from .serializers import (
     ComparisonSimpleSerializer,
     ComparisonCreateSerializer,
-    CompanyDetailSerializer,
+
     ComparisonItemAddSerializer,
     ComparisonDetailResponseSerializer,
     ComparisonNameUpdateSerializer,
+    ComparisonCompanyDetailSerializer,
 )
 
 
@@ -77,7 +78,7 @@ class ComparisonDetailView(APIView):
                 "message": "기업 비교 조회를 성공하였습니다.",
                 "data": {
                     "companyCount": len(companies),
-                    "companies": CompanyDetailSerializer(companies, many=True).data,
+                    "companies": ComparisonCompanyDetailSerializer(companies, many=True).data,
                 },
             }
         )

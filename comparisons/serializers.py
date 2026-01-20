@@ -3,7 +3,7 @@ from .models import Comparison, ComparisonCompany
 from companies.models import Company
 
 # 1. 기업 상세 (목록/상세 조회 시 출력용)
-class CompanyDetailSerializer(serializers.ModelSerializer):
+class ComparisonCompanyDetailSerializer(serializers.ModelSerializer):
     # 명세서대로 숫자로 출력
     stock_code = serializers.CharField()
     companyName = serializers.CharField(source='company_name', read_only=True)
@@ -76,7 +76,7 @@ class ComparisonDetailDataSerializer(serializers.Serializer):
     count = serializers.IntegerField(required=False)
     comparisons = ComparisonSimpleSerializer(many=True, required=False)
     companyCount = serializers.IntegerField(required=False)
-    companies = CompanyDetailSerializer(many=True, required=False)
+    companies = ComparisonCompanyDetailSerializer(many=True, required=False)
 
 class ComparisonDetailResponseSerializer(serializers.Serializer):
     status = serializers.IntegerField(default=200)

@@ -1,6 +1,6 @@
 import logging
 from django.contrib.auth.models import User
-from rest_framework import generics, status, viewsets, mixins
+from rest_framework import generics, status, viewsets, mixins, serializers
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import Favorite
@@ -11,7 +11,7 @@ from companies.models import Company
 from .serializers import RegisterSerializer, LoginSerializer
 
 # swagger 관련
-from drf_spectacular.utils import extend_schema, extend_schema_view
+from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
 
 # jwt 관련
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -64,6 +64,7 @@ class LoginView(generics.GenericAPIView):
 # --로그아웃--
 class LogoutView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated]
+    serializer_class = serializers.Serializer
 
     @extend_schema(
         summary="로그아웃 (Refresh 토큰 필요)",
@@ -107,7 +108,11 @@ logger = logging.getLogger(__name__)
 @extend_schema_view(
     list=extend_schema(summary="즐겨찾기 목록 조회", tags=["User"]),
     create=extend_schema(summary="즐겨찾기 추가", tags=["User"]),
-    destroy=extend_schema(summary="즐겨찾기 삭제", tags=["User"]),
+    destroy=extend_schema(
+        summary="즐겨찾기 삭제",
+        tags=["User"],
+        parameters=[OpenApiParameter("id", int, OpenApiParameter.PATH)],
+    ),
 )
 class FavoriteViewSet(
     mixins.ListModelMixin,

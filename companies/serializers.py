@@ -11,6 +11,8 @@ from .models import (
 from .services.logo import get_logo_url
 from industries.models import Industry
 from industries.serializers import IndustrySerializer
+from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.types import OpenApiTypes
 
 
 class CompanyDetailSerializer(serializers.ModelSerializer):
@@ -35,6 +37,7 @@ class CompanyDetailSerializer(serializers.ModelSerializer):
             "address",
         ]
 
+    @extend_schema_field(OpenApiTypes.URI)
     def get_logo_url(self, obj):
         """DB에 저장된 logo_url이 없으면 Logo.dev에서 동적 생성"""
         if obj.logo_url:
@@ -43,6 +46,7 @@ class CompanyDetailSerializer(serializers.ModelSerializer):
             return get_logo_url(homepage_url=obj.homepage_url)
         return None
 
+    @extend_schema_field(IndustrySerializer)
     def get_industry(self, obj):
         """업종코드로 Industry 조회"""
         if not obj.induty_code:
@@ -139,6 +143,7 @@ class FinancialStatementSerializer(serializers.ModelSerializer):
             "metrics_calculated_at",
         ]
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_report_type(self, obj):
         """보고서 코드를 보고서명으로 변환"""
         report_types = {
@@ -159,6 +164,7 @@ class RevenueCompositionSerializer(serializers.ModelSerializer):
         model = RevenueComposition
         fields = ["segment_name", "revenue", "ratio"]
 
+    @extend_schema_field(OpenApiTypes.FLOAT)
     def get_ratio(self, obj):
         """ratio를 소수점 형태(0.58)로 반환 (백분율 58%를 0.58로 변환)"""
         if obj.ratio is not None:
@@ -192,6 +198,7 @@ class ReportSerializer(serializers.ModelSerializer):
             "report_url",
         ]
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_report_type(self, obj):
         """공시유형 표시명 반환"""
         return obj.get_report_type_display()
@@ -216,6 +223,7 @@ class ReportDetailSerializer(serializers.ModelSerializer):
             "created_at",
         ]
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_report_type(self, obj):
         """공시유형 표시명 반환"""
         return obj.get_report_type_display()
@@ -246,6 +254,7 @@ class CompanyRankingSerializer(serializers.ModelSerializer):
         model = CompanyRanking
         fields = ["rank", "name", "stock_code", "amount", "logo"]
 
+    @extend_schema_field(OpenApiTypes.URI)
     def get_logo(self, obj):
         """DB에 저장된 logo_url이 없으면 Logo.dev에서 동적 생성"""
         company = obj.stock_code
