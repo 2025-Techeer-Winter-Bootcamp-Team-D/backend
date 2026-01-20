@@ -2,7 +2,9 @@ version: '3.8'
 
 services:
   nginx:
-    build: ./nginx
+    build:
+      context: ../..
+      dockerfile: ./deploy/app/nginx/Dockerfile
     container_name: nginx
     ports:
       - "80:80"
