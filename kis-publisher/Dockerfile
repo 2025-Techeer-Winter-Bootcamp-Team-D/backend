@@ -1,10 +1,12 @@
 # kis-publisher/Dockerfile
-FROM python:3.11-alpine
+FROM python:3.11-slim
 
 WORKDIR /app
 
 # 네트워크 통신을 위한 최소 의존성 설치
-RUN apk add --no-cache gcc musl-dev
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy uv from official image (much faster than pip install)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/

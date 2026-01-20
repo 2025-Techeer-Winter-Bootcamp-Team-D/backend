@@ -1,9 +1,12 @@
-FROM python:3.11-alpine
+FROM python:3.11-slim
 
 WORKDIR /app
 
 # PostgreSQL C 라이브러리 및 빌드 도구 설치
-RUN apk add --no-cache postgresql-dev gcc musl-dev
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy uv from official image (much faster than pip install)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/

@@ -1,16 +1,13 @@
-FROM python:3.12-alpine
+FROM python:3.12-slim
 
 WORKDIR /app
 
 # Install system dependencies
-RUN apk add --no-cache \
-    postgresql-dev \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
     curl \
-    && apk add --no-cache --virtual .build-deps \
-    gcc \
-    g++ \
-    musl-dev \
-    pkgconfig
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy uv from official image (much faster than pip install)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
@@ -19,9 +16,6 @@ COPY requirements.txt /app/
 
 # Install Python dependencies using uv (much faster than pip)
 RUN uv pip install --system --no-cache -r requirements.txt
-
-# Remove build dependencies
-RUN apk del .build-deps
 
 # Copy application code (자주 변경되는 파일은 마지막에 복사하여 레이어 캐싱 최적화)
 # 자주 변경되지 않는 파일들을 먼저 복사
