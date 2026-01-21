@@ -323,3 +323,37 @@ class CompanyRanking(models.Model):
 
     class Meta:
         db_table = "company_ranking"
+
+
+#sankey 모델(판관비,원가,순수익,기타 저장)
+class SankeyData(models.Model):
+    """
+    기업별 산키 다이어그램 데이터 시각화를 위한 가공 데이터 모델
+    """
+    # 동일 앱 내 Company 모델 참조 (1:N 관계)
+    company = models.ForeignKey(
+        'Company', 
+        on_delete=models.CASCADE, 
+        related_name='sankey_data'
+    )
+    fiscal_year = models.IntegerField()
+    
+    # 시각화용 데이터 (리스트 구조)
+    nodes = models.JSONField(default=list)  # 예: [{"name": "매출액"}, ...]
+    links = models.JSONField(default=list)  # 예: [{"source": "반도체", "target": "매출액", "value": 100}, ...]
+    
+    # 재무 상태 요약
+    is_loss = models.BooleanField(default=False) # 적자 여부
+    
+    # 실제 DB 수치 원본 보관 (오른쪽 노드 및 분석용)
+    raw_values = models.JSONField(default=dict) 
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        # 한 기업당 연도별로 하나의 데이터만 존재하도록 설정
+        unique_together = ('company', 'fiscal_year')
+
+    def __str__(self):
+        return f"{self.company.company_name} ({self.fiscal_year}) - Sankey Data"
+
+

@@ -15,6 +15,8 @@ from .views import (
     sync_company_news,
     search_companies,
     get_company_outlook,
+    SankeyAdminBulkSyncView,
+    SankeyDataDetailView,
 )
 
 urlpatterns = [
@@ -72,4 +74,8 @@ urlpatterns = [
     path("sync/all/", sync_all_companies_from_dart, name="sync_all_companies"),
     # 기업 랭킹 조회
     path("rankings/companies/", get_company_rankings, name="company_rankings"),
+    # 전체 기업 sankey 데이터 업데이트 (관리자용)
+    path("sankeys/admin/", SankeyAdminBulkSyncView.as_view(), name="sankey_admin_sync"),
+    # 특정 기업의 sankey 데이터 조회
+    path("sankeys/<str:stock_code>/", SankeyDataDetailView.as_view(), name="sankey_detail"),
 ]

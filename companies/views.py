@@ -9,7 +9,7 @@ from drf_spectacular.types import OpenApiTypes
 from celery import group
 
 logger = logging.getLogger(__name__)
-from .models import Company, CompanyRanking, Report
+from .models import Company, CompanyRanking, Report ,SankeyData
 from core.models import StockPrice1m, StockPrice15m, StockPrice1h, StockPrice1d
 from .serializers import (
     CompanyDetailSerializer,
@@ -20,6 +20,7 @@ from .serializers import (
     ReportSerializer,
     ReportDetailSerializer,
     CompanyRankingSerializer,
+    SankeySerializer,
 )
 from .services.financial import FinancialService
 from .services.reports import ReportsService
@@ -44,6 +45,8 @@ from .services.outlook import (
     QuotaExceededError,
     LLMServiceError,
 )
+from .services.sankey import SankeyDataService
+from rest_framework.views import APIView
 
 
 # ------------------------ 기업 기본 정보 조회--------------------------
@@ -2099,3 +2102,62 @@ def get_company_outlook(request, stock_code):
             {"status": 500, "error": "서버 오류가 발생했습니다"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+# --- Sankey Diagram Views ---
+class SankeyAdminBulkSyncView(APIView):
+    """
+    관리자용: 전체 기업의 DART 데이터를 가져와 산키 데이터(오른쪽 노드 포함)를 일괄 생성/업데이트
+    """
+    @extend_schema(
+        summary="전체 기업 산키 데이터 동기화",
+        # 명시적으로 요청 데이터 형식을 지정 (Swagger 전용)
+        request={
+            "application/json": {
+                "type": "object",
+                "properties": {
+                    "year": {
+                        "type": "string", 
+                        "example": "2024",
+                        "description": "동기화할 연도 (문자열)"
+                    }
+                },
+                "required": ["year"]
+            }
+        },
+        responses={200: OpenApiTypes.OBJECT},
+        tags=["Sankey"]
+    )
+    def post(self, request):
+        service = SankeyDataService()
+        year = request.data.get('year')  
+        if not year:
+            return Response({"error": "year(연도) 값이 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
+        result = service.sync_all_companies(year=str(year))
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class SankeyDataDetailView(APIView):
+    """
+    프론트엔드용: 특정 기업(stock_code)의 산키 다이어그램 데이터 조회
+    """
+    @extend_schema(
+        summary="기업별 산키 데이터 조회",
+        responses={200: SankeySerializer},
+        tags=["Sankey"]
+    )
+    def get(self, request, stock_code):
+        try:
+            company = Company.objects.get(stock_code=stock_code, is_deleted=False)
+            # 가장 최근 연도의 데이터를 가져옴
+            sankey_data = SankeyData.objects.filter(company=company).order_by('-fiscal_year').first()
+            
+            if not sankey_data:
+                return Response(
+                    {"detail": "해당 기업의 산키 데이터가 존재하지 않습니다. 먼저 동기화가 필요합니다."}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            serializer = SankeySerializer(sankey_data)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Company.DoesNotExist:
+            return Response({"detail": "존재하지 않는 기업 코드입니다."}, status=status.HTTP_404_NOT_FOUND)

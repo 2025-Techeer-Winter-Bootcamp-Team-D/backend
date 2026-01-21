@@ -67,7 +67,6 @@ INSTALLED_APPS = [
     "core",
     "news",
     "users",
-    "sankeys",
 ]
 
 MIDDLEWARE = [
