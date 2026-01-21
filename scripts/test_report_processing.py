@@ -25,7 +25,7 @@ import django
 
 django.setup()
 
-from companies.models import Company, Report, RevenueComposition
+from companies.models import Report, RevenueComposition
 from companies.services.report_extractor import ReportExtractorService
 from companies.services.report_info_extractor import ReportInfoExtractorService
 from companies.services.report_opensearch import ReportOpenSearchService
@@ -47,7 +47,7 @@ def test_extract(rcept_no: str):
 
     if content:
         print(f"✅ 추출 성공: {len(content)}자")
-        print(f"\n--- 본문 샘플 (처음 1000자) ---")
+        print("\n--- 본문 샘플 (처음 1000자) ---")
         print(content[:1000])
         print("--- 끝 ---\n")
         return content
@@ -68,7 +68,7 @@ def test_refine(raw_content: str):
     if refined and len(refined) > 100:
         print(f"✅ 정제 성공: {len(raw_content)}자 → {len(refined)}자")
         print(f"   압축률: {len(refined) / len(raw_content) * 100:.1f}%")
-        print(f"\n--- 정제된 본문 샘플 (처음 1000자) ---")
+        print("\n--- 정제된 본문 샘플 (처음 1000자) ---")
         print(refined[:1000])
         print("--- 끝 ---\n")
         return refined
@@ -88,7 +88,7 @@ def test_extract_info(refined_content: str, report_name: str, company_name: str)
 
     if info and "error" not in info:
         print("✅ 정보 추출 성공")
-        print(f"\n--- 추출된 정보 ---")
+        print("\n--- 추출된 정보 ---")
         print(json.dumps(info, ensure_ascii=False, indent=2))
         print("--- 끝 ---\n")
         return info
@@ -199,7 +199,7 @@ def test_full_pipeline(report_id: int = None, rcept_no: str = None):
         print("❌ 테스트할 보고서가 없습니다.")
         return
 
-    print(f"\n📋 테스트 대상 보고서:")
+    print("\n📋 테스트 대상 보고서:")
     print(f"   ID: {report.id}")
     print(f"   접수번호: {report.rcept_no}")
     print(f"   보고서명: {report.report_name}")

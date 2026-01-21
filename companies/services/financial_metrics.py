@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation
 import logging
 from typing import Optional
 
-from companies.models import Company, FinancialStatement, Dividend
+from companies.models import FinancialStatement, Dividend
 
 logger = logging.getLogger(__name__)
 

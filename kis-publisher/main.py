@@ -4,7 +4,6 @@ import os
 import websockets
 import redis.asyncio as redis
 import aiohttp
-from urllib.parse import urlparse
 from fetch_symbols import get_all_listed_symbols, get_stock_codes_from_db
 
 APP_KEY = os.getenv("KIS_APP_KEY")
@@ -111,13 +110,15 @@ async def run_publisher():
                     f"[INIT] ✓ Successfully loaded {len(all_stock_codes)} stock codes from DB"
                 )
                 print(
-                    f"[INIT] Subscribing to {len(SUBSCRIBE_SYMBOLS)} symbols (limited by MAX_SUBSCRIBE_SYMBOLS={MAX_SUBSCRIBE_SYMBOLS})"
+                    f"[INIT] Subscribing to {len(SUBSCRIBE_SYMBOLS)} symbols "
+                    f"(limited by MAX_SUBSCRIBE_SYMBOLS={MAX_SUBSCRIBE_SYMBOLS})"
                 )
                 print(f"[INIT] First symbols to subscribe: {SUBSCRIBE_SYMBOLS[:5]}")
                 break
             else:
                 print(
-                    f"[WARNING] DB query returned empty list (attempt {attempt}/{max_db_retries})"
+                    f"[WARNING] DB query returned empty list "
+                    f"(attempt {attempt}/{max_db_retries})"
                 )
                 if attempt < max_db_retries:
                     print(f"[INIT] Retrying in {db_retry_delay}s...")
@@ -136,7 +137,7 @@ async def run_publisher():
                 await asyncio.sleep(db_retry_delay)
             else:
                 print(
-                    f"[WARNING] All DB connection attempts failed. Falling back to CSV/environment..."
+                    "[WARNING] All DB connection attempts failed. Falling back to CSV/environment..."
                 )
 
     # DB 조회 실패 시 fallback으로 CSV 또는 환경변수 사용
@@ -154,7 +155,8 @@ async def run_publisher():
                     f"[INIT] Loaded {len(all_stock_codes)} symbols from fallback source"
                 )
                 print(
-                    f"[INIT] Subscribing to {len(SUBSCRIBE_SYMBOLS)} symbols (limited by MAX_SUBSCRIBE_SYMBOLS={MAX_SUBSCRIBE_SYMBOLS})"
+                    f"[INIT] Subscribing to {len(SUBSCRIBE_SYMBOLS)} symbols "
+                    f"(limited by MAX_SUBSCRIBE_SYMBOLS={MAX_SUBSCRIBE_SYMBOLS})"
                 )
                 print(f"[INIT] First symbols to subscribe: {SUBSCRIBE_SYMBOLS[:5]}")
             else:
@@ -185,7 +187,7 @@ async def run_publisher():
     # Redis 연결 테스트
     try:
         await redis_client.ping()
-        print(f"[INIT] Redis ping successful")
+        print("[INIT] Redis ping successful")
     except Exception as e:
         print(f"[ERROR] Redis ping failed: {e}")
         raise
@@ -226,7 +228,8 @@ async def run_publisher():
                     # 여러 종목 구독 (배치 단위로 처리)
                     symbols = [s.strip() for s in SUBSCRIBE_SYMBOLS if s.strip()]
                     print(
-                        f"[WS] Subscribing to {len(symbols)} symbols (batch_size={BATCH_SIZE}, delay={SUBSCRIPTION_DELAY}s)"
+                        f"[WS] Subscribing to {len(symbols)} symbols "
+                        f"(batch_size={BATCH_SIZE}, delay={SUBSCRIPTION_DELAY}s)"
                     )
 
                     subscription_count = 0
@@ -264,7 +267,8 @@ async def run_publisher():
                                     ws.recv(), timeout=3.0
                                 )
                                 print(
-                                    f"[WS DEBUG] Response for {symbol}: {response[:200] if len(response) > 200 else response}"
+                                    f"[WS DEBUG] Response for {symbol}: "
+                                    f"{response[:200] if len(response) > 200 else response}"
                                 )
 
                                 # 에러 응답 체크
@@ -276,7 +280,7 @@ async def run_publisher():
                                     if rt_cd != "0":  # 0이 아니면 에러
                                         if "ALREADY IN USE" in msg1:
                                             print(
-                                                f"[WS ERROR] APP_KEY already in use. Waiting 30s before retry..."
+                                                "[WS ERROR] APP_KEY already in use. Waiting 30s before retry..."
                                             )
                                             raise Exception("APP_KEY_IN_USE")
                                         else:
@@ -346,7 +350,8 @@ async def run_publisher():
                                 )
                                 mode = "[TEST]" if uri == TEST_URL else "[PROD]"
                                 print(
-                                    f"{mode} XADD: {stream_key}, id={entry_id}, stock={parsed_data['stock_code']}, price={parsed_data['price']}"
+                                    f"{mode} XADD: {stream_key}, id={entry_id}, "
+                                    f"stock={parsed_data['stock_code']}, price={parsed_data['price']}"
                                 )
                     except Exception as e:
                         print(f"[ERROR] Error processing message: {e}")
@@ -355,7 +360,9 @@ async def run_publisher():
         except websockets.ConnectionClosed as e:
             reconnect_count += 1
             print(
-                f"[RECONNECT] WebSocket connection closed: {e}. Attempt {reconnect_count}/{max_reconnect_attempts}. Reconnecting in {reconnect_delay}s..."
+                f"[RECONNECT] WebSocket connection closed: {e}. "
+                f"Attempt {reconnect_count}/{max_reconnect_attempts}. "
+                f"Reconnecting in {reconnect_delay}s..."
             )
             await asyncio.sleep(reconnect_delay)
             reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
@@ -367,9 +374,9 @@ async def run_publisher():
             # APP_KEY 중복 사용 에러 시 즉시 종료 (재시도 무의미)
             if "APP_KEY_IN_USE" in str(e):
                 print(
-                    f"[FATAL] APP_KEY already in use. Please wait a few minutes and restart the container."
+                    "[FATAL] APP_KEY already in use. Please wait a few minutes and restart the container."
                 )
-                print(f"[FATAL] Or use a different APP_KEY.")
+                print("[FATAL] Or use a different APP_KEY.")
                 raise SystemExit(1)
 
             reconnect_count += 1

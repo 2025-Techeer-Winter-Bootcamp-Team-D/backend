@@ -8,7 +8,6 @@ django.setup()
 from industries.models import Industry
 from companies.models import Company
 from django.db import transaction, connection
-from django.core.management import call_command
 
 def run():
     try:
@@ -33,8 +32,8 @@ def run():
             semi = Industry.objects.create(name="반도체", description="반도체 제조")
             it = Industry.objects.create(name="IT 서비스", description="소프트웨어/플랫폼")
             auto = Industry.objects.create(name="자동차", description="자동차 제조")
-            bio = Industry.objects.create(name="바이오", description="바이오/제약")
-            energy = Industry.objects.create(name="에너지", description="에너지/화학")
+            Industry.objects.create(name="바이오", description="바이오/제약")
+            Industry.objects.create(name="에너지", description="에너지/화학")
 
             # 4. 사용자님의 모델 필드에 1:1 매칭된 데이터
             # [매핑 가이드]

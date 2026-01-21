@@ -48,7 +48,7 @@ class StockPriceConsumer(AsyncWebsocketConsumer):
         if bytes_data is not None:
             try:
                 text_data = bytes_data.decode("utf-8")
-            except UnicodeDecodeError as e:
+            except UnicodeDecodeError:
                 await self.send(
                     text_data=json.dumps(
                         {"type": "error", "message": "Invalid encoding"}
@@ -64,7 +64,7 @@ class StockPriceConsumer(AsyncWebsocketConsumer):
             if action == "ping":
                 await self.send(text_data=json.dumps({"type": "pong"}))
 
-        except (json.JSONDecodeError, TypeError) as e:
+        except (json.JSONDecodeError, TypeError):
             await self.send(
                 text_data=json.dumps({"type": "error", "message": "Invalid JSON"})
             )

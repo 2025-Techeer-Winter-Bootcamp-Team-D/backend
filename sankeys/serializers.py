@@ -24,7 +24,7 @@ class SankeySerializer(serializers.ModelSerializer):
             return []
         # 중앙 매출액 노드로 들어오는 모든 source 값만 추출
         target_name = obj.nodes[0]['name']
-        return [{"name": l['source'], "value": l['value']} for l in obj.links if l['target'] == target_name]
+        return [{"name": link['source'], "value": link['value']} for link in obj.links if link['target'] == target_name]
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_expenses(self, obj):

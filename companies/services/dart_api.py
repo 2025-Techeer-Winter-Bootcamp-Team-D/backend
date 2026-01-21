@@ -1,6 +1,6 @@
 import requests
 from django.conf import settings
-from typing import Optional, Dict, Any, BinaryIO
+from typing import Optional, Dict, Any
 import logging
 import zipfile
 import io

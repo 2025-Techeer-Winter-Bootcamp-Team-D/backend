@@ -357,7 +357,8 @@ class KISIndexService:
 
             # 변동값 계산
             change_value = curr_close - prev_close
-            # 변동률 계산 공식: $$\text{change\_rate} = \frac{\text{curr\_close} - \text{prev\_close}}{\text{prev\_close}} \times 100$$
+            # 변동률 계산 공식:
+            # Change Rate = ((Curr - Prev) / Prev) * 100
             change_rate = (change_value / prev_close) * 100 if prev_close != 0 else 0
 
             daily_candles[i]["change_value"] = round(change_value, 2)

@@ -63,7 +63,8 @@ class RefineService:
 
         # 2. Gemini 2차 정제 (데이터 순도 보장용)
         # 프롬프트 인젝션 방지를 위해 입력 텍스트를 명확한 구분자로 분리
-        prompt = """당신은 데이터 정제 전문가입니다. 아래에 제공된 텍스트에서 뉴스 기사 본문과 직접적인 관련이 없는 모든 요소(광고, 추천, 메뉴)를 제거하세요.
+        prompt = """당신은 데이터 정제 전문가입니다. 아래에 제공된 텍스트에서 뉴스 기사 본문과 직접적인
+관련이 없는 모든 요소(광고, 추천, 메뉴)를 제거하세요.
 
 주의사항:
 - 기사 내용을 요약하거나 변형하지 마십시오. 원문 텍스트를 그대로 유지하세요.
@@ -114,7 +115,7 @@ class RefineService:
             error_message = str(e)
             # 쿼터 초과(429) 에러 명시적 처리
             if "429" in error_message or "quota" in error_message.lower():
-                logger.warning(f"Gemini API 쿼터 초과: 로컬 정제본 사용")
+                logger.warning("Gemini API 쿼터 초과: 로컬 정제본 사용")
             else:
                 logger.error(f"Gemini Refinement failed: {error_message}")
             return local_text  # AI 실패 시 로컬 정제본이라도 반환
@@ -147,7 +148,8 @@ class RefineService:
             logger.warning(f"입력 텍스트가 {max_input_length}자를 초과하여 잘랐습니다.")
 
         # 보고서 정제용 프롬프트
-        prompt = """당신은 금융 보고서 정제 전문가입니다. 아래에 제공된 텍스트에서 보고서 본문과 직접적인 관련이 없는 요소(광고, 메뉴, 네비게이션)만 제거하세요.
+        prompt = """당신은 금융 보고서 정제 전문가입니다. 아래에 제공된 텍스트에서 보고서 본문과 직접적인
+관련이 없는 요소(광고, 메뉴, 네비게이션)만 제거하세요.
 
 주의사항:
 - 보고서 내용을 요약하거나 변형하지 마십시오. 원문 텍스트를 그대로 유지하세요.
@@ -197,7 +199,7 @@ class RefineService:
         except Exception as e:
             error_message = str(e)
             if "429" in error_message or "quota" in error_message.lower():
-                logger.warning(f"Gemini API 쿼터 초과: 로컬 정제본 사용")
+                logger.warning("Gemini API 쿼터 초과: 로컬 정제본 사용")
             else:
                 logger.error(f"Gemini 보고서 정제 실패: {error_message}")
             return local_text  # AI 실패 시 로컬 정제본이라도 반환

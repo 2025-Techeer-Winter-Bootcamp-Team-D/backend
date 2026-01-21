@@ -5,7 +5,7 @@ OpenSearch 검색 결과를 CompanyNews 테이블에 매핑합니다.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 from django.utils import timezone
 
 from companies.models import Company

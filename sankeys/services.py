@@ -1,4 +1,7 @@
-import os, requests, logging, re
+import os
+import requests
+import logging
+import re
 from django.db import transaction
 from companies.models import Company, RevenueComposition, FinancialStatement
 from .models import SankeyData
@@ -13,9 +16,12 @@ class SankeyDataService:
         self.url = "https://opendart.fss.or.kr/api/fnlttSinglAcntAll.json"
 
     def _safe_float(self, val):
-        if not val or val == '-': return 0.0
-        try: return float(re.sub(r'[^0-9.-]', '', str(val)))
-        except: return 0.0
+        if not val or val == '-':
+            return 0.0
+        try:
+            return float(re.sub(r'[^0-9.-]', '', str(val)))
+        except Exception:
+            return 0.0
 
     # [신규] 전체 기업 일괄 업데이트 기능
     def sync_all_companies(self, year=2024):
@@ -48,8 +54,18 @@ class SankeyDataService:
             rev_comps = RevenueComposition.objects.filter(company=company, fiscal_year=year)
 
             # 2. DART 데이터 낚기
-            params = {'crtfc_key': self.api_key, 'corp_code': company.corp_code, 'bsns_year': str(year), 'reprt_code': '11011', 'fs_div': 'CFS'}
-            res = requests.get(self.url, params=params, timeout=self.REQUEST_TIMEOUT).json()
+            params = {
+                'crtfc_key': self.api_key,
+                'corp_code': company.corp_code,
+                'bsns_year': str(year),
+                'reprt_code': '11011',
+                'fs_div': 'CFS'
+            }
+            res = requests.get(
+                self.url,
+                params=params,
+                timeout=self.REQUEST_TIMEOUT
+            ).json()
             if res.get('status') != '000':
                 params['fs_div'] = 'OFS'
                 res = requests.get(self.url, params=params, timeout=self.REQUEST_TIMEOUT).json()
@@ -58,24 +74,41 @@ class SankeyDataService:
             dart_raw = {'cogs': 0, 'sg_a': 0, 'net_income': 0}
             
             id_map = {
-                'cogs': ['ifrs-full_CostOfSales', 'ifrs_CostOfSales', 'ifrs-full_OperatingExpenses'],
-                'sg_a': ['ifrs-full_SellingGeneralAndAdministrativeExpenses', 'ifrs_SellingGeneralAndAdministrativeExpenses'],
-                'net_income': ['ifrs-full_ProfitLoss', 'ifrs_ProfitLoss', 'ifrs-full_ProfitLossAttributableToOwnersOfParent']
+                'cogs': [
+                    'ifrs-full_CostOfSales',
+                    'ifrs_CostOfSales',
+                    'ifrs-full_OperatingExpenses'
+                ],
+                'sg_a': [
+                    'ifrs-full_SellingGeneralAndAdministrativeExpenses',
+                    'ifrs_SellingGeneralAndAdministrativeExpenses'
+                ],
+                'net_income': [
+                    'ifrs-full_ProfitLoss',
+                    'ifrs_ProfitLoss',
+                    'ifrs-full_ProfitLossAttributableToOwnersOfParent'
+                ]
             }
 
             for key, ids in id_map.items():
                 for item in items:
                     if item.get('account_id') in ids:
                         val = self._safe_float(item.get('thstrm_amount'))
-                        if val != 0: dart_raw[key] = val; break
+                        if val != 0:
+                            dart_raw[key] = val
+                            break
                 if dart_raw[key] == 0:
                     for item in items:
                         nm = item.get('account_nm', '').replace(' ', '')
                         val = self._safe_float(item.get('thstrm_amount'))
-                        if key == 'cogs' and any(k in nm for k in ['매출원가', '영업원가']): dart_raw[key] = val
-                        elif key == 'sg_a' and '판매비와관리비' in nm: dart_raw[key] = val
-                        elif key == 'net_income' and ('순이익' in nm and '차감전' not in nm): dart_raw[key] = val
-                        if dart_raw[key] != 0: break
+                        if key == 'cogs' and any(k in nm for k in ['매출원가', '영업원가']):
+                            dart_raw[key] = val
+                        elif key == 'sg_a' and '판매비와관리비' in nm:
+                            dart_raw[key] = val
+                        elif key == 'net_income' and ('순이익' in nm and '차감전' not in nm):
+                            dart_raw[key] = val
+                        if dart_raw[key] != 0:
+                            break
 
             # 3. 로직 유지
             is_loss = dart_raw['net_income'] <= 0
@@ -84,10 +117,12 @@ class SankeyDataService:
             # 4. 산술 계산 (기존 수식 유지)
             seg_sum = sum(rc.revenue for rc in rev_comps)
             left_other = teammate_total_rev - seg_sum
-            if left_other < 0: left_other = 0
+            if left_other < 0:
+                left_other = 0
 
             right_other = teammate_total_rev - (dart_raw['cogs'] + dart_raw['sg_a'] + display_ni)
-            if right_other < 0: right_other = 0
+            if right_other < 0:
+                right_other = 0
 
             # 5. 구성 (이름만 '기타' -> '기타 비용'으로 수정)
             center = "영업수익" if any(x in company.company_name for x in ["금융", "지주", "은행"]) else "매출액"
@@ -102,7 +137,12 @@ class SankeyDataService:
                 links.append({"source": "기타 매출", "target": center, "value": left_other})
 
             
-            for n, v in [("원가비용", dart_raw['cogs']), ("판관비", dart_raw['sg_a']), ("순수익", display_ni), ("기타 비용", right_other)]:
+            for n, v in [
+                ("원가비용", dart_raw['cogs']),
+                ("판관비", dart_raw['sg_a']),
+                ("순수익", display_ni),
+                ("기타 비용", right_other)
+            ]:
                 if v > 0: # 0원인 건 안 나오게 필터링 추가
                     nodes.append({"name": n})
                     links.append({"source": center, "target": n, "value": v})

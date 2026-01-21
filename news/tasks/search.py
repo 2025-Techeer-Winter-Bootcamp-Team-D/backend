@@ -35,7 +35,8 @@ def search_single_keyword_task(
         # 재시도 가능한 오류인 경우 재시도
         if self.request.retries < self.max_retries:
             logger.warning(
-                f"[Search] 키워드 '{keyword}' 검색 실패 (재시도 {self.request.retries + 1}/{self.max_retries}): {str(e)}"
+                f"[Search] 키워드 '{keyword}' 검색 실패 (재시도 {self.request.retries + 1}/{self.max_retries}): "
+                f"{str(e)}"
             )
             raise self.retry(exc=e, countdown=2 ** self.request.retries)
         

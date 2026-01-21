@@ -184,7 +184,8 @@ class OpenSearchService:
         """
         if not content_vector or len(content_vector) != self.VECTOR_DIMENSION:
             logger.error(
-                f"Invalid vector dimension: {len(content_vector) if content_vector else 0}, expected {self.VECTOR_DIMENSION}"
+                f"Invalid vector dimension: {len(content_vector) if content_vector else 0}, "
+                f"expected {self.VECTOR_DIMENSION}"
             )
             return False
 
@@ -323,7 +324,8 @@ class OpenSearchService:
         """
         if not query_vector or len(query_vector) != self.VECTOR_DIMENSION:
             logger.error(
-                f"Invalid query vector dimension: {len(query_vector) if query_vector else 0}, expected {self.VECTOR_DIMENSION}"
+                f"Invalid query vector dimension: {len(query_vector) if query_vector else 0}, "
+                f"expected {self.VECTOR_DIMENSION}"
             )
             return []
 

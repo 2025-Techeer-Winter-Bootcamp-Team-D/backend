@@ -41,7 +41,8 @@ class SummarizeService:
             logger.warning(f"입력 텍스트가 {max_input_length}자를 초과하여 잘랐습니다.")
 
         # 프롬프트 인젝션 방지를 위해 입력 텍스트를 명확한 구분자로 분리
-        prompt = """다음 뉴스 본문을 읽고 핵심 내용을 3줄 이내로 요약하고, 이 뉴스의 감성을 분석하여 JSON 형식으로 응답하세요.
+        prompt = """다음 뉴스 본문을 읽고 핵심 내용을 3줄 이내로 요약하고, 이 뉴스의 감성을 분석하여
+JSON 형식으로 응답하세요.
 추가적인 분석이나 의견은 배제하십시오.
 
 응답 형식:
@@ -110,7 +111,7 @@ class SummarizeService:
             error_message = str(e)
             # 쿼터 초과(429) 에러 명시적 처리
             if "429" in error_message or "quota" in error_message.lower():
-                logger.warning(f"Gemini API 쿼터 초과: 요약 생성 불가")
+                logger.warning("Gemini API 쿼터 초과: 요약 생성 불가")
                 return {
                     "summary": "Gemini API 토큰 부족으로 요약 생성 실패",
                     "sentiment": "neutral",

@@ -5,7 +5,6 @@ from rest_framework.views import APIView
 from rest_framework.decorators import (
     api_view,
     permission_classes,
-    authentication_classes,
 )
 from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
@@ -37,7 +36,6 @@ from industries.serializers import (
 )
 from news.serializers import IndustryNewsSerializer
 from news.models import CompanyNews
-from news.serializers import IndustryNewsSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -665,7 +663,7 @@ def get_industry_outlook(request, induty_code):
             status=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
 
-    except Exception as e:
+    except Exception:
         logger.exception(f"산업 전망 분석 오류: {induty_code}")
         return Response(
             {

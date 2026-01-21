@@ -115,7 +115,8 @@ class ReportsService:
                                 # pblntf_ty가 없으면 요청한 타입(rt)을 사용
                                 report_type_from_api = rt
                                 logger.debug(
-                                    f"API 응답에 pblntf_ty 없음, 요청 타입 사용: {rt}, 보고서명: {item.get('report_nm')}"
+                                    f"API 응답에 pblntf_ty 없음, 요청 타입 사용: {rt}, "
+                                    f"보고서명: {item.get('report_nm')}"
                                 )
 
                             report, created = Report.objects.update_or_create(

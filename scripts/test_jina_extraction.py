@@ -32,54 +32,58 @@ def test_content_extraction(url: str = None, check_duplicate: bool = True):
             # 샘플 뉴스 URL (실제 테스트 시 변경 가능)
             url = "https://n.news.naver.com/mnews/article/001/0015000001"
             print(f"[알림] URL이 제공되지 않아 샘플 URL을 사용합니다: {url}")
-            print(f"[알림] 다른 URL을 테스트하려면 --url 옵션을 사용하세요.\n")
+            print("[알림] 다른 URL을 테스트하려면 --url 옵션을 사용하세요.\n")
 
         print("=" * 80)
-        print(f"Trafilatura 본문 추출 테스트")
+        print("Trafilatura 본문 추출 테스트")
         print("=" * 80)
-        print(f"\n[테스트 URL]")
+        print("\n[테스트 URL]")
         print(f"  {url}")
         print("-" * 80)
 
         # DB 중복 체크 (옵션)
         if check_duplicate:
             if News.objects.filter(url=url).exists():
-                print(f"\n[알림] 이미 저장된 기사입니다 (DB 중복).")
+                print("\n[알림] 이미 저장된 기사입니다 (DB 중복).")
                 existing_news = News.objects.filter(url=url).first()
                 if existing_news:
                     print(f"  저장된 기사 ID: {existing_news.news_id}")
                     print(f"  저장된 기사 제목: {existing_news.title}")
-                    print(f"  저장된 요약: {existing_news.summary[:200] if existing_news.summary else '(요약 없음)'}...")
+                    summary_preview = (
+                        existing_news.summary[:200]
+                        if existing_news.summary else '(요약 없음)'
+                    )
+                    print(f"  저장된 요약: {summary_preview}...")
                     print(f"\n[참고] 본문은 OpenSearch에 저장되어 있습니다. news_id={existing_news.news_id}")
                 return
 
         # Trafilatura로 본문 추출
-        print(f"\n[본문 추출 시작]")
-        print(f"  Trafilatura 추출 중...")
+        print("\n[본문 추출 시작]")
+        print("  Trafilatura 추출 중...")
 
         extractor = ContentExtractorService()
         raw_content = extractor.extract_content(url)
 
         # 추출 결과 검증
         if not raw_content:
-            print(f"\n[오류] 본문 추출 실패")
+            print("\n[오류] 본문 추출 실패")
             print(f"  URL: {url}")
             return
 
         # 성공 시 전체 내용 출력
-        print(f"\n[본문 추출 성공]")
+        print("\n[본문 추출 성공]")
         print("-" * 80)
         print(f"URL: {url}")
         print(f"본문 길이: {len(raw_content)}자")
         print(f"본문 길이 (줄 수): {len(raw_content.splitlines())}줄")
         print("-" * 80)
         
-        print(f"\n[본문 전체 내용]")
+        print("\n[본문 전체 내용]")
         print("=" * 80)
         print(raw_content)
         print("=" * 80)
         
-        print(f"\n[요약 정보]")
+        print("\n[요약 정보]")
         print(f"  본문 길이: {len(raw_content)}자")
         print(f"  본문 길이 (줄 수): {len(raw_content.splitlines())}줄")
         print(f"  본문 시작 100자: {raw_content[:100]}...")
@@ -90,7 +94,7 @@ def test_content_extraction(url: str = None, check_duplicate: bool = True):
         print("=" * 80)
 
     except Exception as e:
-        print(f"\n[오류 발생]")
+        print("\n[오류 발생]")
         print(f"  {str(e)}")
         import traceback
         traceback.print_exc()

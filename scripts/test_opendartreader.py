@@ -60,7 +60,7 @@ def test_report_extraction(rcept_no: str = None):
         report = Report.objects.order_by("-submitted_at").first()
         if report:
             rcept_no = report.rcept_no
-            print(f"[DB에서 가져온 보고서]")
+            print("[DB에서 가져온 보고서]")
             print(f"  보고서명: {report.report_name}")
             print(f"  접수번호: {rcept_no}")
             print(f"  제출일: {report.submitted_at}")
@@ -73,7 +73,7 @@ def test_report_extraction(rcept_no: str = None):
 
     try:
         # 1. XML 원문 가져오기
-        print(f"\n[1단계] XML 원문 가져오기...")
+        print("\n[1단계] XML 원문 가져오기...")
         xml_text = dart.document(rcept_no)
 
         if not xml_text:
@@ -83,13 +83,13 @@ def test_report_extraction(rcept_no: str = None):
         print(f"  XML 원문 길이: {len(xml_text)}자")
 
         # 2. XML 원문 샘플 출력 (처음 2000자)
-        print(f"\n[2단계] XML 원문 샘플 (처음 2000자):")
+        print("\n[2단계] XML 원문 샘플 (처음 2000자):")
         print("-" * 40)
         print(xml_text[:2000])
         print("-" * 40)
 
         # 3. BeautifulSoup으로 텍스트 추출
-        print(f"\n[3단계] XML → 텍스트 변환...")
+        print("\n[3단계] XML → 텍스트 변환...")
         soup = BeautifulSoup(xml_text, "lxml-xml")
         text = soup.get_text(separator="\n", strip=True)
 
@@ -101,32 +101,32 @@ def test_report_extraction(rcept_no: str = None):
         print(f"  추출된 텍스트 줄 수: {len(text.splitlines())}줄")
 
         # 4. 추출된 텍스트 샘플 출력
-        print(f"\n[4단계] 추출된 텍스트 샘플 (처음 3000자):")
+        print("\n[4단계] 추출된 텍스트 샘플 (처음 3000자):")
         print("=" * 40)
         print(text[:3000])
         print("=" * 40)
 
         # 5. 불필요한 요소 분석
-        print(f"\n[5단계] 불필요한 요소 분석:")
+        print("\n[5단계] 불필요한 요소 분석:")
         print("-" * 40)
 
         # 분석 항목
         analysis = {
-            "빈 줄 수": len([l for l in text.splitlines() if not l.strip()]),
+            "빈 줄 수": len([line for line in text.splitlines() if not line.strip()]),
             "총 줄 수": len(text.splitlines()),
             "숫자만 있는 줄": len(
-                [l for l in text.splitlines() if l.strip().isdigit()]
+                [line for line in text.splitlines() if line.strip().isdigit()]
             ),
-            "한 글자 줄": len([l for l in text.splitlines() if len(l.strip()) == 1]),
+            "한 글자 줄": len([line for line in text.splitlines() if len(line.strip()) == 1]),
             "10자 미만 줄": len(
-                [l for l in text.splitlines() if 0 < len(l.strip()) < 10]
+                [line for line in text.splitlines() if 0 < len(line.strip()) < 10]
             ),
-            "URL 포함 줄": len([l for l in text.splitlines() if "http" in l.lower()]),
+            "URL 포함 줄": len([line for line in text.splitlines() if "http" in line.lower()]),
             "특수문자만 줄": len(
                 [
-                    l
-                    for l in text.splitlines()
-                    if l.strip() and not any(c.isalnum() for c in l)
+                    line
+                    for line in text.splitlines()
+                    if line.strip() and not any(c.isalnum() for c in line)
                 ]
             ),
         }
@@ -138,10 +138,10 @@ def test_report_extraction(rcept_no: str = None):
             print(f"  {key}: {value} ({ratio:.1f}%)")
 
         # 6. 자주 등장하는 패턴 분석
-        print(f"\n[6단계] 자주 등장하는 짧은 줄 (상위 20개):")
+        print("\n[6단계] 자주 등장하는 짧은 줄 (상위 20개):")
         print("-" * 40)
 
-        short_lines = [l.strip() for l in text.splitlines() if 0 < len(l.strip()) < 30]
+        short_lines = [line.strip() for line in text.splitlines() if 0 < len(line.strip()) < 30]
         from collections import Counter
 
         common_short = Counter(short_lines).most_common(20)
@@ -150,7 +150,7 @@ def test_report_extraction(rcept_no: str = None):
             print(f"  [{count:3d}회] {line}")
 
         # 7. 정제 필요성 판단
-        print(f"\n[7단계] 정제 필요성 판단:")
+        print("\n[7단계] 정제 필요성 판단:")
         print("=" * 40)
 
         noise_ratio = (
@@ -168,14 +168,14 @@ def test_report_extraction(rcept_no: str = None):
         print(f"  노이즈 비율: {noise_ratio:.1f}%")
 
         if noise_ratio > 30:
-            print(f"  → 정제 필요: 노이즈 비율이 높음 (30% 초과)")
-            print(f"  → Gemini 정제 권장")
+            print("  → 정제 필요: 노이즈 비율이 높음 (30% 초과)")
+            print("  → Gemini 정제 권장")
         elif noise_ratio > 15:
-            print(f"  → 정제 권장: 노이즈 비율이 다소 높음 (15-30%)")
-            print(f"  → 간단한 규칙 기반 정제 또는 Gemini 정제")
+            print("  → 정제 권장: 노이즈 비율이 다소 높음 (15-30%)")
+            print("  → 간단한 규칙 기반 정제 또는 Gemini 정제")
         else:
-            print(f"  → 정제 불필요: 노이즈 비율이 낮음 (15% 미만)")
-            print(f"  → 규칙 기반 정제로 충분")
+            print("  → 정제 불필요: 노이즈 비율이 낮음 (15% 미만)")
+            print("  → 규칙 기반 정제로 충분")
 
         # 8. 전체 텍스트 파일 저장
         output_path = "/tmp/dart_report_raw.txt"

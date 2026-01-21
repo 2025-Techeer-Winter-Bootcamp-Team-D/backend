@@ -70,7 +70,7 @@ def test_kis_quote_response():
         # hts_avls 필드 상세 확인
         if "hts_avls" in quote:
             hts_avls = quote["hts_avls"]
-            print(f"\n[hts_avls 상세 분석]")
+            print("\n[hts_avls 상세 분석]")
             print(f"  원본 값: {hts_avls}")
             print(f"  타입: {type(hts_avls).__name__}")
             print(f"  문자열 변환: {str(hts_avls)}")
@@ -125,7 +125,7 @@ def test_kis_quote_response():
             print("  DB 저장값 없음")
 
         # 전체 응답 JSON 저장 (디버깅용)
-        print(f"\n[전체 응답 JSON 저장: /tmp/kis_quote_response.json]")
+        print("\n[전체 응답 JSON 저장: /tmp/kis_quote_response.json]")
         with open("/tmp/kis_quote_response.json", "w", encoding="utf-8") as f:
             json.dump(quote, f, indent=2, ensure_ascii=False)
         print("  저장 완료")

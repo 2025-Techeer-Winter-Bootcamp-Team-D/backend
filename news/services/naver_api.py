@@ -1,6 +1,5 @@
 import requests
 from django.conf import settings
-from datetime import datetime
 from dateutil import parser
 import re
 import logging
@@ -20,7 +19,10 @@ class NaverSearchService:
         self.client_secret = settings.NAVER_CLIENT_SECRET
 
         if not self.client_id or not self.client_secret:
-            error_msg = "Naver API credentials are missing or empty. Please set NAVER_CLIENT_ID and NAVER_CLIENT_SECRET in environment variables."
+            error_msg = (
+                "Naver API credentials are missing or empty. "
+                "Please set NAVER_CLIENT_ID and NAVER_CLIENT_SECRET in environment variables."
+            )
             logger.error(error_msg)
             raise ValueError(error_msg)
 

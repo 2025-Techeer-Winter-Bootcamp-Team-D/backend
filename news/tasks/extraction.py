@@ -60,7 +60,8 @@ def extract_single_article_task(self, article: Dict[str, Any]) -> Dict[str, Any]
         # 재시도 가능한 오류인 경우 재시도
         if self.request.retries < self.max_retries:
             logger.warning(
-                f"[Extract] 본문 추출 실패 (재시도 {self.request.retries + 1}/{self.max_retries}): {url[:50]}... - {str(e)}"
+                f"[Extract] 본문 추출 실패 ({self.request.retries + 1}/{self.max_retries}): "
+                f"{url[:50]}... - {str(e)}"
             )
             raise self.retry(exc=e, countdown=2**self.request.retries)
 

@@ -8,11 +8,9 @@ OpenSearch에 저장된 특정 산업 관련 뉴스와 해당 산업 소속 기�
 import json
 import logging
 from datetime import timedelta
-from typing import Optional
 
 from django.conf import settings
 from django.core.cache import cache
-from django.db.models import QuerySet, Sum, Avg, Count
 from django.utils import timezone
 from google import genai
 from google.genai.types import GenerateContentConfig
@@ -335,7 +333,8 @@ class IndustryOutlookService:
         total_market_str = self._format_market_cap(statistics["total_market_cap"])
         avg_market_str = self._format_market_cap(statistics["avg_market_cap"])
 
-        prompt = f"""당신은 퀀트 투자 산업 분석 전문가입니다. 아래 정보를 바탕으로 {industry.name} 산업의 전망을 낙관/중립/비관 시나리오로 분석하세요.
+        prompt = f"""당신은 퀀트 투자 산업 분석 전문가입니다. 아래 정보를 바탕으로
+{industry.name} 산업의 전망을 낙관/중립/비관 시나리오로 분석하세요.
 
 ## 산업 정보
 - 산업명: {industry.name}

@@ -7,8 +7,6 @@ yfinance API를 통해 한국 주식의 과거 OHLCV 데이터를 수집하고
 
 import logging
 import time
-from datetime import datetime
-from decimal import Decimal
 from typing import Optional
 
 import pandas as pd
@@ -218,8 +216,9 @@ class YFinanceService:
                     if force:
                         # UPSERT: 기존 데이터 덮어쓰기
                         sql = f"""
-                            INSERT INTO {table_name} 
-                            (bucket, stock_code, open, high, low, close, volume, amount, trade_count, source, updated_at)
+                            INSERT INTO {table_name}
+                            (bucket, stock_code, open, high, low, close,
+                             volume, amount, trade_count, source, updated_at)
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
                             ON CONFLICT (stock_code, bucket) DO UPDATE SET
                                 open = EXCLUDED.open,
@@ -234,8 +233,9 @@ class YFinanceService:
                     else:
                         # INSERT IGNORE: 기존 데이터가 있으면 건너뛰기
                         sql = f"""
-                            INSERT INTO {table_name} 
-                            (bucket, stock_code, open, high, low, close, volume, amount, trade_count, source)
+                            INSERT INTO {table_name}
+                            (bucket, stock_code, open, high, low, close,
+                             volume, amount, trade_count, source)
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                             ON CONFLICT (stock_code, bucket) DO NOTHING
                         """

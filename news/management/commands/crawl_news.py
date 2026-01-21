@@ -61,9 +61,9 @@ class Command(BaseCommand):
             self.stdout.write("  1. Flower: http://localhost:5555")
             self.stdout.write("  2. Django Shell:")
             self.stdout.write(
-                f"     from news.models import CrawlJob; "
-                f"job = CrawlJob.objects.order_by('-created_at').first(); "
-                f"print(f'상태: {{job.status}}, 성공: {{job.successful_articles}}, 실패: {{job.failed_articles}}')"
+                "     from news.models import CrawlJob; "
+                "job = CrawlJob.objects.order_by('-created_at').first(); "
+                "print(f'상태: {job.status}, 성공: {job.successful_articles}, 실패: {job.failed_articles}')"
             )
         else:
             # 동기적으로 실행 (직접 실행)

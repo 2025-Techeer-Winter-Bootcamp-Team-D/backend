@@ -21,12 +21,10 @@ DART 고유번호 목록 동기화 Management Command
 """
 
 from django.core.management.base import BaseCommand
-from django.db import transaction, connection
-from django.db.models import Count
+from django.db import transaction
 from companies.models import Company
 from companies.services.dart_api import DartAPIClient, DartAPIError
 from companies.services.corp_code_parser import CorpCodeParser
-from companies.services.industry_mapper import IndustryMapper
 from industries.models import KsicCategory, Industry, KisIndustry
 import logging
 import requests
@@ -786,7 +784,8 @@ class Command(BaseCommand):
                                 )
                             else:
                                 self.stdout.write(
-                                    f"  [{idx}/{total_companies}] Industry 생성 예정: {ksic_obj.name or kis_industry.name} (KIS:{target_kis_code})"
+                                    f"  [{idx}/{total_companies}] Industry 생성 예정: "
+                                    f"{ksic_obj.name or kis_industry.name} (KIS:{target_kis_code})"
                                 )
                                 continue
 

@@ -5,7 +5,6 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import Favorite
 from .serializers import FavoriteSerializer
-from companies.models import Company
 
 # 프로젝트 내부 모듈
 from .serializers import RegisterSerializer, LoginSerializer

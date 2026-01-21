@@ -97,7 +97,7 @@ def cluster_and_save_opensearch_task(
         if news_to_save:
             logger.info(f"[Clustering] OpenSearch 저장 시작: {len(news_to_save)}개")
             opensearch_service.save_news_vectors_batch(news_to_save)
-            logger.info(f"[Clustering] OpenSearch 저장 완료")
+            logger.info("[Clustering] OpenSearch 저장 완료")
 
         # 3. 중복 뉴스 소프트 삭제
         duplicate_news_ids = [

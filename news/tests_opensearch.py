@@ -23,7 +23,6 @@ django.setup()
 from news.services.opensearch import OpenSearchService
 from news.services.embedding import EmbeddingService
 from datetime import datetime
-import random
 
 print("=" * 60)
 print("OpenSearch 서비스 테스트 시작")
@@ -60,13 +59,19 @@ test_news = [
     {
         "news_id": 1001,
         "title": "삼성전자, AI 반도체 시장 공략 강화",
-        "content": "삼성전자가 인공지능(AI) 반도체 시장 공략에 박차를 가하고 있다. 최근 AI 칩 개발에 집중 투자하며 글로벌 경쟁력을 높이고 있다.",
+        "content": (
+            "삼성전자가 인공지능(AI) 반도체 시장 공략에 박차를 가하고 있다. "
+            "최근 AI 칩 개발에 집중 투자하며 글로벌 경쟁력을 높이고 있다."
+        ),
         "published_at": datetime(2024, 1, 15, 10, 0, 0),
     },
     {
         "news_id": 1002,
         "title": "SK하이닉스, 메모리 반도체 수주 증가",
-        "content": "SK하이닉스가 최근 메모리 반도체 수주가 크게 증가했다고 발표했다. 데이터센터 수요 증가로 인한 것으로 분석된다.",
+        "content": (
+            "SK하이닉스가 최근 메모리 반도체 수주가 크게 증가했다고 발표했다. "
+            "데이터센터 수요 증가로 인한 것으로 분석된다."
+        ),
         "published_at": datetime(2024, 1, 16, 14, 30, 0),
     },
     {
@@ -185,9 +190,9 @@ try:
         # 삭제 확인
         deleted_news = opensearch_service.get_news(test_news_id)
         if deleted_news is None:
-            print(f"✅ 삭제 확인 완료")
+            print("✅ 삭제 확인 완료")
         else:
-            print(f"⚠️ 삭제되었지만 여전히 조회됨 (refresh 지연 가능)")
+            print("⚠️ 삭제되었지만 여전히 조회됨 (refresh 지연 가능)")
     else:
         print(f"❌ 뉴스 삭제 실패: news_id={test_news_id}")
 except Exception as e:
