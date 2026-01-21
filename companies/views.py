@@ -2154,7 +2154,7 @@ class SankeyAdminBulkSyncView(APIView):
         except (TypeError, ValueError):
             return Response({"error": "year는 연도(정수)여야 합니다."}, status=status.HTTP_400_BAD_REQUEST)
         
-        result = service.sync_all_companies(year=str(year_int))
+        result = service.sync_all_companies(year=year_int)
         return Response(result, status=status.HTTP_200_OK)
 
 

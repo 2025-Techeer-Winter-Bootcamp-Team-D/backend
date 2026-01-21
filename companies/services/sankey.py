@@ -29,8 +29,9 @@ class SankeyDataService:
 
     def sync_all_companies(self, year=2024):
         companies = Company.objects.filter(is_deleted=False)
+        target_year=int(year)
         for company in companies:
-            self.sync_right_side(company, int(year))
+            self.sync_right_side(company, target_year)
         return {"status": "success"}
 
     def sync_right_side(self, company, year=2024):
