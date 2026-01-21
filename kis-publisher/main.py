@@ -280,7 +280,7 @@ async def run_publisher():
                                     if rt_cd != "0":  # 0이 아니면 에러
                                         if "ALREADY IN USE" in msg1:
                                             print(
-                                                "[WS ERROR] APP_KEY already in use. Waiting 30s before retry..."
+                                                "[WS ERROR] APP_KEY already in use. Triggering restart sequence..."
                                             )
                                             raise Exception("APP_KEY_IN_USE")
                                         else:
@@ -374,9 +374,11 @@ async def run_publisher():
             # APP_KEY 중복 사용 에러 시 즉시 종료 (재시도 무의미)
             if "APP_KEY_IN_USE" in str(e):
                 print(
-                    "[FATAL] APP_KEY already in use. Please wait a few minutes and restart the container."
+                    "[FATAL] APP_KEY already in use. Waiting 60 seconds for server session to timeout..."
                 )
-                print("[FATAL] Or use a different APP_KEY.")
+                # 즉시 재시작하면 서버 세션이 갱신되어 버릴 수 있으므로, 충분히 대기 후 재시작
+                await asyncio.sleep(60)
+                print("[FATAL] Exiting container to restart...")
                 raise SystemExit(1)
 
             reconnect_count += 1
