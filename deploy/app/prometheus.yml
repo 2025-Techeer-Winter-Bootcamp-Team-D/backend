@@ -7,6 +7,7 @@ scrape_configs:
       - targets: ['localhost:9090']
 
   - job_name: 'django-app'
+    metrics_path: /internal/metrics
     static_configs:
       - targets: ['app:8000']
 
