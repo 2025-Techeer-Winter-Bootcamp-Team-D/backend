@@ -1,12 +1,4 @@
 [tool.ruff]
-# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`) codes by default.
-select = ["E", "F"]
-ignore = []
-
-# Allow autofix for all enabled rules (when `--fix` is provided).
-fixable = ["ALL"]
-unfixable = []
-
 # Exclude a variety of commonly ignored directories.
 exclude = [
     ".bzr",
@@ -33,7 +25,16 @@ exclude = [
 ]
 line-length = 120
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint]
+# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`) codes by default.
+select = ["E", "F"]
+ignore = []
+
+# Allow autofix for all enabled rules (when `--fix` is provided).
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.per-file-ignores]
 # Ignore E402 (import not at top of file) for scripts that need django.setup()
 "scripts/*" = ["E402"]
 "*/tests_*.py" = ["E402"]
