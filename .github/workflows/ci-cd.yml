@@ -149,19 +149,23 @@ jobs:
           script: |
             PROJECT_PATH="~/backend"
             
-            if [ ! -d "$PROJECT_PATH" ]; then
-              echo "Error: Project directory $PROJECT_PATH does not exist."
-              exit 1
-            fi
+            # 1. Clean previous deployment folder (if any)
+            rm -rf $PROJECT_PATH
+            
+            # 2. Clone repository afresh
+            git clone -b develop https://github.com/2025-Techeer-Winter-Bootcamp-Team-D/backend.git $PROJECT_PATH
             
             cd $PROJECT_PATH
-            git pull origin develop
             
-            # Create .env (Data node)
+            # 3. Create .env (Data node)
             echo "${{ secrets.ENV_FILE_DATA }}" > deploy/data/.env
             
-            # Deploy Data Services
+            # 4. Deploy Data Services
             docker compose -f deploy/data/docker-compose.yml up -d
+            
+            # 5. Cleanup source code (containers keep running)
+            cd ~
+            rm -rf $PROJECT_PATH
             
   deploy-app:
     name: Deploy Application Layer
@@ -178,25 +182,27 @@ jobs:
           script: |
             PROJECT_PATH="~/backend"
             
-            if [ ! -d "$PROJECT_PATH" ]; then
-              echo "Error: Project directory $PROJECT_PATH does not exist."
-              exit 1
-            fi
+            # 1. Clean previous deployment folder (if any)
+            rm -rf $PROJECT_PATH
+            
+            # 2. Clone repository afresh
+            git clone -b develop https://github.com/2025-Techeer-Winter-Bootcamp-Team-D/backend.git $PROJECT_PATH
             
             cd $PROJECT_PATH
-            git pull origin develop
             
-            # Create/Update .env file
+            # 3. Create/Update .env file
             echo "${{ secrets.ENV_FILE_APP }}" > deploy/app/.env
             
-            # Login to GHCR (App node needs custom images)
+            # 4. Login to GHCR
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             
-            # Pull latest images
+            # 5. Pull latest images
             docker compose -f deploy/app/docker-compose.yml pull
             
-            # Restart App Services
+            # 6. Restart App Services
             docker compose -f deploy/app/docker-compose.yml up -d
             
-            # Clean up
+            # 7. Clean up
             docker image prune -f
+            cd ~
+            rm -rf $PROJECT_PATH
