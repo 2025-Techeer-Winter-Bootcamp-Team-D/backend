@@ -12,7 +12,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 import os
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 from datetime import timedelta
 from dotenv import load_dotenv
 from celery.schedules import crontab
@@ -189,7 +189,15 @@ else:
     }
 
 # Redis Cache Configuration
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = os.getenv("REDIS_PORT", "6379")
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
+if REDIS_PASSWORD:
+    encoded_pwd = quote(REDIS_PASSWORD)
+    REDIS_URL = f"redis://:{encoded_pwd}@{REDIS_HOST}:{REDIS_PORT}/0"
+else:
+    REDIS_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
+
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
@@ -213,15 +221,15 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("redis", 6379)],
+            "hosts": [REDIS_URL],
         },
     },
 }
 
 # Celery Configuration
 # Docker 환경에서는 redis 호스트명 사용, 로컬에서는 localhost 사용
-CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
-CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL)
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", REDIS_URL)
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"

@@ -29,5 +29,6 @@ COPY indices/ /app/indices/
 COPY news/ /app/news/
 COPY users/ /app/users/
 
+
 # Daphne ASGI 서버 (WebSocket 지원)
 CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "config.asgi:application"]
