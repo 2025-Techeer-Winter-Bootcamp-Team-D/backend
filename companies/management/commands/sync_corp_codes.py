@@ -299,154 +299,7 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS("=" * 50 + "\n"))
 
-    def _seed_kis_industries(self, dry_run=False):
-        """
-        Industry 테이블에 KIS 코드 기반 Industry 생성
-        seed_kis_codes.py의 핵심 로직을 통합
-        """
-        self.stdout.write("Industry 테이블에 KIS 코드 기반 Industry 생성 중...")
 
-        # KIS 기반 산업 분류 데이터
-        industries_data = [
-            # --- A. 농업, 임업 및 어업 (통합 지수 사용) ---
-            {
-                "name": "농업/어업",
-                "induty_code": "0027",
-                "description": "KOSPI 농림수산업 통합 지수",
-            },
-            # --- C. 제조업 (KOSPI/KOSDAQ 주요 지수) ---
-            {
-                "name": "제조업",
-                "induty_code": "1015",
-                "description": "코스닥 제조 지수",
-            },
-            {
-                "name": "음식료품",
-                "induty_code": "0006",
-                "description": "KOSPI 음식료품 업종 지수",
-            },
-            {
-                "name": "화학/정유",
-                "induty_code": "0009",
-                "description": "KOSPI 화학 및 석유정제 통합 지수",
-            },
-            {
-                "name": "의약품",
-                "induty_code": "0010",
-                "description": "KOSPI 의약품 업종 지수 (바이오 포함)",
-            },
-            {
-                "name": "전기전자",
-                "induty_code": "0014",
-                "description": "KOSPI 전기전자 지수 (반도체/IT 핵심)",
-            },
-            {
-                "name": "운수장비",
-                "induty_code": "0015",
-                "description": "KOSPI 운수장비 지수 (자동차/조선)",
-            },
-            {
-                "name": "반도체(코스닥)",
-                "induty_code": "1047",
-                "description": "KOSDAQ 반도체 업종 지수",
-            },
-            {
-                "name": "IT(코스닥)",
-                "induty_code": "1012",
-                "description": "KOSDAQ IT 업종지수",
-            },
-            # --- F. 건설업 ---
-            {
-                "name": "건설업",
-                "induty_code": "0018",
-                "description": "KOSPI 건설업 업종 지수",
-            },
-            # --- G. 도매 및 소매업 ---
-            {
-                "name": "유통업",
-                "induty_code": "0016",
-                "description": "KOSPI 유통업 및 소매 지수",
-            },
-            # --- H. 운수 및 창고업 ---
-            {
-                "name": "운수창고",
-                "induty_code": "0019",
-                "description": "KOSPI 육상/해상/항공 운송 통합 지수",
-            },
-            # --- J. 정보통신업 ---
-            {
-                "name": "통신업",
-                "induty_code": "0020",
-                "description": "KOSPI 통신업 업종 지수",
-            },
-            {
-                "name": "소프트웨어",
-                "induty_code": "1042",
-                "description": "KOSDAQ 소프트웨어 지수",
-            },
-            # --- K. 금융 및 보험업 ---
-            {
-                "name": "금융업",
-                "induty_code": "0021",
-                "description": "KOSPI 금융업 통합 지수",
-            },
-            {
-                "name": "보험",
-                "induty_code": "0025",
-                "description": "KOSPI 보험 업종 지수",
-            },
-            # --- M. 전문, 과학 및 기술 서비스업 ---
-            {
-                "name": "서비스업",
-                "induty_code": "0026",
-                "description": "KOSPI 서비스업 및 연구개발 통합 지수",
-            },
-            # --- 대표 시장 지수 (추가 권장) ---
-            {"name": "코스피", "induty_code": "0001", "description": "KOSPI 종합 지수"},
-            {
-                "name": "코스닥",
-                "induty_code": "1001",
-                "description": "KOSDAQ 종합 지수",
-            },
-            {
-                "name": "KRX 300",
-                "induty_code": "2001",
-                "description": "코스피/코스닥 통합 우량 300 지수",
-            },
-        ]
-
-        created_count = 0
-        skipped_count = 0
-
-        for industry_data in industries_data:
-            induty_code = industry_data.get("induty_code")
-            name = industry_data["name"]
-            description = industry_data["description"]
-
-            # KIS 코드로 이미 존재하는 Industry가 있는지 확인
-            if induty_code:
-                existing = Industry.objects.filter(
-                    induty_code=induty_code, is_deleted=False
-                ).first()
-                if existing:
-                    skipped_count += 1
-                    continue
-
-                # 새로운 Industry 생성 (KIS 코드 사용)
-                if not dry_run:
-                    Industry.objects.create(
-                        name=name,
-                        induty_code=induty_code,
-                        description=description,
-                    )
-                created_count += 1
-
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"  ✓ {created_count}개 Industry 생성 완료"
-                + (f" ({skipped_count}개 건너뜀)" if skipped_count > 0 else "")
-            )
-        )
 
     def handle(self, *args, **options):
         update_existing = options["update_existing"]
@@ -524,19 +377,7 @@ class Command(BaseCommand):
                     )
                 )
 
-            # STEP 1: Industry 테이블에 KIS 코드 기반 Industry 생성
-            if not skip_industry_mapping:
-                self.stdout.write("\n" + "=" * 50)
-                self.stdout.write("STEP 1: Industry 테이블 KIS 코드 기반 Industry 생성")
-                self.stdout.write("=" * 50)
-                self._seed_kis_industries(dry_run=dry_run)
-            else:
-                self.stdout.write(
-                    self.style.WARNING(
-                        "업종코드 조회를 건너뜁니다. 빠른 동기화를 위해 권장됩니다. "
-                        "업종코드는 나중에 sync_company_info로 개별 업데이트할 수 있습니다."
-                    )
-                )
+
 
             # Company 생성/업데이트
             created_count = 0
@@ -549,9 +390,9 @@ class Command(BaseCommand):
                     self.style.WARNING("DRY RUN 모드: 실제로 저장하지 않습니다.")
                 )
 
-            # STEP 2: Company 생성/업데이트 (원본 KSIC 코드만 저장, 매핑은 나중에)
+            # STEP 1: Company 생성/업데이트 (원본 KSIC 코드만 저장, 매핑은 나중에)
             self.stdout.write("\n" + "=" * 50)
-            self.stdout.write("STEP 2: Company 생성/업데이트 (원본 KSIC 코드 저장)")
+            self.stdout.write("STEP 1: Company 생성/업데이트 (원본 KSIC 코드 저장)")
             self.stdout.write("=" * 50)
 
             created_count = 0
@@ -667,10 +508,10 @@ class Command(BaseCommand):
                     )
                     logger.error(f"기업 처리 실패: {stock_code} - {e}", exc_info=True)
 
-            # STEP 3: KSIC → KIS 매핑 생성 및 Company 업데이트
+            # STEP 2: KSIC → KIS 매핑 생성 및 Company 업데이트
             # 항상 실행하되, 이미 매핑된 기업은 건너뜀
             self.stdout.write("\n" + "=" * 50)
-            self.stdout.write("STEP 3: KSIC → KIS 매핑 생성 및 Company 업데이트")
+            self.stdout.write("STEP 2: KSIC → KIS 매핑 생성 및 Company 업데이트")
             self.stdout.write("=" * 50)
 
             # STEP 3-1: KIS 마스터 및 종목-업종 매핑 로드 (메모리)
@@ -706,9 +547,9 @@ class Command(BaseCommand):
             if ticker_to_kis:
                 self._create_ksic_mapping(ticker_to_kis, dry_run=dry_run)
 
-            # STEP 3-3: Company의 induty_code를 KIS 코드로 업데이트
+            # STEP 2-3: Company의 induty_code를 KIS 코드로 업데이트
             self.stdout.write("\n" + "=" * 50)
-            self.stdout.write("STEP 3-3: Company 업종코드 KIS 변환 및 Industry 연결")
+            self.stdout.write("STEP 2-3: Company 업종코드 KIS 변환 및 Industry 연결")
             self.stdout.write("=" * 50)
 
             updated_companies = 0
