@@ -12,7 +12,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 import os
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 from datetime import timedelta
 from dotenv import load_dotenv
 from celery.schedules import crontab
@@ -193,7 +193,7 @@ REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = os.getenv("REDIS_PORT", "6379")
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
 if REDIS_PASSWORD:
-    encoded_pwd = urllib.parse.quote(REDIS_PASSWORD)
+    encoded_pwd = quote(REDIS_PASSWORD)
     REDIS_URL = f"redis://:{encoded_pwd}@{REDIS_HOST}:{REDIS_PORT}/0"
 else:
     REDIS_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
