@@ -4,6 +4,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
+from rest_framework.generics import ListAPIView
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 from celery import group
@@ -20,6 +21,7 @@ from .serializers import (
     ReportDetailSerializer,
     CompanyRankingSerializer,
     SankeySerializer,
+    MainReportSerializer,
 )
 from .services.financial import FinancialService
 from .services.reports import ReportsService
@@ -2181,3 +2183,23 @@ class SankeyDataDetailView(APIView):
             return Response(serializer.data, status=status.HTTP_200_OK)
         except Company.DoesNotExist:
             return Response({"detail": "존재하지 않는 기업 코드입니다."}, status=status.HTTP_404_NOT_FOUND)
+
+
+#메인페이지 최신 보고서 조회
+@extend_schema(
+    summary="메인페이지 최신 보고서 10개 조회",
+    description="모든 기업의 공시 보고서 중 접수일자(submitted_at)가 가장 최근인 10개의 목록을 가져옵니다.",
+    responses={200: MainReportSerializer(many=True)}
+)
+class MainRecentReportListView(ListAPIView):
+    """
+    메인페이지용 최신 보고서 목록 조회 뷰
+    """
+    serializer_class = MainReportSerializer
+
+    def get_queryset(self):
+        # 1. select_related('company'): 기업 테이블과 JOIN하여 쿼리 횟수 최적화 (N+1 문제 해결)
+        # 2. order_by('-submitted_at'): 접수일자 기준 내림차순(최신순) 정렬
+        # 3. [:10]: 상위 10개만 슬라이싱
+        return Report.objects.select_related('company').all().order_by('-submitted_at')[:10]
+

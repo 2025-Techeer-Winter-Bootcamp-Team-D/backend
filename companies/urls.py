@@ -17,6 +17,7 @@ from .views import (
     get_company_outlook,
     SankeyAdminBulkSyncView,
     SankeyDataDetailView,
+    MainRecentReportListView,
 )
 
 urlpatterns = [
@@ -78,4 +79,6 @@ urlpatterns = [
     path("sankeys/admin/", SankeyAdminBulkSyncView.as_view(), name="sankey_admin_sync"),
     # 특정 기업의 sankey 데이터 조회
     path("sankeys/<str:stock_code>/", SankeyDataDetailView.as_view(), name="sankey_detail"),
+    # 메인페이지 최신 기업 보고서 조회  
+    path("reports/recent/", MainRecentReportListView.as_view(), name="main_recent_reports"),
 ]
