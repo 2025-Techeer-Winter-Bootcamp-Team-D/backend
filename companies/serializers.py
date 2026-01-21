@@ -302,3 +302,19 @@ class SankeySerializer(serializers.ModelSerializer):
             "기타비용": rv.get('other_expense', 0)
         }
 
+
+# 메인 페이지 보고서 리스트 
+class MainReportSerializer(serializers.ModelSerializer):
+    # 연결된 Company 모델에서 회사 이름을 가져옵니다.
+    company_name = serializers.ReadOnlyField(source='company.company_name')
+
+    class Meta:
+        model = Report
+        fields = [
+            'id', 
+            'company_name', 
+            'report_name', 
+            'submitted_at', 
+            'report_url'
+        ]
+
