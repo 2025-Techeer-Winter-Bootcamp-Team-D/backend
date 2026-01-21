@@ -149,7 +149,7 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           source: "deploy/data/*"
-          target: "~/techeer-deploy"
+          target: "~/techeer-deploy/deploy/data"
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -183,7 +183,7 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           source: "deploy/app/*"
-          target: "~/techeer-deploy"
+          target: "~/techeer-deploy/deploy/app"
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
