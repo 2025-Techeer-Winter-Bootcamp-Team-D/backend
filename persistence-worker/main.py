@@ -5,7 +5,16 @@ import asyncpg
 import re
 from datetime import datetime
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
+
+if REDIS_PASSWORD:
+    import urllib.parse
+    encoded_pwd = urllib.parse.quote(REDIS_PASSWORD)
+    REDIS_URL = f"redis://:{encoded_pwd}@{REDIS_HOST}:{REDIS_PORT}/0"
+else:
+    REDIS_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost:5432/postgres")
 
 # Redis Stream 설정
@@ -196,7 +205,7 @@ class PersistenceWorker:
         try:
             # Redis 연결
             print("[INIT] Connecting to Redis...")
-            redis_client = redis.from_url(REDIS_URL)
+            redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, password=REDIS_PASSWORD, db=0)
             await redis_client.ping()
             print("[INIT] Redis connected")
 
@@ -279,7 +288,7 @@ class PersistenceWorker:
                             )
                     await asyncio.sleep(5)
                     # 새 Redis 연결 생성
-                    redis_client = redis.from_url(REDIS_URL)
+                    redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, password=REDIS_PASSWORD, db=0)
                     # Consumer Group 복원
                     await self.ensure_consumer_group(redis_client)
                     # flush 태스크 재생성
