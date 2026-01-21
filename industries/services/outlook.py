@@ -97,7 +97,7 @@ class IndustryOutlookService:
 
         # 5. 결과 구성
         result = {
-            "industry_id": industry_id,
+            "induty_code": industry.induty_code,
             "industry_name": industry.name,
             "ksic_code": industry.induty_code or "",
             "analyzed_at": timezone.now().isoformat(),
@@ -374,7 +374,7 @@ class IndustryOutlookService:
 
 ## 주의사항
 - JSON 형식으로만 응답하세요.
-- neutral 시나리오의 analysis는 반드시 3줄 이내로 작성하세요.
+- neutral 시나리오의 analysis는 반드시 3줄 이내로 작성하되 가능하면 3줄로 작성하세요.
 - optimistic과 pessimistic 시나리오의 analysis는 1줄로 간결히 작성하세요.
 - key_factors는 각 시나리오당 2-5개로 구성하세요.
 - 추측이 아닌 제공된 데이터에 기반하여 분석하세요.
