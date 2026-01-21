@@ -5,9 +5,9 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter
+from drf_spectacular.types import OpenApiTypes
 from celery import group
 
-logger = logging.getLogger(__name__)
 from .models import Company, CompanyRanking, Report ,SankeyData
 from core.models import StockPrice1m, StockPrice15m, StockPrice1h, StockPrice1d
 from .serializers import (
@@ -2146,7 +2146,13 @@ class SankeyAdminBulkSyncView(APIView):
         year = request.data.get('year')  
         if not year:
             return Response({"error": "year(연도) 값이 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
-        result = service.sync_all_companies(year=str(year))
+        
+        try:
+            year_int = int(year)
+        except (TypeError, ValueError):
+            return Response({"error": "year는 연도(정수)여야 합니다."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        result = service.sync_all_companies(year=str(year_int))
         return Response(result, status=status.HTTP_200_OK)
 
 
