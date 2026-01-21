@@ -1,4 +1,7 @@
-import os, requests, logging, re
+import os
+import requests
+import logging
+import re
 from django.db import transaction
 from companies.models import Company, FinancialStatement, Report
 from ..models import SankeyData
@@ -12,12 +15,10 @@ class SankeyDataService:
         self.REQUEST_TIMEOUT = 30
 
     def _safe_float(self, val):
-        # [수정] E701: 한 줄 if문을 여러 줄로 분리하여 가독성 및 린트 준수
         if not val or val == '-': 
             return 0.0
         try: 
             return float(re.sub(r'[^0-9.-]', '', str(val)))
-        # [수정] E722: bare except 대신 구체적인 예외(ValueError, TypeError) 명시
         except (ValueError, TypeError): 
             return 0.0
 
@@ -46,7 +47,6 @@ class SankeyDataService:
                 'fs_div': 'CFS'
             }
             
-            # [수정] API 호출 안정성 확보: try-except 및 raise_for_status() 추가
             try:
                 response = requests.get(self.url, params=params, timeout=self.REQUEST_TIMEOUT)
                 response.raise_for_status()
@@ -56,7 +56,7 @@ class SankeyDataService:
                 return False
 
             if res.get('status') != '000':
-                params['fs_div'] = 'OFS' # [수정] E702: 세미콜론 문장 분리
+                params['fs_div'] = 'OFS' 
                 try:
                     response = requests.get(self.url, params=params, timeout=self.REQUEST_TIMEOUT)
                     response.raise_for_status()
@@ -74,16 +74,20 @@ class SankeyDataService:
                 aid = item.get('account_id', '')
 
                 # [수정] E701: 콜론 뒤에 오는 한 줄 로직들을 가독성을 위해 개행 처리
-                if any(k in nm for k in ['매출액', '영업수익', '수익(매출액)', '수익']) or aid in ['ifrs-full_Revenue', 'ifrs_Revenue']:
+                if any(k in nm for k in ['매출액', '영업수익', '수익(매출액)', '수익']) or
+                    aid in ['ifrs-full_Revenue', 'ifrs_Revenue']:
                     if dart['rev'] == 0: 
                         dart['rev'] = val
-                elif ('순이익' in nm and '차감전' not in nm) or aid in ['ifrs-full_ProfitLoss', 'ifrs_ProfitLoss']:
+                elif ('순이익' in nm and '차감전' not in nm) or 
+                    aid in ['ifrs-full_ProfitLoss', 'ifrs_ProfitLoss']:
                     if dart['ni'] == 0: 
                         dart['ni'] = val
-                elif any(k in nm for k in ['매출원가', '영업원가']) or aid in ['ifrs-full_CostOfSales', 'ifrs_CostOfSales']:
+                elif any(k in nm for k in ['매출원가', '영업원가']) or 
+                    aid in ['ifrs-full_CostOfSales', 'ifrs_CostOfSales']:
                     if dart['cogs'] == 0: 
                         dart['cogs'] = val
-                elif any(k in nm for k in ['판매비관리비', '일반관리비']) or aid in ['ifrs-full_SellingGeneralAndAdministrativeExpenses', 'ifrs_SellingGeneralAndAdministrativeExpenses']:
+                elif any(k in nm for k in ['판매비관리비', '일반관리비']) or 
+                    aid in ['ifrs-full_SellingGeneralAndAdministrativeExpenses', 'ifrs_SellingGeneralAndAdministrativeExpenses']:
                     if dart['sg_a'] == 0: 
                         dart['sg_a'] = val
                 elif '영업비용' in nm:
@@ -110,7 +114,12 @@ class SankeyDataService:
                 return None
 
             display_ni = max(0, f_ni)
-            center = "영업수익" if any(x in company.company_name for x in ["금융", "지주", "은행", "보험"]) else "매출액"
+
+            if any(x in company.company_name for x in ["금융", "지주", "은행", "보험"]):
+                center = "영업수익"
+            else:
+                center = "매출액"
+            
             nodes, links = [{"name": center}], []
 
             segments_list = []
@@ -119,11 +128,11 @@ class SankeyDataService:
 
             for rc in rev_comps:
                 s_name, s_val = rc.get('segment', '미분류'), self._safe_float(rc.get('revenue', 0))
-                # [수정] E701: 여러 문장 한 줄 작성 방지
+                
                 if s_val > 0 and total_rev > s_val * 500: 
                     s_val *= 1000000
                 
-                # [수정] '기타' 포함 부문은 개별 노드를 만들지 않고 건너뜀 (기타 매출로 통합)
+                
                 if '기타' in s_name:
                     continue
                 
