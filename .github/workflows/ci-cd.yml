@@ -160,6 +160,10 @@ jobs:
             # 3. Create .env (Data node)
             echo "${{ secrets.ENV_FILE_DATA }}" > deploy/data/.env
             
+            # Pre-create data directories with correct permissions for OpenSearch (UID 1000)
+            sudo mkdir -p /home/ubuntu/infra-data/opensearch
+            sudo chown -R 1000:1000 /home/ubuntu/infra-data/opensearch
+            
             # 4. Deploy Data Services
             docker compose -f deploy/data/docker-compose.yml up -d
             
