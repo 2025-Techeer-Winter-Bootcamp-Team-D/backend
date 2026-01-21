@@ -73,21 +73,24 @@ class SankeyDataService:
                 val = self._safe_float(item.get('thstrm_amount'))
                 aid = item.get('account_id', '')
 
-                # [수정] E701: 콜론 뒤에 오는 한 줄 로직들을 가독성을 위해 개행 처리
-                if any(k in nm for k in ['매출액', '영업수익', '수익(매출액)', '수익']) or
-                    aid in ['ifrs-full_Revenue', 'ifrs_Revenue']:
+                # [교정] 로직은 그대로, SyntaxError 방지를 위해 괄호()만 추가
+                if (any(k in nm for k in ['매출액', '영업수익', '수익(매출액)', '수익']) or 
+                    aid in ['ifrs-full_Revenue', 'ifrs_Revenue']):
                     if dart['rev'] == 0: 
                         dart['rev'] = val
-                elif ('순이익' in nm and '차감전' not in nm) or 
-                    aid in ['ifrs-full_ProfitLoss', 'ifrs_ProfitLoss']:
+                elif (('순이익' in nm and '차감전' not in nm) or 
+                      aid in ['ifrs-full_ProfitLoss', 'ifrs_ProfitLoss']):
                     if dart['ni'] == 0: 
                         dart['ni'] = val
-                elif any(k in nm for k in ['매출원가', '영업원가']) or 
-                    aid in ['ifrs-full_CostOfSales', 'ifrs_CostOfSales']:
+                elif (any(k in nm for k in ['매출원가', '영업원가']) or 
+                      aid in ['ifrs-full_CostOfSales', 'ifrs_CostOfSales']):
                     if dart['cogs'] == 0: 
                         dart['cogs'] = val
-                elif any(k in nm for k in ['판매비관리비', '일반관리비']) or 
-                    aid in ['ifrs-full_SellingGeneralAndAdministrativeExpenses', 'ifrs_SellingGeneralAndAdministrativeExpenses']:
+                elif (any(k in nm for k in ['판매비관리비', '일반관리비']) or 
+                      aid in [
+                          'ifrs-full_SellingGeneralAndAdministrativeExpenses', 
+                          'ifrs_SellingGeneralAndAdministrativeExpenses'
+                      ]):
                     if dart['sg_a'] == 0: 
                         dart['sg_a'] = val
                 elif '영업비용' in nm:
@@ -132,7 +135,6 @@ class SankeyDataService:
                 if s_val > 0 and total_rev > s_val * 500: 
                     s_val *= 1000000
                 
-                
                 if '기타' in s_name:
                     continue
                 
@@ -141,7 +143,6 @@ class SankeyDataService:
                 links.append({"source": s_name, "target": center, "value": s_val})
                 segments_list.append({"name": s_name, "value": s_val})
 
-            # [수정] 나머지 금액 및 기존 '기타' 항목을 '기타 매출'로 합산
             left_other = max(0, total_rev - seg_sum_for_nodes)
             if left_other > 0:
                 nodes.append({"name": "기타 매출"})
