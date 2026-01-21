@@ -184,6 +184,7 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           source: "deploy/app/*"
           target: "~/techeer-deploy/deploy/app"
+          strip_components: 2
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -192,6 +193,9 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            rm -rf ~/techeer-deploy/deploy/app
+            mkdir -p ~/techeer-deploy/deploy/app
+            
             cd ~/techeer-deploy/deploy/app
             echo "${{ secrets.ENV_FILE_APP }}" > .env
             
