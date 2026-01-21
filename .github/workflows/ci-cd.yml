@@ -75,7 +75,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:password@localhost:5432/test_db
           REDIS_URL: redis://localhost:6379/0
-          SECRET_KEY: test_secret_key
+          DJANGO_SECRET_KEY: test_secret_key
           DEBUG: "True"
         run: |
           python manage.py test
