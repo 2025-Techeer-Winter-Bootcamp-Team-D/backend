@@ -354,16 +354,16 @@ class IndustryOutlookService:
 
 {{
   "optimistic": {{
-    "analysis": "낙관 시나리오 3줄 이내 분석 (긍정적 전망, 성장 동력, 호재 요인 중심)",
-    "key_factors": ["긍정 요인1", "긍정 요인2", "긍정 요인3"]
+    "analysis": "판별용 낙관적 1줄 결론 (긍정적 전망, 성장 동력, 호재 요인 중심)",
+    "key_factors": ["긍정 요인1", "긍정 요인2]"
   }},
   "neutral": {{
-    "analysis": "중립 시나리오 3줄 이내 분석 (현 상황 유지, 불확실성, 관망 필요)",
-    "key_factors": ["중립 요인1", "중립 요인2", "중립 요인3"]
+    "analysis": "중립 시나리오 3줄 상세 분석 (현 상황 유지, 불확실성, 관망 필요 등)",
+    "key_factors": ["중립 요인1", "중립 요인2"]
   }},
   "pessimistic": {{
-    "analysis": "비관 시나리오 3줄 이내 분석 (부정적 전망, 하락 리스크, 악재 요인 중심)",
-    "key_factors": ["부정 요인1", "부정 요인2", "부정 요인3"]
+    "analysis": "판별용 비관적 1줄 결론 (부정적 전망, 하락 리스크, 악재 요인 중심)",
+    "key_factors": ["부정 요인1", "부정 요인2"]
   }}
 }}
 
@@ -374,7 +374,8 @@ class IndustryOutlookService:
 
 ## 주의사항
 - JSON 형식으로만 응답하세요.
-- 각 시나리오의 analysis는 반드시 3줄 이내로 작성하세요.
+- neutral 시나리오의 analysis는 반드시 3줄 이내로 작성하세요.
+- optimistic과 pessimistic 시나리오의 analysis는 1줄로 간결히 작성하세요.
 - key_factors는 각 시나리오당 2-5개로 구성하세요.
 - 추측이 아닌 제공된 데이터에 기반하여 분석하세요.
 """
