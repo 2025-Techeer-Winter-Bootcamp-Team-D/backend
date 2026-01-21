@@ -150,7 +150,7 @@ jobs:
             PROJECT_PATH="~/backend"
             
             # 1. Clean previous deployment folder (if any)
-            rm -rf $PROJECT_PATH
+            sudo rm -rf $PROJECT_PATH
             
             # 2. Clone repository afresh
             git clone -b develop https://github.com/2025-Techeer-Winter-Bootcamp-Team-D/backend.git $PROJECT_PATH
@@ -165,7 +165,7 @@ jobs:
             
             # 5. Cleanup source code (containers keep running)
             cd ~
-            rm -rf $PROJECT_PATH
+            sudo rm -rf $PROJECT_PATH
             
   deploy-app:
     name: Deploy Application Layer
@@ -183,7 +183,7 @@ jobs:
             PROJECT_PATH="~/backend"
             
             # 1. Clean previous deployment folder (if any)
-            rm -rf $PROJECT_PATH
+            sudo rm -rf $PROJECT_PATH
             
             # 2. Clone repository afresh
             git clone -b develop https://github.com/2025-Techeer-Winter-Bootcamp-Team-D/backend.git $PROJECT_PATH
@@ -205,4 +205,4 @@ jobs:
             # 7. Clean up
             docker image prune -f
             cd ~
-            rm -rf $PROJECT_PATH
+            sudo rm -rf $PROJECT_PATH

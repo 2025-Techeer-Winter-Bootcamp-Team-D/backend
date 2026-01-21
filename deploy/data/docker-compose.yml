@@ -17,7 +17,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./postgres_data:/var/lib/postgresql/data
+      - /home/ubuntu/infra-data/postgres:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}" ]
       interval: 3s
@@ -43,7 +43,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - ./redis_data:/data
+      - /home/ubuntu/infra-data/redis:/data
     healthcheck:
       test: [ "CMD-SHELL", "if [ -z \"$$REDIS_PASSWORD\" ]; then exit 1; fi; redis-cli -a \"$$REDIS_PASSWORD\" ping" ]
       interval: 5s
@@ -69,7 +69,7 @@ services:
       - "9200:9200"
       - "9600:9600"
     volumes:
-      - ./opensearch_data:/usr/share/opensearch/data
+      - /home/ubuntu/infra-data/opensearch:/usr/share/opensearch/data
     ulimits:
       memlock:
         soft: -1
