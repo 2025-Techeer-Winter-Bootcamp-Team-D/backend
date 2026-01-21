@@ -2108,6 +2108,8 @@ class SankeyAdminBulkSyncView(APIView):
     """
     관리자용: 전체 기업의 DART 데이터를 가져와 산키 데이터(오른쪽 노드 포함)를 일괄 생성/업데이트
     """
+    permission_classes = [IsAdminUser]
+
     @extend_schema(
         summary="전체 기업 산키 데이터 동기화",
         # 명시적으로 요청 데이터 형식을 지정 (Swagger 전용)

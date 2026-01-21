@@ -12,12 +12,18 @@ class SankeyDataService:
         self.REQUEST_TIMEOUT = 30
 
     def _safe_float(self, val):
-        if not val or val == '-': return 0.0
-        try: return float(re.sub(r'[^0-9.-]', '', str(val)))
-        except: return 0.0
+        # [수정] E701: 한 줄 if문을 여러 줄로 분리하여 가독성 및 린트 준수
+        if not val or val == '-': 
+            return 0.0
+        try: 
+            return float(re.sub(r'[^0-9.-]', '', str(val)))
+        # [수정] E722: bare except 대신 구체적인 예외(ValueError, TypeError) 명시
+        except (ValueError, TypeError): 
+            return 0.0
 
     def _normalize_nm(self, nm):
-        if not nm: return ""
+        if not nm: 
+            return ""
         return re.sub(r'[\s와및]', '', nm)
 
     def sync_all_companies(self, year=2024):
@@ -32,10 +38,32 @@ class SankeyDataService:
             report = Report.objects.filter(company=company, report_name__contains=str(year)).first()
             ext_info = report.extracted_info if report else {}
             
-            params = {'crtfc_key': self.api_key, 'corp_code': company.corp_code, 'bsns_year': str(year), 'reprt_code': '11011', 'fs_div': 'CFS'}
-            res = requests.get(self.url, params=params, timeout=self.REQUEST_TIMEOUT).json()
+            params = {
+                'crtfc_key': self.api_key, 
+                'corp_code': company.corp_code, 
+                'bsns_year': str(year), 
+                'reprt_code': '11011', 
+                'fs_div': 'CFS'
+            }
+            
+            # [수정] API 호출 안정성 확보: try-except 및 raise_for_status() 추가
+            try:
+                response = requests.get(self.url, params=params, timeout=self.REQUEST_TIMEOUT)
+                response.raise_for_status()
+                res = response.json()
+            except (requests.RequestException, ValueError) as e:
+                logger.warning(f"CFS API 호출 실패 ({company.company_name}): {e}")
+                return False
+
             if res.get('status') != '000':
-                params['fs_div'] = 'OFS'; res = requests.get(self.url, params=params, timeout=self.REQUEST_TIMEOUT).json()
+                params['fs_div'] = 'OFS' # [수정] E702: 세미콜론 문장 분리
+                try:
+                    response = requests.get(self.url, params=params, timeout=self.REQUEST_TIMEOUT)
+                    response.raise_for_status()
+                    res = response.json()
+                except (requests.RequestException, ValueError) as e:
+                    logger.warning(f"OFS API 호출 실패 ({company.company_name}): {e}")
+                    return False
             
             items = res.get('list', [])
             dart = {'rev': 0, 'cogs': 0, 'sg_a': 0, 'ope': 0, 'ni': 0}
@@ -45,16 +73,22 @@ class SankeyDataService:
                 val = self._safe_float(item.get('thstrm_amount'))
                 aid = item.get('account_id', '')
 
+                # [수정] E701: 콜론 뒤에 오는 한 줄 로직들을 가독성을 위해 개행 처리
                 if any(k in nm for k in ['매출액', '영업수익', '수익(매출액)', '수익']) or aid in ['ifrs-full_Revenue', 'ifrs_Revenue']:
-                    if dart['rev'] == 0: dart['rev'] = val
+                    if dart['rev'] == 0: 
+                        dart['rev'] = val
                 elif ('순이익' in nm and '차감전' not in nm) or aid in ['ifrs-full_ProfitLoss', 'ifrs_ProfitLoss']:
-                    if dart['ni'] == 0: dart['ni'] = val
+                    if dart['ni'] == 0: 
+                        dart['ni'] = val
                 elif any(k in nm for k in ['매출원가', '영업원가']) or aid in ['ifrs-full_CostOfSales', 'ifrs_CostOfSales']:
-                    if dart['cogs'] == 0: dart['cogs'] = val
+                    if dart['cogs'] == 0: 
+                        dart['cogs'] = val
                 elif any(k in nm for k in ['판매비관리비', '일반관리비']) or aid in ['ifrs-full_SellingGeneralAndAdministrativeExpenses', 'ifrs_SellingGeneralAndAdministrativeExpenses']:
-                    if dart['sg_a'] == 0: dart['sg_a'] = val
+                    if dart['sg_a'] == 0: 
+                        dart['sg_a'] = val
                 elif '영업비용' in nm:
-                    if dart['ope'] == 0: dart['ope'] = val
+                    if dart['ope'] == 0: 
+                        dart['ope'] = val
 
             f_cogs = dart['cogs']
             f_sga = dart['sg_a']
@@ -72,38 +106,37 @@ class SankeyDataService:
             if sum_parts > total_rev:
                 total_rev = sum_parts
 
-            if total_rev == 0: return None
+            if total_rev == 0: 
+                return None
 
             display_ni = max(0, f_ni)
             center = "영업수익" if any(x in company.company_name for x in ["금융", "지주", "은행", "보험"]) else "매출액"
             nodes, links = [{"name": center}], []
 
-            # segments 리스트 준비 (JSON 저장용)
             segments_list = []
             rev_comps = ext_info.get('revenue_composition', [])
             seg_sum_for_nodes = 0
 
             for rc in rev_comps:
                 s_name, s_val = rc.get('segment', '미분류'), self._safe_float(rc.get('revenue', 0))
-                if s_val > 0 and total_rev > s_val * 500: s_val *= 1000000
+                # [수정] E701: 여러 문장 한 줄 작성 방지
+                if s_val > 0 and total_rev > s_val * 500: 
+                    s_val *= 1000000
                 
-                # [수정] 부문 명칭에 '기타'가 포함되면 리스트에 넣지 않고 건너뜀
+                # [수정] '기타' 포함 부문은 개별 노드를 만들지 않고 건너뜀 (기타 매출로 통합)
                 if '기타' in s_name:
                     continue
                 
                 seg_sum_for_nodes += s_val
-                # Nodes & Links 생성
                 nodes.append({"name": s_name})
                 links.append({"source": s_name, "target": center, "value": s_val})
-                # JSON용 segments 리스트 추가
                 segments_list.append({"name": s_name, "value": s_val})
 
-            # [수정] 나머지 금액을 '기타 매출'로 합산하여 노드 생성 및 segments 리스트에 추가
+            # [수정] 나머지 금액 및 기존 '기타' 항목을 '기타 매출'로 합산
             left_other = max(0, total_rev - seg_sum_for_nodes)
             if left_other > 0:
                 nodes.append({"name": "기타 매출"})
                 links.append({"source": "기타 매출", "target": center, "value": left_other})
-                # JSON 결과에도 '기타 매출'을 명시적으로 포함
                 segments_list.append({"name": "기타 매출", "value": left_other})
 
             right_other = max(0, total_rev - sum_parts)
@@ -121,7 +154,7 @@ class SankeyDataService:
                         'is_loss': f_ni < 0,
                         'raw_values': {
                             'total_revenue': total_rev,
-                            'segments': segments_list, # [수정] 기타 매출이 포함된 리스트 저장
+                            'segments': segments_list,
                             'cogs': f_cogs, 
                             'sg_a': f_sga, 
                             'net_income': f_ni, 
@@ -131,4 +164,5 @@ class SankeyDataService:
                 )
             return True
         except Exception as e:
-            logger.error(f"Sankey Error: {e}"); return False
+            logger.error(f"Sankey Error: {e}")
+            return False
