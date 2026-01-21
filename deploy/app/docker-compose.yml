@@ -21,7 +21,7 @@ services:
 
   app:
     # Production: Use GHCR Image
-    image: ghcr.io/techeer-winter/backend-core:latest
+    image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/backend-core:latest
     # Dev/Manual Deploy: Use build context
     # build:
     #   context: ../..
@@ -50,7 +50,7 @@ services:
     restart: always
 
   subscribe-handler:
-    image: ghcr.io/techeer-winter/backend-core:latest
+    image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/backend-core:latest
     # build:
     #   context: ../..
     #   dockerfile: Dockerfile
@@ -67,7 +67,7 @@ services:
     restart: always
 
   kis-publisher:
-    image: ghcr.io/techeer-winter/kis-publisher:latest
+    image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/kis-publisher:latest
     # build:
     #   context: ../..
     #   dockerfile: ./kis-publisher/Dockerfile
@@ -92,7 +92,7 @@ services:
     restart: on-failure
 
   persistence-worker:
-    image: ghcr.io/techeer-winter/persistence-worker:latest
+    image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/persistence-worker:latest
     # build:
     #   context: ../..
     #   dockerfile: ./persistence-worker/Dockerfile
@@ -109,7 +109,7 @@ services:
     restart: always
 
   celery-worker:
-    image: ghcr.io/techeer-winter/backend-core:latest
+    image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/backend-core:latest
     # build:
     #   context: ../..
     #   dockerfile: Dockerfile
@@ -134,7 +134,7 @@ services:
     restart: always
 
   celery-beat:
-    image: ghcr.io/techeer-winter/backend-core:latest
+    image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/backend-core:latest
     # build:
     #   context: ../..
     #   dockerfile: Dockerfile
@@ -160,7 +160,7 @@ services:
     restart: always
 
   flower:
-    image: ghcr.io/techeer-winter/backend-core:latest
+    image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/backend-core:latest
     # build:
     #   context: ../..
     #   dockerfile: Dockerfile
