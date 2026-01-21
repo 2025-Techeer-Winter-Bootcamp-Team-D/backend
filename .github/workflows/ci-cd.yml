@@ -1,0 +1,202 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ "develop" ]
+  pull_request:
+    branches: [ "develop" ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  ci:
+    name: Continuous Integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff
+          
+      - name: Run Ruff
+        run: ruff check .
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_DB: test_db
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          
+      - name: Run Tests
+        env:
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/test_db
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: test_secret_key
+          DEBUG: "True"
+        run: |
+          python manage.py test
+
+  build-and-push:
+    name: Build & Push Docker Images
+    needs: [ci, test]
+    runs-on: ubuntu-latest
+    # Push 이벤트일 때만 빌드 및 푸시 (PR 제외)
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+      
+    strategy:
+      matrix:
+        include:
+          - service: backend-core
+            context: .
+            file: Dockerfile
+            image: backend-core
+          - service: kis-publisher
+            context: .
+            file: ./kis-publisher/Dockerfile
+            image: kis-publisher
+          - service: persistence-worker
+            context: .
+            file: ./persistence-worker/Dockerfile
+            image: persistence-worker
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/techeer-winter/${{ matrix.image }}
+          tags: |
+            type=raw,value=latest
+            type=sha,format=long
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  deploy-data:
+    name: Deploy Data Layer
+    needs: [build-and-push]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    steps:
+      - name: Deploy to Data Instance
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DATA_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            PROJECT_PATH="~/Backend"
+            
+            if [ ! -d "$PROJECT_PATH" ]; then
+              echo "Error: Project directory $PROJECT_PATH does not exist."
+              exit 1
+            fi
+            
+            cd $PROJECT_PATH
+            git pull origin develop
+            
+            # Create .env (Data node)
+            echo "${{ secrets.ENV_FILE_DATA }}" > deploy/data/.env
+            
+            # Deploy Data Services
+            docker compose -f deploy/data/docker-compose.yml up -d
+            
+  deploy-app:
+    name: Deploy Application Layer
+    needs: [deploy-data]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    steps:
+      - name: Deploy to App Instance
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.APP_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            PROJECT_PATH="~/Backend"
+            
+            if [ ! -d "$PROJECT_PATH" ]; then
+              echo "Error: Project directory $PROJECT_PATH does not exist."
+              exit 1
+            fi
+            
+            cd $PROJECT_PATH
+            git pull origin develop
+            
+            # Create/Update .env file
+            echo "${{ secrets.ENV_FILE_APP }}" > deploy/app/.env
+            
+            # Login to GHCR (App node needs custom images)
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            # Pull latest images
+            docker compose -f deploy/app/docker-compose.yml pull
+            
+            # Restart App Services
+            docker compose -f deploy/app/docker-compose.yml up -d
+            
+            # Clean up
+            docker image prune -f

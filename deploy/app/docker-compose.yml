@@ -20,12 +20,12 @@ services:
     restart: always
 
   app:
-    # CI/CD: Use image in production
-    # image: ${IMAGE_NAME:-backend}:${IMAGE_TAG:-latest}
+    # Production: Use GHCR Image
+    image: ghcr.io/techeer-winter/backend-core:latest
     # Dev/Manual Deploy: Use build context
-    build:
-      context: ../..
-      dockerfile: Dockerfile
+    # build:
+    #   context: ../..
+    #   dockerfile: Dockerfile
     container_name: django
     env_file:
       - .env
@@ -40,15 +40,20 @@ services:
       - OPENSEARCH_HOST=${OPENSEARCH_HOST}:9200
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
     volumes:
-      - ../..:/app
+      # Production: Code is inside image. Only mount static/media if needed for collection, 
+      # but ideally running collectstatic in build or startup script is better.
+      # - ../..:/app  <-- DISABLED for Production Stability (Use Image Code)
+      - ../../static:/app/static
+      - ../../media:/app/media
     networks:
       - app-network
     restart: always
 
   subscribe-handler:
-    build:
-      context: ../..
-      dockerfile: Dockerfile
+    image: ghcr.io/techeer-winter/backend-core:latest
+    # build:
+    #   context: ../..
+    #   dockerfile: Dockerfile
     container_name: subscribe-handler
     env_file:
       - .env
@@ -62,9 +67,10 @@ services:
     restart: always
 
   kis-publisher:
-    build:
-      context: ../..
-      dockerfile: ./kis-publisher/Dockerfile
+    image: ghcr.io/techeer-winter/kis-publisher:latest
+    # build:
+    #   context: ../..
+    #   dockerfile: ./kis-publisher/Dockerfile
     container_name: kis-publisher
     env_file:
       - .env
@@ -86,9 +92,10 @@ services:
     restart: on-failure
 
   persistence-worker:
-    build:
-      context: ../..
-      dockerfile: ./persistence-worker/Dockerfile
+    image: ghcr.io/techeer-winter/persistence-worker:latest
+    # build:
+    #   context: ../..
+    #   dockerfile: ./persistence-worker/Dockerfile
     container_name: persistence-worker
     env_file:
       - .env
@@ -102,9 +109,10 @@ services:
     restart: always
 
   celery-worker:
-    build:
-      context: ../..
-      dockerfile: Dockerfile
+    image: ghcr.io/techeer-winter/backend-core:latest
+    # build:
+    #   context: ../..
+    #   dockerfile: Dockerfile
     container_name: celery-worker
     env_file:
       - .env
@@ -118,15 +126,18 @@ services:
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
       - PYTHONUNBUFFERED=1
     volumes:
-      - ../..:/app
+      # - ../..:/app <-- Disable source mount
+      - ../../static:/app/static
+      - ../../media:/app/media
     networks:
       - app-network
     restart: always
 
   celery-beat:
-    build:
-      context: ../..
-      dockerfile: Dockerfile
+    image: ghcr.io/techeer-winter/backend-core:latest
+    # build:
+    #   context: ../..
+    #   dockerfile: Dockerfile
     container_name: celery-beat
     env_file:
       - .env
@@ -141,15 +152,18 @@ services:
       - DART_SYNC_ENABLED=${DART_SYNC_ENABLED:-true}
       - REPORT_PROCESSING_ENABLED=${REPORT_PROCESSING_ENABLED:-true}
     volumes:
-      - ../..:/app
+      # - ../..:/app <-- Disable source mount
+      - ../../static:/app/static
+      - ../../media:/app/media
     networks:
       - app-network
     restart: always
 
   flower:
-    build:
-      context: ../..
-      dockerfile: Dockerfile
+    image: ghcr.io/techeer-winter/backend-core:latest
+    # build:
+    #   context: ../..
+    #   dockerfile: Dockerfile
     container_name: celery-flower
     env_file:
       - .env
