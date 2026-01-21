@@ -147,7 +147,7 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            PROJECT_PATH="~/Backend"
+            PROJECT_PATH="~/backend"
             
             if [ ! -d "$PROJECT_PATH" ]; then
               echo "Error: Project directory $PROJECT_PATH does not exist."
@@ -176,7 +176,7 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            PROJECT_PATH="~/Backend"
+            PROJECT_PATH="~/backend"
             
             if [ ! -d "$PROJECT_PATH" ]; then
               echo "Error: Project directory $PROJECT_PATH does not exist."
