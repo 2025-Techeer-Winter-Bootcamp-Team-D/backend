@@ -167,10 +167,9 @@ class RevenueCompositionSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(OpenApiTypes.FLOAT)
     def get_ratio(self, obj):
-        """ratio를 소수점 형태(0.58)로 반환 (백분율 58%를 0.58로 변환)"""
+        """ratio를 그대로 반환"""
         if obj.ratio is not None:
-            # DB에 저장된 ratio는 백분율(%)이므로 소수점으로 변환
-            return float(obj.ratio) / 100.0
+            return float(obj.ratio)
         return None
 
 
