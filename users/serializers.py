@@ -80,7 +80,7 @@ class FavoriteSerializer(serializers.ModelSerializer):
     
     def validate_companyId(self, value):
         try:
-            company = Company.objects.get(stock_code=value)
+            Company.objects.get(stock_code=value)
             return value  # 종목코드 문자열을 반환
         except Company.DoesNotExist:
             raise serializers.ValidationError("존재하지 않는 기업 종목코드입니다.")

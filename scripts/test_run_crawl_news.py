@@ -13,7 +13,6 @@ django.setup()
 
 from news.tasks.workflows import start_search_phase
 from news.models import CrawlJob
-from django.utils import timezone
 
 # CrawlJob 생성
 job = CrawlJob.objects.create(

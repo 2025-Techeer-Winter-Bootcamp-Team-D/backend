@@ -212,7 +212,7 @@ def refine_report_content_task(self, data: dict[str, Any]) -> dict[str, Any] | N
     try:
         # Step 1에서 이미 섹션별 추출 완료
         section_content = data.get("section_content", "")
-        tables_markdown = data.get("tables_markdown", "")
+        # tables_markdown = data.get("tables_markdown", "")
         raw_content = data.get("raw_content", "")
 
         # 섹션 내용이 있으면 우선 사용, 없으면 전체 본문 정제
@@ -356,7 +356,6 @@ def extract_report_info_task(self, data: dict[str, Any]) -> dict[str, Any] | Non
             if submitted_at:
                 try:
                     # ISO/datetime 형식 파싱 시도
-                    from datetime import datetime
                     from dateutil import parser as date_parser
 
                     parsed_date = date_parser.parse(submitted_at)
@@ -489,7 +488,8 @@ def extract_report_info_task(self, data: dict[str, Any]) -> dict[str, Any] | Non
 
                     logger.debug(
                         f"매출 구성 기타 항목 처리: report_id={report_id}, "
-                        f"company={company_stock_code}, ratio={round(others_ratio, 2)}% (계산값: 100 - {total_ratio:.2f})"
+                        f"company={company_stock_code}, "
+                        f"ratio={round(others_ratio, 2)}% (계산값: 100 - {total_ratio:.2f})"
                     )
 
             logger.info(

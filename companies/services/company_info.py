@@ -4,13 +4,13 @@
 DART API를 통해 기업 기본 정보를 조회하고 Company 모델에 저장하는 서비스
 KIS REST API를 통해 시가총액을 갱신하는 기능 포함
 """
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from datetime import datetime
 import logging
 
 from companies.models import Company
 from companies.services.dart_api import DartAPIClient, DartAPIError
-from companies.services.kis_quote import get_market_amount, get_kis_quote_client
+from companies.services.kis_quote import get_kis_quote_client
 from companies.services.logo import get_logo_url
 
 logger = logging.getLogger(__name__)

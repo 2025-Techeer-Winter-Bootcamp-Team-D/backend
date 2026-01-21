@@ -94,7 +94,7 @@ class EmbeddingService:
                     error_message = str(e)
                     # 쿼터 초과(429) 에러 명시적 처리
                     if "429" in error_message or "quota" in error_message.lower():
-                        logger.warning(f"Gemini API 쿼터 초과: 임베딩 생략")
+                        logger.warning("Gemini API 쿼터 초과: 임베딩 생략")
                     else:
                         logger.error(
                             f"Single embedding failed for text: {text[:50]}... - {error_message}"
@@ -102,7 +102,7 @@ class EmbeddingService:
                     embeddings.append(None)
 
             return embeddings
-        except Exception as e:
+        except Exception:
             logger.exception("Batch Embedding failed")
             # 부분 실패 시 기존 결과를 보존하고 나머지만 None으로 채움
             while len(embeddings) < len(texts):

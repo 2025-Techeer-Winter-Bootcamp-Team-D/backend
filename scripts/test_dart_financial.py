@@ -53,7 +53,7 @@ def test_dart_financial_statements():
             # 계정과목 리스트 확인
             account_list = data.get("list", [])
             if account_list:
-                print(f"\n[계정과목 샘플 (처음 10개)]")
+                print("\n[계정과목 샘플 (처음 10개)]")
                 for i, account in enumerate(account_list[:10]):
                     print(f"\n  [{i+1}] 계정과목:")
                     print(f"    account_id: {account.get('account_id', 'N/A')}")
@@ -62,7 +62,7 @@ def test_dart_financial_statements():
                     print(f"    frmtrm_amount: {account.get('frmtrm_amount', 'N/A')}")
 
                 # 영업이익, 당기순이익 관련 계정과목 찾기
-                print(f"\n[영업이익 관련 계정과목 검색]")
+                print("\n[영업이익 관련 계정과목 검색]")
                 operating_keywords = ["영업", "operating", "Operating"]
                 for account in account_list:
                     account_id = account.get("account_id", "").lower()
@@ -75,7 +75,7 @@ def test_dart_financial_statements():
                         print(f"  account_nm: {account.get('account_nm')}")
                         print(f"  thstrm_amount: {account.get('thstrm_amount')}")
 
-                print(f"\n[당기순이익 관련 계정과목 검색]")
+                print("\n[당기순이익 관련 계정과목 검색]")
                 profit_keywords = ["순이익", "profit", "Profit", "손익"]
                 for account in account_list:
                     account_id = account.get("account_id", "").lower()
@@ -89,7 +89,7 @@ def test_dart_financial_statements():
                         print(f"  thstrm_amount: {account.get('thstrm_amount')}")
 
                 # 모든 account_id 목록
-                print(f"\n[모든 account_id 목록]")
+                print("\n[모든 account_id 목록]")
                 account_ids = set()
                 for account in account_list:
                     account_id = account.get("account_id")
@@ -105,7 +105,7 @@ def test_dart_financial_statements():
                 print("  계정과목 리스트가 비어있습니다.")
 
             # 전체 응답 JSON 저장 (디버깅용)
-            print(f"\n[전체 응답 JSON 저장: /tmp/dart_financial_response.json]")
+            print("\n[전체 응답 JSON 저장: /tmp/dart_financial_response.json]")
             with open("/tmp/dart_financial_response.json", "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
             print("  저장 완료")

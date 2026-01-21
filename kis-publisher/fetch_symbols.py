@@ -8,7 +8,6 @@ DART API를 통해 상장 기업 목록을 가져올 수 있습니다.
 
 import os
 import csv
-import aiohttp
 import asyncio
 import asyncpg
 from typing import List, Optional
@@ -38,10 +37,12 @@ def load_symbols_from_csv(
         try:
             with open(csv_path, "r", encoding=encoding) as f:
                 reader = csv.reader(f)
-                header = next(reader)  # 헤더 건너뛰기
+                next(reader)  # 헤더 건너뛰기
 
                 # 헤더에서 컬럼 인덱스 찾기
-                # CSV 구조: [0]ISIN코드, [1]종목코드, [2]한글 종목명, [3]한글 종목약명, [4]영문 종목명, [5]상장일, [6]시장구분, ...
+                # CSV 구조:
+                # [0]ISIN코드, [1]종목코드, [2]한글 종목명, [3]한글 종목약명, [4]영문 종목명,
+                # [5]상장일, [6]시장구분, ...
                 code_idx = 1  # 종목코드는 2번째 컬럼 (인덱스 1)
                 market_idx = 6  # 시장구분은 7번째 컬럼 (인덱스 6)
 

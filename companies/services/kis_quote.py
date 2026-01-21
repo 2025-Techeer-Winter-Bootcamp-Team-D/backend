@@ -8,7 +8,6 @@ import logging
 import time
 import requests
 from typing import Optional
-from datetime import datetime, timedelta
 from django.core.cache import cache
 
 logger = logging.getLogger(__name__)

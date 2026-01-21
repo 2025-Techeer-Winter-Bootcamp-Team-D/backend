@@ -308,7 +308,8 @@ class FinancialService:
 
             # 추출된 데이터 로깅 (검증 전)
             logger.debug(
-                f"추출된 재무 데이터 (검증 전): {company.stock_code} ({year}년, {report_code}) - {financial_data}"
+                f"추출된 재무 데이터 (검증 전): {company.stock_code} "
+                f"({year}년, {report_code}) - {financial_data}"
             )
 
             # 단위 정규화 (DART API 응답에서 단위 정보 추출 및 정규화)
@@ -927,7 +928,8 @@ class FinancialService:
                 action = "생성" if created else "업데이트"
                 logger.debug(
                     f"매출 구성 {action} (기타): {company.stock_code} ({year}년) - "
-                    f"{segment_name}: {revenue_value:,}원 (ratio: {round(others_ratio, 2)}%, 계산값: 100 - {total_ratio:.2f})"
+                    f"{segment_name}: {revenue_value:,}원 "
+                    f"(ratio: {round(others_ratio, 2)}%, 계산값: 100 - {total_ratio:.2f})"
                 )
 
         logger.info(

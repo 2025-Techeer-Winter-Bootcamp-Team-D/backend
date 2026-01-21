@@ -2,10 +2,9 @@ from datetime import datetime, timedelta
 import logging
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
+from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter
-from drf_spectacular.types import OpenApiTypes
 from celery import group
 
 logger = logging.getLogger(__name__)
@@ -25,7 +24,6 @@ from .serializers import (
 from .services.financial import FinancialService
 from .services.reports import ReportsService
 from .services.company_info import CompanyInfoService
-from .services.dart_api import DartAPIError
 from .tasks.dart_sync import (
     sync_company_info_from_dart,
     sync_financial_statements,
@@ -47,6 +45,8 @@ from .services.outlook import (
 )
 from .services.sankey import SankeyDataService
 from rest_framework.views import APIView
+
+logger = logging.getLogger(__name__)
 
 
 # ------------------------ 기업 기본 정보 조회--------------------------
@@ -184,7 +184,10 @@ def get_company_financials(request, stock_code):
             return Response(
                 {
                     "status": 400,
-                    "error": "report_code 파라미터는 11011(사업), 11012(반기), 11013(1분기), 11014(3분기) 중 하나여야 합니다.",
+                    "error": (
+            "report_code 파라미터는 11011(사업), 11012(반기), "
+            "11013(1분기), 11014(3분기) 중 하나여야 합니다."
+        ),
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -368,7 +371,10 @@ def get_report_detail(request, stock_code, rcept_no):
                 {
                     "status": 404,
                     "error": "Report not found",
-                    "message": f"접수번호 {rcept_no}의 보고서를 찾을 수 없거나 해당 기업({stock_code})의 보고서가 아닙니다.",
+                    "message": (
+            f"접수번호 {rcept_no}의 보고서를 찾을 수 없거나 "
+            f"해당 기업({stock_code})의 보고서가 아닙니다."
+        ),
                 },
                 status=status.HTTP_404_NOT_FOUND,
             )
@@ -395,7 +401,7 @@ def get_report_detail(request, stock_code, rcept_no):
             {"status": 404, "error": "Company not found"},
             status=status.HTTP_404_NOT_FOUND,
         )
-    except Exception as e:
+    except Exception:
         logger.exception(
             f"보고서 분석 결과 조회 오류: stock_code={stock_code}, rcept_no={rcept_no}"
         )
@@ -460,7 +466,10 @@ def sync_company_from_dart(request, stock_code):
                 {
                     "status": 404,
                     "error": f"Company with stock_code '{stock_code}' not found in database.",
-                    "message": "동기화하려면 먼저 기업 데이터를 생성해야 합니다. 종목코드로 기업을 생성하거나, DART 고유번호(corp_code)를 설정해야 합니다.",
+                    "message": (
+                        "동기화하려면 먼저 기업 데이터를 생성해야 합니다. "
+                        "종목코드로 기업을 생성하거나, DART 고유번호(corp_code)를 설정해야 합니다."
+                    ),
                 },
                 status=status.HTTP_404_NOT_FOUND,
             )
@@ -857,7 +866,7 @@ def sync_all_companies_from_dart(request):
             return Response(
                 {
                     "status": 202,
-                    "message": f"전체 기업 동기화 작업이 비동기로 등록되었습니다.",
+                    "message": "전체 기업 동기화 작업이 비동기로 등록되었습니다.",
                     "data": {
                         "total_companies": total_count,
                         "years": years,
@@ -1278,10 +1287,13 @@ def process_single_report_view(request, stock_code, rcept_no):
                 {
                     "status": 404,
                     "error": "Report not found",
-                    "message": f"접수번호 {rcept_no}의 보고서를 찾을 수 없거나 해당 기업({stock_code})의 보고서가 아닙니다.",
-                },
-                status=status.HTTP_404_NOT_FOUND,
-            )
+                "message": (
+                    f"접수번호 {rcept_no}의 보고서를 찾을 수 없거나 "
+                    f"해당 기업({stock_code})의 보고서가 아닙니다."
+                ),
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
 
         # 비동기 실행 여부 확인
         use_async = request.query_params.get("async", "true").lower() == "true"
@@ -1321,7 +1333,7 @@ def process_single_report_view(request, stock_code, rcept_no):
             )
 
             # 동기 실행 (apply() 사용)
-            result = workflow.apply()
+            workflow.apply()
 
             # 결과 확인
             report.refresh_from_db()
@@ -1346,7 +1358,7 @@ def process_single_report_view(request, stock_code, rcept_no):
                 },
                 status=status.HTTP_200_OK,
             )
-        except Exception as e:
+        except Exception:
             logger.exception("보고서 분석 중 오류 발생")
 
             return Response(
@@ -1367,7 +1379,7 @@ def process_single_report_view(request, stock_code, rcept_no):
             {"status": 404, "error": "Company not found"},
             status=status.HTTP_404_NOT_FOUND,
         )
-    except Exception as e:
+    except Exception:
         logger.exception("보고서 분석 API 오류")
 
         return Response(
@@ -1427,7 +1439,7 @@ def get_company_prices(request, stock_code: str):
     """
     # 종목 존재 확인
     try:
-        company = Company.objects.get(stock_code=stock_code, is_deleted=False)
+        Company.objects.get(stock_code=stock_code, is_deleted=False)
     except Company.DoesNotExist:
         return Response(
             {"status": 404, "error": f"종목 {stock_code}을(를) 찾을 수 없습니다."},
@@ -1577,7 +1589,7 @@ def get_company_news_list(request, stock_code):
 
     특정 기업과 관련된 뉴스 목록을 페이지네이션하여 반환합니다.
     """
-    from django.core.paginator import Paginator, EmptyPage
+    from django.core.paginator import Paginator
     from news.models import CompanyNews
     from news.serializers import CompanyNewsSerializer
 
@@ -1840,7 +1852,7 @@ def sync_company_news(request, stock_code):
             },
             status=status.HTTP_200_OK,
         )
-    except Exception as e:
+    except Exception:
         logger.exception("뉴스 동기화 중 오류 발생")
         return Response(
             {
@@ -2096,7 +2108,7 @@ def get_company_outlook(request, stock_code):
             status=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
 
-    except Exception as e:
+    except Exception:
         logger.exception(f"기업 전망 분석 오류: stock_code={stock_code}")
         return Response(
             {"status": 500, "error": "서버 오류가 발생했습니다"},

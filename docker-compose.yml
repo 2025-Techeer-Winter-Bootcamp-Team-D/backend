@@ -100,6 +100,7 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - OPENSEARCH_HOST=opensearch:9200
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
     networks:
       - django-network
     develop:
@@ -120,7 +121,9 @@ services:
           action: rebuild
 
   kis-mock-server:
-    build: ./kis-publisher
+    build:
+      context: .
+      dockerfile: ./kis-publisher/Dockerfile
     container_name: kis-mock-server
     command: python mock_server.py
     ports:
@@ -137,7 +140,9 @@ services:
       start_period: 3s
 
   kis-publisher:
-    build: ./kis-publisher
+    build:
+      context: .
+      dockerfile: ./kis-publisher/Dockerfile
     container_name: kis-publisher
     env_file:
       - .env
@@ -166,7 +171,9 @@ services:
         max_attempts: 3
 
   persistence-worker:
-    build: ./persistence-worker
+    build:
+      context: .
+      dockerfile: ./persistence-worker/Dockerfile
     container_name: persistence-worker
     env_file:
       - .env

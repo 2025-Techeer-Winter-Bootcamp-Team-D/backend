@@ -19,7 +19,6 @@ django.setup()
 from industries.models import Industry, IndustryChart1d, IndustryChart3d, IndustryChart1w, IndustryChart2w
 from industries.services.kis_index_service import KISIndexService
 from django.db import transaction
-from datetime import datetime
 
 
 def load_industry_charts():

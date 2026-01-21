@@ -1,5 +1,4 @@
 import asyncio
-import json
 import os
 import redis.asyncio as redis
 import asyncpg
@@ -186,7 +185,7 @@ class PersistenceWorker:
             self.pending_ids.append(entry_id)
 
     async def run(self):
-        print(f"[INIT] Starting PersistenceWorker (Redis Streams mode)...")
+        print("[INIT] Starting PersistenceWorker (Redis Streams mode)...")
         print(
             f"[INIT] Stream: {STREAM_KEY}, Group: {CONSUMER_GROUP}, Consumer: {CONSUMER_NAME}"
         )
@@ -199,7 +198,7 @@ class PersistenceWorker:
             print("[INIT] Connecting to Redis...")
             redis_client = redis.from_url(REDIS_URL)
             await redis_client.ping()
-            print(f"[INIT] Redis connected")
+            print("[INIT] Redis connected")
 
             # Consumer Group 생성/확인
             await self.ensure_consumer_group(redis_client)

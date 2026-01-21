@@ -4,7 +4,6 @@ DART 데이터 동기화 Celery 작업
 주기적으로 DART API에서 기업 정보, 재무제표, 보고서를 동기화하는 작업
 """
 from celery import shared_task
-from typing import List
 import logging
 import requests
 
@@ -157,7 +156,7 @@ def sync_all_company_info():
     for company in companies:
         try:
             sync_company_info_from_dart.delay(company.stock_code)
-        except Exception as e:
+        except Exception:
             logger.exception("기업 정보 동기화 작업 등록 실패: %s", company.stock_code)
 
     logger.info(f"전체 기업 정보 동기화 작업 등록 완료: {total}개")
@@ -174,7 +173,6 @@ def sync_all_financial_statements(years: int = 3, batch_size: int = 50):
         batch_size: 한 번에 처리할 기업 수 (기본값: 50)
     """
     from datetime import datetime
-    from celery import group
     from celery.exceptions import Reject
 
     current_year = datetime.now().year
@@ -203,7 +201,7 @@ def sync_all_financial_statements(years: int = 3, batch_size: int = 50):
                     )
                     tasks.append(task)
                     task_count += 1
-            except (Reject, ConnectionError) as e:
+            except (Reject, ConnectionError):
                 # 특정 예외만 처리 (Celery 연결 오류 등)
                 logger.exception("재무제표 동기화 작업 등록 실패: %s", company.stock_code)
 
