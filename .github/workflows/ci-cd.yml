@@ -147,7 +147,7 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            PROJECT_PATH="~/backend"
+            PROJECT_PATH="~/backend/deploy/data"
             
             if [ ! -d "$PROJECT_PATH" ]; then
               echo "Error: Project directory $PROJECT_PATH does not exist."
@@ -155,13 +155,13 @@ jobs:
             fi
             
             cd $PROJECT_PATH
-            git pull origin develop
+            git pull
             
             # Create .env (Data node)
-            echo "${{ secrets.ENV_FILE_DATA }}" > deploy/data/.env
+            echo "${{ secrets.ENV_FILE_DATA }}" > .env
             
             # Deploy Data Services
-            docker compose -f deploy/data/docker-compose.yml up -d
+            docker compose -f docker-compose.yml up -d
             
   deploy-app:
     name: Deploy Application Layer
@@ -176,7 +176,7 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            PROJECT_PATH="~/backend"
+            PROJECT_PATH="~/backend/deploy/app"
             
             if [ ! -d "$PROJECT_PATH" ]; then
               echo "Error: Project directory $PROJECT_PATH does not exist."
@@ -184,19 +184,19 @@ jobs:
             fi
             
             cd $PROJECT_PATH
-            git pull origin develop
+            git pull
             
             # Create/Update .env file
-            echo "${{ secrets.ENV_FILE_APP }}" > deploy/app/.env
+            echo "${{ secrets.ENV_FILE_APP }}" > .env
             
             # Login to GHCR (App node needs custom images)
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             
             # Pull latest images
-            docker compose -f deploy/app/docker-compose.yml pull
+            docker compose -f docker-compose.yml pull
             
             # Restart App Services
-            docker compose -f deploy/app/docker-compose.yml up -d
+            docker compose -f docker-compose.yml up -d
             
             # Clean up
             docker image prune -f
