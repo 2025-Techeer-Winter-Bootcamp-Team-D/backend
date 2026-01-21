@@ -7,6 +7,7 @@ from .models import (
     RevenueComposition,
     Report,
     CompanyRanking,
+    SankeyData,
 )
 from .services.logo import get_logo_url
 from industries.models import Industry
@@ -263,3 +264,41 @@ class CompanyRankingSerializer(serializers.ModelSerializer):
         if company.homepage_url:
             return get_logo_url(homepage_url=company.homepage_url)
         return None
+
+
+#sankey seiralizers
+class SankeySerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(source='company.company_name', read_only=True)
+    total_revenue = serializers.SerializerMethodField()
+    segments = serializers.SerializerMethodField()
+    expenses = serializers.SerializerMethodField()
+    fiscal_year = serializers.CharField()
+
+    class Meta:
+        model = SankeyData
+        fields = ['company_name', 'fiscal_year', 'total_revenue', 'is_loss', 'segments', 'expenses']
+
+    @extend_schema_field(OpenApiTypes.INT)
+    def get_total_revenue(self, obj):
+        """총 매출액 추출"""
+        return obj.raw_values.get('total_revenue', 0)
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_segments(self, obj):
+        """왼쪽 노드: 중앙 매출액 노드로 들어오는 모든 source 값(사업부별 매출) 추출"""
+        if not obj.nodes:
+            return []
+        target_name = obj.nodes[0]['name']
+        return [{"name": link['source'], "value": link['value']} for link in obj.links if link['target'] == target_name]
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_expenses(self, obj):
+        """오른쪽 노드: raw_values에 보관된 비용/이익 데이터를 딕셔너리로 반환"""
+        rv = obj.raw_values
+        return {
+            "원가비용": rv.get('cogs', 0),
+            "판관비": rv.get('sg_a', 0),
+            "순수익": 0 if obj.is_loss else rv.get('net_income', 0),
+            "기타비용": rv.get('other_expense', 0)
+        }
+

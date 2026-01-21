@@ -58,5 +58,4 @@ urlpatterns = [
     path("api/comparisons/", include("comparisons.urls")),
     path("api/news/", include("news.urls")),
     path("api/indices/", include("indices.urls")),
-    path("api/sankeys/", include("sankeys.urls"))
 ]
