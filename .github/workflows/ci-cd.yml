@@ -140,73 +140,63 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
     steps:
-      - name: Deploy to Data Instance
+      - uses: actions/checkout@v4 # 설정 파일 전송을 위해 체크아웃 필요
+
+      - name: Copy deployment files
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DATA_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "deploy/data/*"
+          target: "~/techeer-deploy"
+
+      - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DATA_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            PROJECT_PATH="~/backend"
+            cd ~/techeer-deploy/deploy/data
+            # .env 생성 (기존 방식 유지)
+            echo "${{ secrets.ENV_FILE_DATA }}" > .env
             
-            # 1. Clean previous deployment folder (if any)
-            sudo rm -rf $PROJECT_PATH
-            
-            # 2. Clone repository afresh
-            git clone -b develop https://github.com/2025-Techeer-Winter-Bootcamp-Team-D/backend.git $PROJECT_PATH
-            
-            cd $PROJECT_PATH
-            
-            # 3. Create .env (Data node)
-            echo "${{ secrets.ENV_FILE_DATA }}" > deploy/data/.env
-            
-            # Pre-create data directories with correct permissions for OpenSearch (UID 1000)
+            # 권한 및 디렉토리 설정
             sudo mkdir -p /home/ubuntu/infra-data/opensearch
             sudo chown -R 1000:1000 /home/ubuntu/infra-data/opensearch
             
-            # 4. Deploy Data Services
-            docker compose -f deploy/data/docker-compose.yml up -d
-            
-            # 5. Cleanup source code (containers keep running)
-            cd ~
-            sudo rm -rf $PROJECT_PATH
-            
+            docker compose up -d
+
   deploy-app:
     name: Deploy Application Layer
     needs: [deploy-data]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
     steps:
-      - name: Deploy to App Instance
+      - uses: actions/checkout@v4
+
+      - name: Copy deployment files
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.APP_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "deploy/app/*"
+          target: "~/techeer-deploy"
+
+      - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.APP_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            PROJECT_PATH="~/backend"
+            cd ~/techeer-deploy/deploy/app
+            echo "${{ secrets.ENV_FILE_APP }}" > .env
             
-            # 1. Clean previous deployment folder (if any)
-            sudo rm -rf $PROJECT_PATH
-            
-            # 2. Clone repository afresh
-            git clone -b develop https://github.com/2025-Techeer-Winter-Bootcamp-Team-D/backend.git $PROJECT_PATH
-            
-            cd $PROJECT_PATH
-            
-            # 3. Create/Update .env file
-            echo "${{ secrets.ENV_FILE_APP }}" > deploy/app/.env
-            
-            # 4. Login to GHCR
+            # GHCR 로그인 및 Pull
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            
-            # 5. Pull latest images
-            docker compose -f deploy/app/docker-compose.yml pull
-            
-            # 6. Restart App Services
-            docker compose -f deploy/app/docker-compose.yml up -d
-            
-            # 7. Clean up
+            docker compose pull
+            docker compose up -d
             docker image prune -f
-            cd ~
-            sudo rm -rf $PROJECT_PATH
