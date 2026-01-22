@@ -30,12 +30,12 @@ import logging
 import requests
 import zipfile
 import io
+import FinanceDataReader as fdr
 
 logger = logging.getLogger(__name__)
 
 # 시가총액 상위 50개 기업 종목코드 (2024년 기준)
 # 개발/테스트 환경에서 의미있는 데이터로 작업하기 위한 대표 기업 목록
-import FinanceDataReader as fdr
 
 
 class Command(BaseCommand):
@@ -298,7 +298,7 @@ class Command(BaseCommand):
         if top_companies:
             self.stdout.write(
                 self.style.WARNING(
-                    f"시가총액 상위 100개 기업만 동기화합니다 (FinanceDataReader 기준)."
+                    "시가총액 상위 100개 기업만 동기화합니다 (FinanceDataReader 기준)."
                 )
             )
         elif limit > 0:
