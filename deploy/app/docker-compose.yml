@@ -18,18 +18,10 @@ services:
     restart: always
 
   app:
-    # Production: Use GHCR Image
     image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/backend-core:latest
-    # Dev/Manual Deploy: Use build context
-    # build:
-    #   context: ../..
-    #   dockerfile: Dockerfile
     container_name: django
     env_file:
       - .env
-    # No ports exposed directly, consistent with Nginx gateway pattern
-    # ports:
-    #   - "8000:8000" 
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DB_HOST}:5432/${POSTGRES_DB}
       - REDIS_HOST=${REDIS_HOST}
@@ -41,9 +33,6 @@ services:
       - OPENSEARCH_USERNAME=${OPENSEARCH_USERNAME:-admin}
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
     volumes:
-      # Production: Code is inside image. Only mount static/media if needed for collection, 
-      # but ideally running collectstatic in build or startup script is better.
-      # - ../..:/app  <-- DISABLED for Production Stability (Use Image Code)
       - ../../static:/app/static
       - ../../media:/app/media
     networks:
@@ -52,9 +41,6 @@ services:
 
   subscribe-handler:
     image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/backend-core:latest
-    # build:
-    #   context: ../..
-    #   dockerfile: Dockerfile
     container_name: subscribe-handler
     env_file:
       - .env
@@ -71,9 +57,6 @@ services:
 
   kis-publisher:
     image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/kis-publisher:latest
-    # build:
-    #   context: ../..
-    #   dockerfile: ./kis-publisher/Dockerfile
     container_name: kis-publisher
     env_file:
       - .env
@@ -84,11 +67,9 @@ services:
       - PYTHONUNBUFFERED=1
       - KRX_SYMBOLS_CSV_PATH=/app/companies_data.csv
       - KIS_SYMBOL_LIMIT=50
-      # Production: Use Real KIS API
       - KIS_USE_TEST_MODE=${KIS_USE_TEST_MODE:-false}
       - KIS_APP_KEY=${KIS_APP_KEY}
       - KIS_APP_SECRET=${KIS_APP_SECRET}
-      # Reconnect Logic
       - KIS_MAX_RECONNECT=3
     networks:
       - app-network
@@ -96,9 +77,6 @@ services:
 
   persistence-worker:
     image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/persistence-worker:latest
-    # build:
-    #   context: ../..
-    #   dockerfile: ./persistence-worker/Dockerfile
     container_name: persistence-worker
     env_file:
       - .env
@@ -115,9 +93,6 @@ services:
 
   celery-worker:
     image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/backend-core:latest
-    # build:
-    #   context: ../..
-    #   dockerfile: Dockerfile
     container_name: celery-worker
     env_file:
       - .env
@@ -134,7 +109,6 @@ services:
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
       - PYTHONUNBUFFERED=1
     volumes:
-      # - ../..:/app <-- Disable source mount
       - ../../static:/app/static
       - ../../media:/app/media
     networks:
@@ -143,9 +117,6 @@ services:
 
   celery-beat:
     image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/backend-core:latest
-    # build:
-    #   context: ../..
-    #   dockerfile: Dockerfile
     container_name: celery-beat
     env_file:
       - .env
@@ -160,7 +131,6 @@ services:
       - DART_SYNC_ENABLED=${DART_SYNC_ENABLED:-true}
       - REPORT_PROCESSING_ENABLED=${REPORT_PROCESSING_ENABLED:-true}
     volumes:
-      # - ../..:/app <-- Disable source mount
       - ../../static:/app/static
       - ../../media:/app/media
     networks:
@@ -169,13 +139,9 @@ services:
 
   flower:
     image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/backend-core:latest
-    # build:
-    #   context: ../..
-    #   dockerfile: Dockerfile
     container_name: celery-flower
     env_file:
       - .env
-    # command: celery -A config flower --port=5555 --broker=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0 # Override cmd to use env? No flower reads explicit arg.
     command: celery -A config flower --port=5555
     ports:
       - "127.0.0.1:5555:5555"
@@ -187,7 +153,6 @@ services:
       - app-network
     restart: always
 
-  # Monitoring (Runs on App Node, Scrapes Data Node)
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus

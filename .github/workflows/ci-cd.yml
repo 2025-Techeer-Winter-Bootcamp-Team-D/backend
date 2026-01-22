@@ -84,7 +84,6 @@ jobs:
     name: Build & Push Docker Images
     needs: [ci, test]
     runs-on: ubuntu-latest
-    # Push 이벤트일 때만 빌드 및 푸시 (PR 제외)
     if: github.event_name == 'push'
     permissions:
       contents: read
@@ -140,7 +139,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
     steps:
-      - uses: actions/checkout@v4 # 설정 파일 전송을 위해 체크아웃 필요
+      - uses: actions/checkout@v4
 
       - name: Copy deployment files
         uses: appleboy/scp-action@v0.1.7
@@ -170,30 +169,14 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             cd ~/techeer-deploy/deploy/data
-            
-            # 파일 복사 확인
-            echo "=== docker-compose.yml 확인 ==="
-            cat docker-compose.yml | grep -A 5 "opensearch:" || true
-            
-            # OpenSearch Dockerfile 확인
-            echo "=== OpenSearch Dockerfile 확인 ==="
-            ls -la ~/techeer-deploy/opensearch/ || true
-            cat ~/techeer-deploy/opensearch/Dockerfile || true
-            
-            # .env 생성 (기존 방식 유지)
             echo "${{ secrets.ENV_FILE_DATA }}" > .env
-            
-            # 권한 및 디렉토리 설정
             sudo mkdir -p /home/ubuntu/infra-data/opensearch
             sudo chown -R 1000:1000 /home/ubuntu/infra-data/opensearch
             
-            # OpenSearch 이미지 빌드 (변경사항이 있을 때 자동으로 빌드)
-            echo "=== OpenSearch 이미지 빌드 시작 ==="
-            docker compose build opensearch || echo "빌드 실패 (이미 최신일 수 있음)"
-            
-            # 서비스 시작/재시작 (이미지가 변경되었으면 자동으로 재시작)
-            echo "=== 서비스 시작/재시작 ==="
-            docker compose up -d --build
+            docker compose pull
+            # --build를 사용하여 Dockerfile이 정의된 OpenSearch 등을 로컬에서 빌드 및 반영
+            docker compose up -d --build --remove-orphans
+            docker image prune -f
 
   deploy-app:
     name: Deploy Application Layer
@@ -220,17 +203,22 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-
-            
             cd ~/techeer-deploy/deploy/app
             echo "${{ secrets.ENV_FILE_APP }}" > .env
             
-            # 권한 및 디렉토리 설정 (Prometheus UID 65534)
             mkdir -p prometheus_data
             sudo chown -R 65534:65534 prometheus_data
             
-            # GHCR 로그인 및 Pull
+            # GHCR 로그인
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            # 최신 이미지 Pull
             docker compose pull
-            docker compose up -d
-            docker image prune -f
+            
+            # [중요 수정] 
+            # 1. --build: Nginx 처럼 'build:' 설정이 된 서비스를 EC2에서 새로 빌드함
+            # 2. --remove-orphans: docker-compose에서 삭제된 서비스의 컨테이너를 정리함
+            docker compose up -d --build --remove-orphans
+            
+            # 미사용 이미지 정리 (디스크 용량 확보)
+            docker image prune -af
