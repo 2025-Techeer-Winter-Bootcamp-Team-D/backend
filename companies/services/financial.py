@@ -399,7 +399,8 @@ class FinancialService:
             if not is_valid:
                 # 검증 실패 시 상세 로깅
                 logger.warning(
-                    f"재무 데이터 유효성 검증 실패 (경고): {company.stock_code} ({year}년, {report_code}) - {error_message}"
+                    f"재무 데이터 유효성 검증 실패 (경고): "
+                    f"{company.stock_code} ({year}년, {report_code}) - {error_message}"
                 )
                 logger.warning(
                     f"검증 실패 상세 데이터: {company.stock_code} ({year}년, {report_code}) - "
@@ -487,7 +488,8 @@ class FinancialService:
         except Exception as e:
             # 예외 발생 시에도 최소한 빈 레코드라도 저장 (데이터 누락 방지)
             logger.error(
-                f"재무제표 동기화 중 오류 발생 (빈 레코드 저장 시도): {company.stock_code} ({year}년, {report_code}) - {e}"
+                f"재무제표 동기화 중 오류 발생 (빈 레코드 저장 시도): "
+                f"{company.stock_code} ({year}년, {report_code}) - {e}"
             )
             try:
                 # 빈 레코드 생성 시도

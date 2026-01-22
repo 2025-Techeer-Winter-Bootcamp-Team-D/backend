@@ -109,7 +109,8 @@ def sync_financial_statements(self, stock_code: str, year: int):
                 60 * (retry_count + 1), 300
             )  # 60초, 120초, 180초, 240초, 300초 (최대 5분)
             logger.warning(
-                f"DART API error (재시도 {retry_count + 1}/{self.max_retries}): {stock_code} ({year}년) - {e}, {countdown}초 후 재시도"
+                f"DART API error (재시도 {retry_count + 1}/{self.max_retries}): "
+                f"{stock_code} ({year}년) - {e}, {countdown}초 후 재시도"
             )
             raise self.retry(countdown=countdown, exc=e)
     except Exception as e:
@@ -119,7 +120,9 @@ def sync_financial_statements(self, stock_code: str, year: int):
             60 * (retry_count + 1), 300
         )  # 60초, 120초, 180초, 240초, 300초 (최대 5분)
         logger.error(
-            f"Error syncing financial statements (재시도 {retry_count + 1}/{self.max_retries}): {stock_code} ({year}년) - {e}, {countdown}초 후 재시도"
+            f"Error syncing financial statements "
+            f"(재시도 {retry_count + 1}/{self.max_retries}): "
+            f"{stock_code} ({year}년) - {e}, {countdown}초 후 재시도"
         )
         raise self.retry(countdown=countdown, exc=e)
 
