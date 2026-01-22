@@ -4,7 +4,7 @@ DART 고유번호 목록 동기화 Management Command
 상장기업(stock_code가 있는 기업)만 동기화합니다.
 
 사용법:
-    # 시가총액 상위 50개 기업만 동기화 (개발/테스트용, 권장)
+    # 시가총액 상위 100개 기업만 동기화 (FinanceDataReader 사용)
     python manage.py sync_corp_codes --top-companies
 
     # 상위 N개 기업만 동기화
@@ -35,60 +35,7 @@ logger = logging.getLogger(__name__)
 
 # 시가총액 상위 50개 기업 종목코드 (2024년 기준)
 # 개발/테스트 환경에서 의미있는 데이터로 작업하기 위한 대표 기업 목록
-TOP_50_STOCK_CODES = {
-    # 코스피 시가총액 상위
-    "005930",  # 삼성전자
-    "000660",  # SK하이닉스
-    "373220",  # LG에너지솔루션
-    "207940",  # 삼성바이오로직스
-    "005380",  # 현대차
-    "000270",  # 기아
-    "068270",  # 셀트리온
-    "035420",  # NAVER
-    "005490",  # POSCO홀딩스
-    "051910",  # LG화학
-    "006400",  # 삼성SDI
-    "035720",  # 카카오
-    "028260",  # 삼성물산
-    "105560",  # KB금융
-    "055550",  # 신한지주
-    "012330",  # 현대모비스
-    "003670",  # 포스코퓨처엠
-    "066570",  # LG전자
-    "086790",  # 하나금융지주
-    "096770",  # SK이노베이션
-    "034730",  # SK
-    "003550",  # LG
-    "015760",  # 한국전력
-    "032830",  # 삼성생명
-    "009150",  # 삼성전기
-    "018260",  # 삼성에스디에스
-    "010130",  # 고려아연
-    "033780",  # KT&G
-    "000810",  # 삼성화재
-    "030200",  # KT
-    "011200",  # HMM
-    "017670",  # SK텔레콤
-    "316140",  # 우리금융지주
-    "010950",  # S-Oil
-    "024110",  # 기업은행
-    "000100",  # 유한양행
-    "009540",  # 한국조선해양
-    "003490",  # 대한항공
-    "011170",  # 롯데케미칼
-    "034020",  # 두산에너빌리티
-    # 코스닥 시가총액 상위
-    "247540",  # 에코프로비엠
-    "086520",  # 에코프로
-    "091990",  # 셀트리온헬스케어
-    "028300",  # HLB
-    "041510",  # 에스엠
-    "263750",  # 펄어비스
-    "145020",  # 휴젤
-    "293490",  # 카카오게임즈
-    "112040",  # 위메이드
-    "039030",  # 이오테크닉스
-}
+import FinanceDataReader as fdr
 
 
 class Command(BaseCommand):
@@ -117,7 +64,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--top-companies",
             action="store_true",
-            help="시가총액 상위 50개 기업만 동기화합니다 (개발/테스트용 권장)",
+            help="시가총액 상위 100개 기업만 동기화합니다 (FinanceDataReader 기반)",
         )
         parser.add_argument(
             "--limit",
@@ -299,7 +246,27 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS("=" * 50 + "\n"))
 
+        self.stdout.write(self.style.SUCCESS("=" * 50 + "\n"))
 
+    def _get_top_market_cap_tickers(self, limit=100):
+        """
+        FinanceDataReader를 사용하여 시가총액 상위 기업의 종목코드를 가져옵니다.
+        """
+        try:
+            # KRX 전체 종목 리스트 가져오기 (Marcap으로 정렬됨)
+            df = fdr.StockListing("KRX")
+
+            # Marcap 기준 내림차순 정렬
+            df = df.sort_values(by="Marcap", ascending=False)
+
+            # 상위 limit개 선택
+            top_df = df.head(limit)
+
+            # 종목코드 리스트 반환 (Code 컬럼)
+            return set(top_df["Code"].tolist())
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"FinanceDataReader 조회 실패: {e}"))
+            return set()
 
     def handle(self, *args, **options):
         update_existing = options["update_existing"]
@@ -307,6 +274,16 @@ class Command(BaseCommand):
         skip_industry_mapping = options["skip_industry_mapping"]
         top_companies = options["top_companies"]
         limit = options["limit"]
+
+        # --top-companies 옵션 사용 시 업종코드 매핑은 필수
+        if top_companies and skip_industry_mapping:
+            self.stdout.write(
+                self.style.WARNING(
+                    "--top-companies 옵션 사용 시 업종코드 매핑이 필요합니다. "
+                    "--skip-industry-mapping 옵션을 무시하고 업종코드 조회를 수행합니다."
+                )
+            )
+            skip_industry_mapping = False
 
         self.stdout.write(
             self.style.SUCCESS("DART 상장기업 고유번호 목록 동기화 시작...")
@@ -321,7 +298,7 @@ class Command(BaseCommand):
         if top_companies:
             self.stdout.write(
                 self.style.WARNING(
-                    f"시가총액 상위 {len(TOP_50_STOCK_CODES)}개 기업만 동기화합니다."
+                    f"시가총액 상위 100개 기업만 동기화합니다 (FinanceDataReader 기준)."
                 )
             )
         elif limit > 0:
@@ -358,14 +335,19 @@ class Command(BaseCommand):
             # 기업 필터링 (--top-companies 또는 --limit 옵션)
             before_count = len(companies_data)
             if top_companies:
-                # 시가총액 상위 50개 기업만 필터링
+                self.stdout.write(
+                    "FinanceDataReader를 통해 시가총액 상위 100개 기업 조회 중..."
+                )
+                top_tickers = self._get_top_market_cap_tickers(100)
+
+                # 상위 100개 기업만 필터링
                 companies_data = [
-                    c for c in companies_data if c["stock_code"] in TOP_50_STOCK_CODES
+                    c for c in companies_data if c["stock_code"] in top_tickers
                 ]
                 self.stdout.write(
                     self.style.SUCCESS(
                         f"필터링 완료: {before_count}개 → {len(companies_data)}개 기업 "
-                        f"(시가총액 상위 50개 중 DART에 존재하는 기업)"
+                        f"(시가총액 상위 100개 중 DART에 존재하는 기업)"
                     )
                 )
             elif limit > 0:
@@ -376,8 +358,6 @@ class Command(BaseCommand):
                         f"필터링 완료: {before_count}개 → {len(companies_data)}개 기업 (상위 {limit}개 제한)"
                     )
                 )
-
-
 
             # Company 생성/업데이트
             created_count = 0
@@ -541,6 +521,7 @@ class Command(BaseCommand):
                     self.style.SUCCESS("업종 매핑 데이터가 이미 준비되어 있습니다.")
                 )
                 # 기존 매핑이 있어도 ticker_to_kis는 필요하므로 로드
+                # 특히 --top-companies 옵션 사용 시 새로 추가된 기업들의 매핑을 위해 필요
                 ticker_to_kis = self._load_kis_master_and_mapping(dry_run=dry_run)
 
             # STEP 3-2: KSIC → KIS 매핑 생성

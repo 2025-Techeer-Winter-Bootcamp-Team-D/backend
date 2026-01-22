@@ -61,3 +61,4 @@ pandas>=2.0.0
 
 # DART API
 opendartreader>=0.2.3
+finance-datareader>=0.9.50
