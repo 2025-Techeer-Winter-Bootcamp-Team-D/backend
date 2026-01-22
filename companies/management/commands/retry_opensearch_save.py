@@ -1,7 +1,7 @@
 """
-보고서 OpenSearch 저장 재시도 Management Command
+보고서 Embedding 재생성 및 OpenSearch 저장 Management Command
 
-이미 처리된 보고서의 OpenSearch 저장만 재시도합니다.
+DB의 refined_content와 extracted_info를 이용해서 embedding부터 다시 생성하고 OpenSearch에 저장합니다.
 크롤링이나 정보 추출은 다시 하지 않습니다.
 
 사용법:
@@ -21,7 +21,8 @@
 from django.core.management.base import BaseCommand
 from django.db.models import Q
 from companies.models import Report
-from companies.tasks.report_processing import save_report_to_opensearch_task
+from companies.services.report_opensearch import ReportOpenSearchService
+from news.services.embedding import EmbeddingService
 import logging
 
 logger = logging.getLogger(__name__)
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
     help = (
-        "이미 처리된 보고서의 OpenSearch 저장만 재시도합니다. "
+        "DB의 refined_content와 extracted_info를 이용해서 embedding부터 다시 생성하고 OpenSearch에 저장합니다. "
         "크롤링이나 정보 추출은 다시 하지 않습니다."
     )
 
@@ -74,24 +75,19 @@ class Command(BaseCommand):
             # 또는 processing_status가 "failed"인 경우
             queryset = queryset.filter(
                 Q(processing_status="completed") | Q(processing_status="failed")
-            ).filter(
-                embedding__isnull=False
-            )  # 임베딩이 있어야 함
-        else:
-            # 처리 완료되었고 임베딩이 있는 모든 보고서
-            queryset = queryset.filter(
-                processing_status="completed", embedding__isnull=False
             )
+        else:
+            # 처리 완료된 모든 보고서
+            queryset = queryset.filter(processing_status="completed")
 
         if stock_code:
             queryset = queryset.filter(company__stock_code=stock_code)
 
-        # 필수 데이터가 있는 보고서만 필터링
+        # 필수 데이터가 있는 보고서만 필터링 (embedding은 없어도 됨)
         queryset = queryset.filter(
-            embedding__isnull=False,
             extracted_info__isnull=False,
             refined_content__isnull=False,
-        ).exclude(embedding="", refined_content="")
+        ).exclude(refined_content="")
 
         count = queryset.count()
         self.stdout.write(f"대상 보고서 수: {count}개")
@@ -113,57 +109,119 @@ class Command(BaseCommand):
                 self.stdout.write(f"  ... 외 {count - 10}개")
             return
 
+        # Embedding 서비스 및 OpenSearch 서비스 초기화
+        embedding_service = EmbeddingService()
+        opensearch_service = ReportOpenSearchService()
+
         # 재시도 실행
         success_count = 0
         fail_count = 0
 
         for report in queryset:
             try:
-                # save_report_to_opensearch_task에 필요한 데이터 구성
+                # refined_content 유효성 검증
+                if (
+                    not report.refined_content
+                    or len(report.refined_content.strip()) < 10
+                ):
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"⚠ 건너뜀: ID {report.id} - refined_content가 너무 짧거나 없음"
+                        )
+                    )
+                    continue
+
                 extracted_info = report.extracted_info or {}
                 summary = extracted_info.get("summary", {}).get("one_line", "")
 
-                data = {
-                    "report_id": report.id,
-                    "rcept_no": report.rcept_no,
-                    "company_stock_code": report.company.stock_code,
-                    "company_name": report.company.company_name,
-                    "report_name": report.report_name,
-                    "report_type": report.report_type,
-                    "refined_content": report.refined_content or "",
-                    "extracted_info": extracted_info,
-                    "embedding": report.embedding,
-                    "submitted_at": (
-                        str(report.submitted_at) if report.submitted_at else None
-                    ),
-                }
+                # Embedding 생성 (기존 embedding이 없거나 재생성하는 경우)
+                # 보고서는 key_info + summary를 우선 사용, 없으면 refined_content 사용
+                key_info = extracted_info.get("key_info", {})
+                key_info_text = ""
+                if isinstance(key_info, dict):
+                    key_info_items = []
+                    for key, value in key_info.items():
+                        key_info_items.append(f"{key}: {value}")
+                    key_info_text = "\n".join(key_info_items)
 
-                # 동기적으로 실행 (테스트용)
-                # 또는 비동기로 실행하려면: save_report_to_opensearch_task.delay(data)
-                result = save_report_to_opensearch_task(data)
+                # 임베딩할 텍스트 구성: key_info + summary
+                embedding_text = f"{key_info_text}\n\n요약: {summary}".strip()
 
-                if result:
+                # 텍스트가 너무 짧으면 전체 본문 사용 (fallback)
+                if len(embedding_text) < 50:
+                    logger.debug(
+                        f"임베딩 텍스트가 너무 짧음, 전체 본문 사용: {report.id}"
+                    )
+                    embedding_text = report.refined_content[:10000]  # 최대 10,000자
+
+                if not embedding_text:
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"⚠ 건너뜀: ID {report.id} - 임베딩할 텍스트가 없음"
+                        )
+                    )
+                    continue
+
+                # Embedding 생성
+                self.stdout.write(
+                    f"임베딩 생성 중: ID {report.id} - {report.company.company_name} "
+                    f"({report.report_name[:50]})..."
+                )
+                embedding = embedding_service.create_embedding(embedding_text)
+
+                if not embedding:
+                    fail_count += 1
+                    self.stdout.write(
+                        self.style.ERROR(
+                            f"✗ 임베딩 생성 실패: ID {report.id} - {report.company.company_name} "
+                            f"({report.report_name[:50]})"
+                        )
+                    )
+                    logger.error(
+                        f"임베딩 생성 실패: report_id={report.id}, report_name={report.report_name[:50]}"
+                    )
+                    continue
+
+                # OpenSearch에 저장
+                success = opensearch_service.save_report_vector(
+                    report_id=report.id,
+                    company_stock_code=report.company.stock_code,
+                    company_name=report.company.company_name,
+                    report_name=report.report_name,
+                    report_type=report.report_type,
+                    content=report.refined_content[:10000],  # 본문 일부만
+                    summary=summary,
+                    content_vector=embedding,
+                    submitted_at=report.submitted_at,
+                )
+
+                if success:
+                    # DB에 embedding 저장 (선택적)
+                    Report.objects.filter(id=report.id).update(embedding=embedding)
                     success_count += 1
                     self.stdout.write(
                         self.style.SUCCESS(
                             f"✓ 성공: ID {report.id} - {report.company.company_name} "
-                            f"({report.report_name})"
+                            f"({report.report_name[:50]})"
                         )
                     )
                 else:
                     fail_count += 1
                     self.stdout.write(
                         self.style.ERROR(
-                            f"✗ 실패: ID {report.id} - {report.company.company_name} "
-                            f"({report.report_name})"
+                            f"✗ OpenSearch 저장 실패: ID {report.id} - {report.company.company_name} "
+                            f"({report.report_name[:50]})"
                         )
+                    )
+                    logger.error(
+                        f"OpenSearch 저장 실패: report_id={report.id}, report_name={report.report_name[:50]}"
                     )
 
             except Exception as e:
                 fail_count += 1
                 self.stdout.write(self.style.ERROR(f"✗ 오류: ID {report.id} - {e}"))
                 logger.error(
-                    f"OpenSearch 저장 재시도 오류: report_id={report.id} - {e}",
+                    f"보고서 embedding 재시도 오류: report_id={report.id} - {e}",
                     exc_info=True,
                 )
 

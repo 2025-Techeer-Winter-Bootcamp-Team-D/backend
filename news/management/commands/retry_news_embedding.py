@@ -22,7 +22,6 @@ DB의 content 필드를 이용해서 embedding부터 다시 생성하고 OpenSea
 """
 
 from django.core.management.base import BaseCommand
-from django.db.models import Q
 from django.utils import timezone
 from datetime import timedelta
 from news.models import News, CompanyNews
