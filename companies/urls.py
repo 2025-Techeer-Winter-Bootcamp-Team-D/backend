@@ -13,6 +13,7 @@ from .views import (
     get_company_news_list,
     get_company_news_detail,
     sync_company_news,
+    sync_all_companies_news,
     search_companies,
     get_company_outlook,
     SankeyAdminBulkSyncView,
@@ -69,6 +70,8 @@ urlpatterns = [
         sync_company_news,
         name="company_news_sync",
     ),
+    # 전체 기업 뉴스 동기화 (관리자용)
+    path("news/sync/all/", sync_all_companies_news, name="sync_all_companies_news"),
     # DART 데이터 동기화 (관리자용)
     path("<str:stock_code>/sync/", sync_company_from_dart, name="company_sync"),
     # 전체 기업 DART 데이터 동기화 (관리자용)
@@ -78,7 +81,15 @@ urlpatterns = [
     # 전체 기업 sankey 데이터 업데이트 (관리자용)
     path("sankeys/admin/", SankeyAdminBulkSyncView.as_view(), name="sankey_admin_sync"),
     # 특정 기업의 sankey 데이터 조회
-    path("sankeys/<str:stock_code>/", SankeyDataDetailView.as_view(), name="sankey_detail"),
-    # 메인페이지 최신 기업 보고서 조회  
-    path("reports/recent/", MainRecentReportListView.as_view(), name="main_recent_reports"),
+    path(
+        "sankeys/<str:stock_code>/",
+        SankeyDataDetailView.as_view(),
+        name="sankey_detail",
+    ),
+    # 메인페이지 최신 기업 보고서 조회
+    path(
+        "reports/recent/",
+        MainRecentReportListView.as_view(),
+        name="main_recent_reports",
+    ),
 ]

@@ -1865,6 +1865,209 @@ def sync_company_news(request, stock_code):
         )
 
 
+@extend_schema(
+    summary="전체 기업 뉴스 동기화 (관리자용)",
+    description="""
+    DB에 있는 모든 기업의 뉴스를 동기화합니다. 인증이 필요합니다.
+
+    **동작 방식:**
+    1. DB에 있는 모든 기업에 대해 뉴스 동기화 작업 등록
+    2. OpenSearch에서 기업명으로 관련 뉴스 검색
+    3. 검색 결과가 3개 이상이면 CompanyNews에 매핑 (빠름, API 비용 없음)
+    4. 검색 결과가 3개 미만이면 기존 크롤링 방식으로 fallback (Gemini API 사용)
+    """,
+    parameters=[
+        OpenApiParameter(
+            name="max_news",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            description="기업당 최대 뉴스 수 (기본값: 20, 최대: 100)",
+            required=False,
+        ),
+        OpenApiParameter(
+            name="days_back",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            description="검색 기간 (일, 기본값: 30)",
+            required=False,
+        ),
+        OpenApiParameter(
+            name="async",
+            type=bool,
+            location=OpenApiParameter.QUERY,
+            description="비동기 실행 여부 (Celery 작업으로 실행, 기본값: true)",
+            required=False,
+        ),
+        OpenApiParameter(
+            name="batch_size",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            description="한 번에 처리할 기업 수 (기본값: 50, 비동기 실행 시만 사용)",
+            required=False,
+        ),
+    ],
+    responses={
+        200: OpenApiResponse(description="동기화 성공 (동기 실행)"),
+        202: OpenApiResponse(description="동기화 작업 시작됨 (비동기 실행)"),
+        400: OpenApiResponse(description="Bad Request"),
+        401: OpenApiResponse(description="Unauthorized"),
+    },
+    tags=["Admin"],
+    request=None,
+)
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def sync_all_companies_news(request):
+    """
+    전체 기업 뉴스 동기화 API (관리자용)
+
+    DB에 있는 모든 기업에 대해 뉴스 동기화 작업을 등록합니다.
+    """
+    from news.tasks.company_news import sync_company_news_task
+    from datetime import datetime
+
+    # 쿼리 파라미터 처리
+    try:
+        max_news = int(request.query_params.get("max_news", 20))
+        if max_news < 1:
+            return Response(
+                {"status": 400, "error": "max_news는 1 이상이어야 합니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        max_news = min(max_news, 100)
+    except (ValueError, TypeError):
+        return Response(
+            {"status": 400, "error": "max_news는 정수여야 합니다."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        days_back = int(request.query_params.get("days_back", 30))
+        if days_back < 1:
+            return Response(
+                {"status": 400, "error": "days_back은 1 이상이어야 합니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+    except (ValueError, TypeError):
+        return Response(
+            {"status": 400, "error": "days_back은 정수여야 합니다."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    use_async = request.query_params.get("async", "true").lower() == "true"
+
+    try:
+        batch_size = int(request.query_params.get("batch_size", 50))
+        if batch_size < 1:
+            return Response(
+                {"status": 400, "error": "batch_size는 1 이상이어야 합니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+    except (ValueError, TypeError):
+        return Response(
+            {"status": 400, "error": "batch_size는 정수여야 합니다."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # 전체 기업 조회
+    companies = Company.objects.filter(is_deleted=False)
+    total_count = companies.count()
+
+    if total_count == 0:
+        return Response(
+            {"status": 400, "error": "동기화할 기업이 없습니다."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # 비동기 실행
+    if use_async:
+        task_groups = []
+        task_count = 0
+
+        # 배치 단위로 기업을 처리
+        for i in range(0, total_count, batch_size):
+            batch = companies[i : i + batch_size]
+            tasks = []
+
+            for company in batch:
+                try:
+                    # countdown을 사용하여 작업을 시간차로 분산
+                    countdown_offset = (i // batch_size) * 10
+                    task = sync_company_news_task.apply_async(
+                        args=[company.stock_code, max_news, days_back],
+                        countdown=countdown_offset,
+                    )
+                    tasks.append(task)
+                    task_count += 1
+                except Exception as e:
+                    logger.exception(
+                        f"뉴스 동기화 작업 등록 실패: {company.stock_code} - {e}"
+                    )
+
+            logger.info(
+                f"배치 {i // batch_size + 1} 완료: {len(batch)}개 기업, "
+                f"{len(tasks)}개 작업 등록"
+            )
+
+        return Response(
+            {
+                "status": 202,
+                "message": "전체 기업 뉴스 동기화 작업이 비동기로 등록되었습니다.",
+                "data": {
+                    "total_companies": total_count,
+                    "max_news": max_news,
+                    "days_back": days_back,
+                    "batch_size": batch_size,
+                    "total_tasks": task_count,
+                    "async": True,
+                },
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+    # 동기 실행 (시간이 오래 걸릴 수 있음)
+    results = {}
+    success_count = 0
+    failed_count = 0
+
+    for company in companies:
+        try:
+            result = sync_company_news_task(company.stock_code, max_news, days_back)
+            results[company.stock_code] = {
+                "company_name": company.company_name,
+                "status": "success",
+                "result": result,
+            }
+            success_count += 1
+        except Exception as e:
+            logger.exception(
+                f"뉴스 동기화 실패: {company.stock_code} ({company.company_name}) - {e}"
+            )
+            results[company.stock_code] = {
+                "company_name": company.company_name,
+                "status": "failed",
+                "error": str(e),
+            }
+            failed_count += 1
+
+    return Response(
+        {
+            "status": 200,
+            "message": "전체 기업 뉴스 동기화 완료",
+            "data": {
+                "total_companies": total_count,
+                "success_count": success_count,
+                "failed_count": failed_count,
+                "max_news": max_news,
+                "days_back": days_back,
+                "async": False,
+                "results": results,
+            },
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
 # ------------------------ 기업 검색 ----------------------------------
 @extend_schema(
     summary="기업 검색",
