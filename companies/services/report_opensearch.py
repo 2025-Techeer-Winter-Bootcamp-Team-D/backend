@@ -28,12 +28,17 @@ class ReportOpenSearchService:
             host_name = host
             port = 9200
 
+        http_auth = None
+        if settings.OPENSEARCH_PASSWORD:
+            http_auth = (settings.OPENSEARCH_USERNAME, settings.OPENSEARCH_PASSWORD)
+
         self.client = OpenSearch(
             hosts=[{"host": host_name, "port": port}],
             http_compress=True,
             use_ssl=settings.OPENSEARCH_USE_SSL,
             verify_certs=settings.OPENSEARCH_VERIFY_CERTS,
             ssl_show_warn=False,
+            http_auth=http_auth,  # 인증 정보
             maxsize=25,  # 연결 풀 크기 (동시 요청 처리 성능 개선)
             timeout=30,  # 요청 타임아웃 (초)
             max_retries=3,  # 재시도 횟수

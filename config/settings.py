@@ -42,13 +42,14 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "")
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
 
-
-ALLOWED_HOSTS = [host.strip() for host in os.getenv("ALLOWED_HOSTS", "").split(",") if host.strip()]
+ALLOWED_HOSTS = [
+    host.strip() for host in os.getenv("ALLOWED_HOSTS", "").split(",") if host.strip()
+]
 
 if not DEBUG and not ALLOWED_HOSTS:
-    raise ImproperlyConfigured("ALLOWED_HOSTS environment variable must be set in production.")
-
-
+    raise ImproperlyConfigured(
+        "ALLOWED_HOSTS environment variable must be set in production."
+    )
 
 
 # Application definition
@@ -215,6 +216,8 @@ OPENSEARCH_USE_SSL = os.getenv("OPENSEARCH_USE_SSL", "false").lower() == "true"
 OPENSEARCH_VERIFY_CERTS = (
     os.getenv("OPENSEARCH_VERIFY_CERTS", "false").lower() == "true"
 )
+OPENSEARCH_USERNAME = os.getenv("OPENSEARCH_USERNAME", "admin")
+OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD", "")
 
 # Redis Channel Configuration
 CHANNEL_LAYERS = {

@@ -38,6 +38,7 @@ services:
       - OPENSEARCH_HOST=${OPENSEARCH_HOST}:9200
       - OPENSEARCH_USE_SSL=true
       - OPENSEARCH_VERIFY_CERTS=false
+      - OPENSEARCH_USERNAME=${OPENSEARCH_USERNAME:-admin}
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
     volumes:
       # Production: Code is inside image. Only mount static/media if needed for collection, 
@@ -129,6 +130,7 @@ services:
       - OPENSEARCH_HOST=${OPENSEARCH_HOST}:9200
       - OPENSEARCH_USE_SSL=true
       - OPENSEARCH_VERIFY_CERTS=false
+      - OPENSEARCH_USERNAME=${OPENSEARCH_USERNAME:-admin}
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
       - PYTHONUNBUFFERED=1
     volumes:
