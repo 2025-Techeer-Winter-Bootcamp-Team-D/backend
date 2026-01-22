@@ -192,9 +192,9 @@ jobs:
           host: ${{ secrets.APP_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "deploy/app/*"
-          target: "~/techeer-deploy/deploy/app"
-          strip_components: 2
+          source: "deploy/app/*,grafana/**"
+          target: "~/techeer-deploy"
+          strip_components: 0
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
