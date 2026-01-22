@@ -1974,10 +1974,12 @@ def search_companies(request):
     특정 기업의 최근 뉴스와 보고서를 분석하여 투자 전망을 제공합니다.
 
     **분석 결과:**
-    - `analysis`: 3줄 이내의 간결한 투자 전망 분석
-    - `upside_potential`: 상승 여력 (`high` 또는 `low`)
-    - `signal`: 투자 신호 (`buy` 또는 `sell`)
-
+    - `analysis`: 3줄 내외의 상세 전망 분석
+    - `positive_factor`: 핵심 상승 요인 (1줄)
+    - `risk_factor`: 핵심 리스크 요인 (1줄)
+    - `opinion`: 최종 투자 의견 요약 (1줄)
+    
+    
     **데이터 소스:**
     - OpenSearch에 저장된 관련 뉴스
     - 처리 완료된 공시 보고서

@@ -94,8 +94,9 @@ class CompanyOutlookService:
             "company_name": company.company_name,
             "analyzed_at": timezone.now().isoformat(),
             "analysis": analysis_result.get("analysis", "분석 데이터가 부족합니다."),
-            "upside_potential": analysis_result.get("upside_potential", "low"),
-            "signal": analysis_result.get("signal", "sell"),
+            "positive_factor": analysis_result.get("positive_factor", "긍정 요인 정보 없음"),
+            "risk_factor": analysis_result.get("risk_factor", "리스크 요인 정보 없음"),
+            "opinion": analysis_result.get("opinion", "투자 의견 정보 없음"),
             "data_sources": {
                 "news_count": len(search_data.get("news", [])),
                 "report_count": len(search_data.get("reports", [])),
@@ -134,8 +135,9 @@ class CompanyOutlookService:
         # 뉴스 검색
         try:
             opensearch_service = OpenSearchService()
+            clean_name = company.company_name.replace("(주)", "").replace("주식회사", "").strip()
             news_results = opensearch_service.search_news_by_keyword(
-                keyword=company.company_name,
+                keyword=clean_name,
                 size=max_news,
                 published_after=published_after,
             )
@@ -213,8 +215,9 @@ class CompanyOutlookService:
             logger.warning(f"분석 데이터 부족: {company.stock_code}")
             return {
                 "analysis": "최근 뉴스 및 보고서 데이터가 부족하여 분석이 어렵습니다.",
-                "upside_potential": "low",
-                "signal": "sell",
+                "positive_factor": "-",
+                "risk_factor": "-",
+                "opinion": "관망 요망"
             }
 
         # 뉴스 제목 목록
@@ -260,16 +263,22 @@ class CompanyOutlookService:
 ## 분석 요청
 위 정보를 종합하여 투자 전망을 분석하고, 다음 JSON 형식으로만 응답하세요:
 {{
-    "analysis": "3줄 이내의 간결한 투자 전망 분석. 핵심 포인트만 요약.",
-    "upside_potential": "high" 또는 "low" (상승 여력 판단),
-    "signal": "buy" 또는 "sell" (투자 신호)
+    "analysis": "3줄 이내의 간결한 투자 전망 분석. 실제 자료들을 바탕으로 핵심 포인트만 요약.",
+    "positive_factor": "주가 상승의 핵심 동력 1줄 요약",
+    "risk_factor": "투자 시 가장 주의해야 할 리스크 1줄 요약",
+    "option": "위 내용을 종합한 최종 투자 판단 근거 1줄 요약
 }}
 
 주의사항:
 - JSON 형식으로만 응답하세요.
-- analysis는 반드시 3줄 이내로 작성하세요.
-- upside_potential과 signal은 반드시 지정된 값만 사용하세요.
-"""
+- analysis는 반드시 3줄 이내로 작성하고 분석한 내용만 작성하세요.
+- positive_factor, risk_factor, option은 반드시 지정된 값만 사용하세요.
+- positive_factor는 핵심 긍정 요인 한 줄로 작성하세요.
+- risk_factor는 핵심 리스크 요인 한 줄로 작성하세요.
+- option은 최종 투자 의견 한 줄로 작성하세요.
+- 분석을 생성할 때 추가 정보 부재에 대한 언급은 하지 마세요.
+
+""" 
 
         try:
             safety_settings = [
@@ -305,21 +314,12 @@ class CompanyOutlookService:
                 json_text = text[start:end]
                 try:
                     result = json.loads(json_text)
-                    # 필수 필드 검증
-                    analysis = result.get("analysis", "")
-                    upside_potential = result.get("upside_potential", "low")
-                    signal = result.get("signal", "sell")
-
-                    # 값 검증
-                    if upside_potential not in ("high", "low"):
-                        upside_potential = "low"
-                    if signal not in ("buy", "sell"):
-                        signal = "sell"
 
                     return {
-                        "analysis": analysis,
-                        "upside_potential": upside_potential,
-                        "signal": signal,
+                        "analysis": result.get("analysis", "분석 데이터가 부족합니다."),
+                        "positive_factor": result.get("positive_factor", "긍정 요인 정보 없음"),
+                        "risk_factor": result.get("risk_factor", "리스크 요인 정보 없음"),
+                        "opinion": result.get("option", "투자 의견 정보 없음"),
                     }
                 except json.JSONDecodeError:
                     logger.warning(f"JSON 파싱 실패: {json_text[:100]}")
@@ -327,8 +327,9 @@ class CompanyOutlookService:
             # JSON 파싱 실패 시 텍스트 그대로 반환
             return {
                 "analysis": text[:300] if text else "분석 생성 실패",
-                "upside_potential": "low",
-                "signal": "sell",
+                "positive_factor": "정보 없음",
+                "risk_factor": "정보 없음",
+                "opinion": "분석 실패",
             }
 
         except Exception as e:
