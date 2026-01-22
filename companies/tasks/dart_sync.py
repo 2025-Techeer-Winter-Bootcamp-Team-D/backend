@@ -51,10 +51,11 @@ def sync_company_info_from_dart(self, stock_code: str):
         raise
 
 
-@shared_task(bind=True, max_retries=3)
+@shared_task(bind=True, max_retries=5)  # 재시도 횟수 증가 (3 -> 5)
 def sync_financial_statements(self, stock_code: str, year: int):
     """
     DART에서 재무제표 동기화 + 배당 정보 동기화 + 재무 지표 계산
+    느려도 확실하게 데이터가 저장되도록 재시도 로직 강화
 
     Args:
         stock_code: 종목코드
@@ -78,6 +79,7 @@ def sync_financial_statements(self, stock_code: str, year: int):
         )
 
         # 재무제표 동기화 후 배당 정보 동기화 및 재무 지표 계산
+        # statements가 비어있어도 빈 레코드가 생성되었을 수 있으므로 체크
         if statements:
             from companies.tasks.financial_metrics import (
                 sync_dividend_and_calculate_task,
@@ -90,6 +92,8 @@ def sync_financial_statements(self, stock_code: str, year: int):
 
     except Company.DoesNotExist:
         logger.error(f"Company not found: {stock_code}")
+        # 기업이 없으면 재시도 불필요
+        return
     except DartAPIError as e:
         # "조회된 데이타가 없습니다" (status: 013)는 재시도 불필요
         error_message = str(e)
@@ -99,17 +103,29 @@ def sync_financial_statements(self, stock_code: str, year: int):
             )
             return  # 재시도하지 않고 종료
         else:
-            logger.error(f"DART API error: {e}")
-            raise self.retry(countdown=60, exc=e)
+            # DART API 오류는 재시도 (더 긴 대기 시간)
+            retry_count = self.request.retries
+            countdown = min(
+                60 * (retry_count + 1), 300
+            )  # 60초, 120초, 180초, 240초, 300초 (최대 5분)
+            logger.warning(
+                f"DART API error (재시도 {retry_count + 1}/{self.max_retries}): {stock_code} ({year}년) - {e}, {countdown}초 후 재시도"
+            )
+            raise self.retry(countdown=countdown, exc=e)
     except Exception as e:
-        logger.error(f"Error syncing financial statements: {e}")
-        raise
+        # 일반 예외도 재시도 (더 긴 대기 시간)
+        retry_count = self.request.retries
+        countdown = min(
+            60 * (retry_count + 1), 300
+        )  # 60초, 120초, 180초, 240초, 300초 (최대 5분)
+        logger.error(
+            f"Error syncing financial statements (재시도 {retry_count + 1}/{self.max_retries}): {stock_code} ({year}년) - {e}, {countdown}초 후 재시도"
+        )
+        raise self.retry(countdown=countdown, exc=e)
 
 
 @shared_task(bind=True, max_retries=3)
-def sync_company_reports(
-    self, stock_code: str, days: int = 365
-):
+def sync_company_reports(self, stock_code: str, days: int = 365):
     """
     DART에서 보고서 목록 동기화 (전체 동기화, 주요 공시만)
 
@@ -126,13 +142,9 @@ def sync_company_reports(
 
         service = ReportsService()
         # 전체 동기화 + 주요 공시만 (정기공시 + 주요사항보고)
-        reports = service.sync_reports(
-            company, days=days, report_types=["A", "B"]
-        )
+        reports = service.sync_reports(company, days=days, report_types=["A", "B"])
 
-        logger.info(
-            f"보고서 동기화 완료: {stock_code} ({len(reports)}건)"
-        )
+        logger.info(f"보고서 동기화 완료: {stock_code} ({len(reports)}건)")
 
     except Company.DoesNotExist:
         logger.error(f"Company not found: {stock_code}")
@@ -185,7 +197,7 @@ def sync_all_financial_statements(years: int = 3, batch_size: int = 50):
     task_count = 0
     # 배치 단위로 기업을 처리
     for i in range(0, total, batch_size):
-        batch = companies[i:i + batch_size]
+        batch = companies[i : i + batch_size]
         tasks = []
 
         for company in batch:
@@ -197,13 +209,15 @@ def sync_all_financial_statements(years: int = 3, batch_size: int = 50):
                     countdown_offset = (i // batch_size) * 60 + year_offset * 10
                     task = sync_financial_statements.apply_async(
                         args=[company.stock_code, target_year],
-                        countdown=countdown_offset
+                        countdown=countdown_offset,
                     )
                     tasks.append(task)
                     task_count += 1
             except (Reject, ConnectionError):
                 # 특정 예외만 처리 (Celery 연결 오류 등)
-                logger.exception("재무제표 동기화 작업 등록 실패: %s", company.stock_code)
+                logger.exception(
+                    "재무제표 동기화 작업 등록 실패: %s", company.stock_code
+                )
 
         logger.info(
             f"배치 {i // batch_size + 1} 완료: {len(batch)}개 기업, {len(tasks)}개 작업 등록"

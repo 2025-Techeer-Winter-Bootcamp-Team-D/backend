@@ -230,6 +230,7 @@ class FinancialService:
         for rc in report_codes:
             try:
                 statement = self._sync_single_financial_statement(company, year, rc)
+                # statement가 None이 아니면 추가 (빈 레코드라도 추가)
                 if statement:
                     all_statements.append(statement)
             except DartAPIError as e:
@@ -242,16 +243,79 @@ class FinancialService:
                     logger.debug(
                         f"재무제표 데이터 없음 (정상): {company.stock_code} ({year}년, {rc})"
                     )
+                    # 빈 레코드 생성 (재시도 가능하도록)
+                    try:
+                        statement = FinancialStatement.objects.update_or_create(
+                            company=company,
+                            fiscal_year=year,
+                            report_code=rc,
+                            defaults={
+                                "revenue": None,
+                                "operating_profit": None,
+                                "net_income": None,
+                                "total_assets": None,
+                                "total_liabilities": None,
+                                "total_equity": None,
+                            },
+                        )[0]
+                        all_statements.append(statement)
+                    except Exception as save_error:
+                        logger.warning(
+                            f"빈 레코드 생성 실패: {company.stock_code} ({year}년, {rc}) - {save_error}"
+                        )
                     continue
                 else:
                     logger.warning(
                         f"재무제표 조회 실패: {company.stock_code} ({year}년, {rc}) - {e}"
                     )
+                    # 빈 레코드 생성 시도
+                    try:
+                        statement = FinancialStatement.objects.update_or_create(
+                            company=company,
+                            fiscal_year=year,
+                            report_code=rc,
+                            defaults={
+                                "revenue": None,
+                                "operating_profit": None,
+                                "net_income": None,
+                                "total_assets": None,
+                                "total_liabilities": None,
+                                "total_equity": None,
+                            },
+                        )[0]
+                        all_statements.append(statement)
+                    except Exception as save_error:
+                        logger.warning(
+                            f"빈 레코드 생성 실패: {company.stock_code} ({year}년, {rc}) - {save_error}"
+                        )
                     continue
             except Exception as e:
                 logger.warning(
                     f"재무제표 동기화 중 오류: {company.stock_code} ({year}년, {rc}) - {e}"
                 )
+                # 예외 발생 시에도 빈 레코드 생성 시도
+                try:
+                    statement = FinancialStatement.objects.update_or_create(
+                        company=company,
+                        fiscal_year=year,
+                        report_code=rc,
+                        defaults={
+                            "revenue": None,
+                            "operating_profit": None,
+                            "net_income": None,
+                            "total_assets": None,
+                            "total_liabilities": None,
+                            "total_equity": None,
+                        },
+                    )[0]
+                    all_statements.append(statement)
+                    logger.info(
+                        f"재무제표 빈 레코드 생성 완료 (오류 발생 후): {company.stock_code} ({year}년, {rc})"
+                    )
+                except Exception as save_error:
+                    logger.error(
+                        f"빈 레코드 생성도 실패: {company.stock_code} ({year}년, {rc}) - {save_error}"
+                    )
                 continue
 
         logger.info(
@@ -312,6 +376,18 @@ class FinancialService:
                 f"({year}년, {report_code}) - {financial_data}"
             )
 
+            # 데이터 추출 실패 체크 (모든 필드가 None이거나 비어있는 경우)
+            has_data = financial_data and any(
+                v is not None and v != 0 for v in financial_data.values()
+            )
+            if not has_data:
+                logger.warning(
+                    f"재무 데이터 추출 실패 (모든 필드가 비어있음): {company.stock_code} "
+                    f"({year}년, {report_code}) - DART API 응답에 재무 지표가 없을 수 있음"
+                )
+                # 데이터가 비어있어도 빈 레코드 생성 (나중에 재시도 가능하도록)
+                financial_data = {}  # 빈 딕셔너리로 초기화
+
             # 단위 정규화 (DART API 응답에서 단위 정보 추출 및 정규화)
             # DART API는 일반적으로 원 단위로 제공하지만, 일부는 천원 단위일 수 있음
             # currency 필드는 통화 정보만 제공하고, 단위(원/천원/백만원)는 별도 확인 필요
@@ -322,10 +398,10 @@ class FinancialService:
             is_valid, error_message = self._validate_financial_data(financial_data)
             if not is_valid:
                 # 검증 실패 시 상세 로깅
-                logger.error(
-                    f"재무 데이터 유효성 검증 실패: {company.stock_code} ({year}년, {report_code}) - {error_message}"
+                logger.warning(
+                    f"재무 데이터 유효성 검증 실패 (경고): {company.stock_code} ({year}년, {report_code}) - {error_message}"
                 )
-                logger.error(
+                logger.warning(
                     f"검증 실패 상세 데이터: {company.stock_code} ({year}년, {report_code}) - "
                     f"total_assets={financial_data.get('total_assets')}, "
                     f"total_liabilities={financial_data.get('total_liabilities')}, "
@@ -333,8 +409,11 @@ class FinancialService:
                     f"revenue={financial_data.get('revenue')}, "
                     f"operating_profit={financial_data.get('operating_profit')}"
                 )
-                # 검증 실패 시 저장 중단
-                raise ValueError(f"재무 데이터 유효성 검증 실패: {error_message}")
+                # 검증 실패 시에도 부분 데이터 저장 허용 (데이터 누락 방지)
+                # 경고만 출력하고 저장은 계속 진행
+                logger.warning(
+                    f"검증 실패했지만 부분 데이터 저장 진행: {company.stock_code} ({year}년, {report_code})"
+                )
 
             # 추출된 데이터 로깅
             logger.debug(
@@ -366,18 +445,78 @@ class FinancialService:
             )
 
             action = "생성" if created else "업데이트"
-            logger.debug(
-                f"재무제표 {action} 완료: {company.stock_code} ({year}년, {report_code})"
+            data_status = "완전" if has_data else "부분(빈 데이터)"
+            logger.info(
+                f"재무제표 {action} 완료 ({data_status}): {company.stock_code} ({year}년, {report_code})"
             )
 
             return financial_statement
 
         except DartAPIError as e:
-            logger.error(f"DART API 오류 (재무제표 조회): {e}")
-            raise
+            # DART API 오류 시에도 빈 레코드 생성 (재시도 가능하도록)
+            error_message = str(e)
+            if "013" in error_message or "조회된 데이타가 없습니다" in error_message:
+                logger.warning(
+                    f"재무제표 데이터 없음 (빈 레코드 생성): {company.stock_code} ({year}년, {report_code}) - {e}"
+                )
+                # 빈 레코드 생성
+                financial_statement, created = (
+                    FinancialStatement.objects.update_or_create(
+                        company=company,
+                        fiscal_year=year,
+                        report_code=report_code,
+                        defaults={
+                            "revenue": None,
+                            "operating_profit": None,
+                            "net_income": None,
+                            "total_assets": None,
+                            "total_liabilities": None,
+                            "total_equity": None,
+                        },
+                    )
+                )
+                action = "생성" if created else "업데이트"
+                logger.info(
+                    f"재무제표 빈 레코드 {action} 완료: {company.stock_code} ({year}년, {report_code})"
+                )
+                return financial_statement
+            else:
+                logger.error(f"DART API 오류 (재무제표 조회): {e}")
+                # 다른 DART API 오류는 재시도 가능하도록 예외 발생
+                raise
         except Exception as e:
-            logger.error(f"재무제표 동기화 중 오류 발생: {e}")
-            raise
+            # 예외 발생 시에도 최소한 빈 레코드라도 저장 (데이터 누락 방지)
+            logger.error(
+                f"재무제표 동기화 중 오류 발생 (빈 레코드 저장 시도): {company.stock_code} ({year}년, {report_code}) - {e}"
+            )
+            try:
+                # 빈 레코드 생성 시도
+                financial_statement, created = (
+                    FinancialStatement.objects.update_or_create(
+                        company=company,
+                        fiscal_year=year,
+                        report_code=report_code,
+                        defaults={
+                            "revenue": None,
+                            "operating_profit": None,
+                            "net_income": None,
+                            "total_assets": None,
+                            "total_liabilities": None,
+                            "total_equity": None,
+                        },
+                    )
+                )
+                action = "생성" if created else "업데이트"
+                logger.warning(
+                    f"재무제표 빈 레코드 {action} 완료 (오류 발생 후): {company.stock_code} ({year}년, {report_code})"
+                )
+                return financial_statement
+            except Exception as save_error:
+                # 빈 레코드 저장도 실패하면 예외 발생
+                logger.error(
+                    f"재무제표 빈 레코드 저장도 실패: {company.stock_code} ({year}년, {report_code}) - {save_error}"
+                )
+                raise
 
     def _extract_financial_data(
         self, account_list: List[Dict[str, Any]]
