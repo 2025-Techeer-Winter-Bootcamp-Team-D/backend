@@ -174,7 +174,10 @@ services:
       - "127.0.0.1:3000:3000"
     volumes:
       - ./grafana_data:/var/lib/grafana
-      - ../../grafana/provisioning:/etc/grafana/provisioning
+      # 프로젝트 루트의 grafana/provisioning 디렉토리를 마운트
+      # docker-compose.yml 위치: deploy/app/
+      # 상대 경로: ../../grafana/provisioning -> Backend/grafana/provisioning
+      - ../../grafana/provisioning:/etc/grafana/provisioning:ro
     networks:
       - app-network
     environment:
