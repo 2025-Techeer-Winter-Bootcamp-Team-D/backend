@@ -394,8 +394,20 @@ class Command(BaseCommand):
                 try:
                     # 각 기업을 개별 트랜잭션으로 처리
                     with transaction.atomic():
-                        # 업종코드 조회 (원본 KSIC 코드만 저장, 매핑은 나중에)
+                        # 업종코드 및 시장 구분 조회 (원본 KSIC 코드만 저장, 매핑은 나중에)
                         raw_ksic_code = None
+                        market = None
+
+                        # 종목코드 범위로 시장 구분 판단 (fallback)
+                        # 000001~005999: KOSPI, 010000~099999: KOSDAQ
+                        try:
+                            stock_code_int = int(stock_code)
+                            if 1 <= stock_code_int <= 5999:
+                                market = "KOSPI"
+                            elif 10000 <= stock_code_int <= 99999:
+                                market = "KOSDAQ"
+                        except (ValueError, TypeError):
+                            pass  # 종목코드가 숫자가 아닌 경우 무시
 
                         if not skip_industry_mapping:
                             try:
@@ -410,6 +422,24 @@ class Command(BaseCommand):
                                     self.stdout.write(
                                         f"  📋 {corp_name}: KSIC 코드 {raw_ksic_code} 조회 완료"
                                     )
+
+                                # 시장 구분 매핑 (corp_cls → market)
+                                # DART API corp_cls: Y(유가증권/KOSPI), K(코스닥/KOSDAQ)
+                                corp_cls = company_info.get("corp_cls")
+                                if corp_cls:
+                                    market_mapping = {
+                                        "Y": "KOSPI",
+                                        "K": "KOSDAQ",
+                                    }
+                                    market = market_mapping.get(corp_cls)
+                                    if market:
+                                        self.stdout.write(
+                                            f"  📊 {corp_name}: 시장 구분 {corp_cls} → {market}"
+                                        )
+                                    else:
+                                        logger.warning(
+                                            f"지원하지 않는 시장 구분: {corp_name} ({stock_code}) → corp_cls={corp_cls}"
+                                        )
                             except Exception as e:
                                 self.stdout.write(
                                     self.style.WARNING(
@@ -427,6 +457,7 @@ class Command(BaseCommand):
                                 "corp_code": corp_code,
                                 "company_name": corp_name,
                                 "induty_code": raw_ksic_code,  # 원본 KSIC 코드만 저장
+                                "market": market,  # 시장 구분 (KOSPI/KOSDAQ)
                                 "industry": None,  # 매핑은 나중에
                                 "description": "",
                             },
@@ -460,6 +491,13 @@ class Command(BaseCommand):
                                         company.induty_code = raw_ksic_code
                                     needs_update = True
                                     update_messages.append(f"KSIC: {raw_ksic_code}")
+
+                            # 시장 구분 업데이트
+                            if market and company.market != market:
+                                if not dry_run:
+                                    company.market = market
+                                needs_update = True
+                                update_messages.append(f"시장: {market}")
 
                             # company_name 업데이트
                             if company.company_name != corp_name:
