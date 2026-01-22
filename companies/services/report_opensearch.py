@@ -35,6 +35,10 @@ class ReportOpenSearchService:
             verify_certs=settings.OPENSEARCH_VERIFY_CERTS,
             ssl_show_warn=False,
             maxsize=25,  # 연결 풀 크기 (동시 요청 처리 성능 개선)
+            timeout=30,  # 요청 타임아웃 (초)
+            max_retries=3,  # 재시도 횟수
+            retry_on_timeout=True,  # 타임아웃 시 재시도
+            retry_on_status=[502, 503, 504],  # 특정 HTTP 상태 코드에서 재시도
         )
 
         self._ensure_index_exists()
