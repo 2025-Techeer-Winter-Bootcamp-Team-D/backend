@@ -1,5 +1,3 @@
-
-
 services:
   db:
     image: timescale/timescaledb:latest-pg16
@@ -32,12 +30,9 @@ services:
     env_file:
       - .env
     command: >
-      sh -c '
-      if [ -z "$$REDIS_PASSWORD" ]; then
+      sh -c ' if [ -z "$$REDIS_PASSWORD" ]; then
         echo "Error: REDIS_PASSWORD is not set. Exiting." && exit 1;
-      fi;
-      exec redis-server --maxmemory 768mb --maxmemory-policy allkeys-lru --requirepass "$$REDIS_PASSWORD"
-      '
+      fi; exec redis-server --maxmemory 768mb --maxmemory-policy allkeys-lru --requirepass "$$REDIS_PASSWORD" '
     networks:
       - data-network
     ports:
@@ -53,7 +48,9 @@ services:
     restart: always
 
   opensearch:
-    image: opensearchproject/opensearch:latest
+    build:
+      context: ../..
+      dockerfile: opensearch/Dockerfile
     container_name: opensearch
     env_file:
       - .env
