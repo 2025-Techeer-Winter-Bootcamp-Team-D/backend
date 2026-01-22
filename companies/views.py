@@ -9,7 +9,7 @@ from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParamet
 from drf_spectacular.types import OpenApiTypes
 from celery import group
 
-from .models import Company, CompanyRanking, Report ,SankeyData
+from .models import Company, CompanyRanking, Report, SankeyData
 from core.models import StockPrice1m, StockPrice15m, StockPrice1h, StockPrice1d
 from .serializers import (
     CompanyDetailSerializer,
@@ -187,9 +187,9 @@ def get_company_financials(request, stock_code):
                 {
                     "status": 400,
                     "error": (
-            "report_code 파라미터는 11011(사업), 11012(반기), "
-            "11013(1분기), 11014(3분기) 중 하나여야 합니다."
-        ),
+                        "report_code 파라미터는 11011(사업), 11012(반기), "
+                        "11013(1분기), 11014(3분기) 중 하나여야 합니다."
+                    ),
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -374,9 +374,9 @@ def get_report_detail(request, stock_code, rcept_no):
                     "status": 404,
                     "error": "Report not found",
                     "message": (
-            f"접수번호 {rcept_no}의 보고서를 찾을 수 없거나 "
-            f"해당 기업({stock_code})의 보고서가 아닙니다."
-        ),
+                        f"접수번호 {rcept_no}의 보고서를 찾을 수 없거나 "
+                        f"해당 기업({stock_code})의 보고서가 아닙니다."
+                    ),
                 },
                 status=status.HTTP_404_NOT_FOUND,
             )
@@ -1289,13 +1289,13 @@ def process_single_report_view(request, stock_code, rcept_no):
                 {
                     "status": 404,
                     "error": "Report not found",
-                "message": (
-                    f"접수번호 {rcept_no}의 보고서를 찾을 수 없거나 "
-                    f"해당 기업({stock_code})의 보고서가 아닙니다."
-                ),
-            },
-            status=status.HTTP_404_NOT_FOUND,
-        )
+                    "message": (
+                        f"접수번호 {rcept_no}의 보고서를 찾을 수 없거나 "
+                        f"해당 기업({stock_code})의 보고서가 아닙니다."
+                    ),
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         # 비동기 실행 여부 확인
         use_async = request.query_params.get("async", "true").lower() == "true"
@@ -1924,7 +1924,6 @@ def sync_all_companies_news(request):
     DB에 있는 모든 기업에 대해 뉴스 동기화 작업을 등록합니다.
     """
     from news.tasks.company_news import sync_company_news_task
-    from datetime import datetime
 
     # 쿼리 파라미터 처리
     try:
@@ -1981,7 +1980,6 @@ def sync_all_companies_news(request):
 
     # 비동기 실행
     if use_async:
-        task_groups = []
         task_count = 0
 
         # 배치 단위로 기업을 처리
@@ -2322,11 +2320,13 @@ def get_company_outlook(request, stock_code):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
+
 # --- Sankey Diagram Views ---
 class SankeyAdminBulkSyncView(APIView):
     """
     관리자용: 전체 기업의 DART 데이터를 가져와 산키 데이터(오른쪽 노드 포함)를 일괄 생성/업데이트
     """
+
     permission_classes = [IsAdminUser]
 
     @extend_schema(
@@ -2337,28 +2337,34 @@ class SankeyAdminBulkSyncView(APIView):
                 "type": "object",
                 "properties": {
                     "year": {
-                        "type": "string", 
+                        "type": "string",
                         "example": "2024",
-                        "description": "동기화할 연도 (문자열)"
+                        "description": "동기화할 연도 (문자열)",
                     }
                 },
-                "required": ["year"]
+                "required": ["year"],
             }
         },
         responses={200: OpenApiTypes.OBJECT},
-        tags=["Sankey"]
+        tags=["Sankey"],
     )
     def post(self, request):
         service = SankeyDataService()
-        year = request.data.get('year')  
+        year = request.data.get("year")
         if not year:
-            return Response({"error": "year(연도) 값이 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
-        
+            return Response(
+                {"error": "year(연도) 값이 필요합니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         try:
             year_int = int(year)
         except (TypeError, ValueError):
-            return Response({"error": "year는 연도(정수)여야 합니다."}, status=status.HTTP_400_BAD_REQUEST)
-        
+            return Response(
+                {"error": "year는 연도(정수)여야 합니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         result = service.sync_all_companies(year=year_int)
         return Response(result, status=status.HTTP_200_OK)
 
@@ -2367,44 +2373,58 @@ class SankeyDataDetailView(APIView):
     """
     프론트엔드용: 특정 기업(stock_code)의 산키 다이어그램 데이터 조회
     """
+
     @extend_schema(
         summary="기업별 산키 데이터 조회",
         responses={200: SankeySerializer},
-        tags=["Sankey"]
+        tags=["Sankey"],
     )
     def get(self, request, stock_code):
         try:
             company = Company.objects.get(stock_code=stock_code, is_deleted=False)
             # 가장 최근 연도의 데이터를 가져옴
-            sankey_data = SankeyData.objects.filter(company=company).order_by('-fiscal_year').first()
-            
+            sankey_data = (
+                SankeyData.objects.filter(company=company)
+                .order_by("-fiscal_year")
+                .first()
+            )
+
             if not sankey_data:
                 return Response(
-                    {"detail": "해당 기업의 산키 데이터가 존재하지 않습니다. 먼저 동기화가 필요합니다."}, 
-                    status=status.HTTP_404_NOT_FOUND
+                    {
+                        "detail": "해당 기업의 산키 데이터가 존재하지 않습니다. 먼저 동기화가 필요합니다."
+                    },
+                    status=status.HTTP_404_NOT_FOUND,
                 )
-            
+
             serializer = SankeySerializer(sankey_data)
             return Response(serializer.data, status=status.HTTP_200_OK)
         except Company.DoesNotExist:
-            return Response({"detail": "존재하지 않는 기업 코드입니다."}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"detail": "존재하지 않는 기업 코드입니다."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
 
-#메인페이지 최신 보고서 조회
+# 메인페이지 최신 보고서 조회
 @extend_schema(
     summary="메인페이지 최신 보고서 10개 조회",
     description="모든 기업의 공시 보고서 중 접수일자(submitted_at)가 가장 최근인 10개의 목록을 가져옵니다.",
-    responses={200: MainReportSerializer(many=True)}
+    responses={200: MainReportSerializer(many=True)},
 )
 class MainRecentReportListView(ListAPIView):
     """
     메인페이지용 최신 보고서 목록 조회 뷰
     """
+
     serializer_class = MainReportSerializer
 
     def get_queryset(self):
         # 1. select_related('company'): 기업 테이블과 JOIN하여 쿼리 횟수 최적화 (N+1 문제 해결)
         # 2. order_by('-submitted_at'): 접수일자 기준 내림차순(최신순) 정렬
         # 3. [:10]: 상위 10개만 슬라이싱
-        return Report.objects.select_related('company').all().order_by('-submitted_at')[:10]
-
+        return (
+            Report.objects.select_related("company")
+            .all()
+            .order_by("-submitted_at")[:10]
+        )
