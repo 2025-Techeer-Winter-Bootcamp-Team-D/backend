@@ -186,6 +186,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Prepare directories
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.APP_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # Grafana provisioning 디렉토리 미리 생성 및 권한 설정
+            mkdir -p ~/techeer-deploy/grafana/provisioning/dashboards/json
+            mkdir -p ~/techeer-deploy/grafana/provisioning/datasources
+            chmod -R 755 ~/techeer-deploy/grafana/provisioning
+
       - name: Copy deployment files
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -195,6 +207,7 @@ jobs:
           source: "deploy/app/*,grafana/**"
           target: "~/techeer-deploy"
           strip_components: 0
+          overwrite: true
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -206,8 +219,12 @@ jobs:
             cd ~/techeer-deploy/deploy/app
             echo "${{ secrets.ENV_FILE_APP }}" > .env
             
+            # Prometheus 데이터 디렉토리 생성 및 권한 설정
             mkdir -p prometheus_data
             sudo chown -R 65534:65534 prometheus_data
+            
+            # Grafana provisioning 디렉토리 권한 재확인 (파일 복사 후)
+            chmod -R 755 ../grafana/provisioning
             
             # GHCR 로그인
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
