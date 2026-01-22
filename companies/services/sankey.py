@@ -23,7 +23,7 @@ class SankeyDataService:
             return 0.0
 
     def _normalize_nm(self, nm):
-        if not nm: 
+        if not nm:  
             return ""
         return re.sub(r'[\s와및]', '', nm)
 
@@ -74,7 +74,6 @@ class SankeyDataService:
                 val = self._safe_float(item.get('thstrm_amount'))
                 aid = item.get('account_id', '')
 
-                # [교정] 로직은 그대로, SyntaxError 방지를 위해 괄호()만 추가
                 if (any(k in nm for k in ['매출액', '영업수익', '수익(매출액)', '수익']) or 
                     aid in ['ifrs-full_Revenue', 'ifrs_Revenue']):
                     if dart['rev'] == 0: 
@@ -108,6 +107,7 @@ class SankeyDataService:
             total_rev = fs.revenue if fs and fs.revenue > 0 else dart['rev']
             sum_parts = f_cogs + f_sga + max(0, f_ni)
 
+            # 총 매출액 단위 보정 (재무제표 데이터 기준)
             if total_rev > 0 and sum_parts > total_rev * 500:
                 total_rev *= 1000000
             
@@ -125,31 +125,29 @@ class SankeyDataService:
                 center = "매출액"
             
             nodes, links = [{"name": center}], []
-
             segments_list = []
             rev_comps = ext_info.get('revenue_composition', [])
-            seg_sum_for_nodes = 0
-
+            
+            # --- 수정된 부분: 비율(Ratio) 기반 매출 역산 ---
             for rc in rev_comps:
-                s_name, s_val = rc.get('segment', '미분류'), self._safe_float(rc.get('revenue', 0))
+                s_name = rc.get('segment', '미분류')
+                s_ratio = self._safe_float(rc.get('ratio', 0))
                 
-                if s_val > 0 and total_rev > s_val * 500: 
-                    s_val *= 1000000
+                # 총 매출액에 비율을 곱하여 사업부 매출 결정
+                s_val = total_rev * (s_ratio / 100)
                 
-                if '기타' in s_name:
+                # 비중이 없거나 기타 항목은 건너뜀 (사용자 요청)
+                if s_val <= 0 or '기타' in s_name:
                     continue
                 
-                seg_sum_for_nodes += s_val
                 nodes.append({"name": s_name})
                 links.append({"source": s_name, "target": center, "value": s_val})
                 segments_list.append({"name": s_name, "value": s_val})
 
-            left_other = max(0, total_rev - seg_sum_for_nodes)
-            if left_other > 0:
-                nodes.append({"name": "기타 매출"})
-                links.append({"source": "기타 매출", "target": center, "value": left_other})
-                segments_list.append({"name": "기타 매출", "value": left_other})
+            # --- 수정된 부분: 인위적인 '기타 매출' 생성 로직 삭제 ---
+            # (기존의 left_other 계산 및 추가 코드를 제거했습니다.)
 
+            # 오른쪽 노드 (비용 및 이익) 로직 유지
             right_other = max(0, total_rev - sum_parts)
             for n, v in [("원가비용", f_cogs), ("판관비", f_sga), ("순수익", display_ni), ("기타 비용", right_other)]:
                 if v > 0:
