@@ -1,0 +1,57 @@
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    # OTLP gRPC 수신
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    block_retention: 168h  # 7일 보관
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /tmp/tempo/blocks
+    wal:
+      path: /tmp/tempo/wal
+    pool:
+      max_workers: 100
+      queue_depth: 10000
+
+# Query 성능 최적화
+query_frontend:
+  search:
+    duration_slo: 5s
+    throughput_bytes_slo: 1.073741824e+09
+  trace_by_id:
+    duration_slo: 5s
+
+# 메트릭 생성
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+      cluster: techeer-winter
+  storage:
+    path: /tmp/tempo/generator/wal
+    remote_write:
+      - url: http://prometheus:9090/api/v1/write
+        send_exemplars: true
+
+# Overrides (리소스 제한)
+overrides:
+  per_tenant_override_config: /etc/tempo/overrides.yml
+  metrics_generator_processors:
+    - service-graphs
+    - span-metrics

@@ -175,39 +175,8 @@ services:
       - app-network
     restart: always
 
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: prometheus
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./prometheus_data:/prometheus
-    ports:
-      - "127.0.0.1:9090:9090"
-    networks:
-      - app-network
-    restart: always
-
-  grafana:
-    image: grafana/grafana:latest
-    container_name: grafana
-    user: root
-    ports:
-      - "127.0.0.1:3000:3000"
-    volumes:
-      - ./grafana_data:/var/lib/grafana
-      # 프로젝트 루트의 grafana/provisioning 디렉토리를 마운트
-      # docker-compose.yml 위치: deploy/app/
-      # 상대 경로: ../../grafana/provisioning -> Backend/grafana/provisioning
-      - ../../grafana/provisioning:/etc/grafana/provisioning:ro
-    networks:
-      - app-network
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
-      # [수정] 외부 접속 주소 및 하위 경로 설정 적용
-      - GF_SERVER_DOMAIN=3.38.58.47
-      - GF_SERVER_ROOT_URL=http://3.38.58.47/grafana/
-      - GF_SERVER_SERVE_FROM_SUB_PATH=true
-    restart: always
+  # Prometheus, Grafana는 Monitoring Layer로 이전됨
+  # Node Exporter와 cAdvisor는 메트릭 제공을 위해 유지
 
   node-exporter:
     image: prom/node-exporter:latest
@@ -222,7 +191,7 @@ services:
       - '--path.sysfs=/host/sys'
       - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
     ports:
-      - "127.0.0.1:9100:9100"
+      - "9100:9100"  # Monitoring Layer에서 수집하기 위해 외부 노출
     networks:
       - app-network
     restart: always
@@ -241,7 +210,7 @@ services:
       - /dev/disk/:/dev/disk:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
-      - "8081:8080"
+      - "8081:8080"  # Monitoring Layer에서 수집하기 위해 외부 노출
     networks:
       - app-network
     restart: always

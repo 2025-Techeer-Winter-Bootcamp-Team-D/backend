@@ -1,0 +1,91 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions-data.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # Docker 컨테이너 로그 수집 (Data Layer)
+  - job_name: docker-data
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: label
+            values: ["com.docker.compose.project=data"]
+
+    relabel_configs:
+      # 컨테이너 이름 추출
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: 'container'
+
+      # 컨테이너 ID 추출
+      - source_labels: ['__meta_docker_container_id']
+        regex: '(.*)'
+        target_label: 'container_id'
+
+      # Docker Compose 서비스 이름
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: 'service'
+
+      # Layer 라벨 추가
+      - replacement: 'data'
+        target_label: 'layer'
+
+    pipeline_stages:
+      # PostgreSQL 로그 파싱
+      - match:
+          selector: '{service="db"}'
+          stages:
+            - regex:
+                expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+) (?P<timezone>\w+) \[(?P<pid>\d+)\] (?P<level>\w+):  (?P<message>.*)$'
+
+            - timestamp:
+                source: timestamp
+                format: '2006-01-02 15:04:05.000'
+
+            - labels:
+                level:
+
+      # Redis 로그 파싱
+      - match:
+          selector: '{service="redis"}'
+          stages:
+            - regex:
+                expression: '^(?P<pid>\d+):(?P<role>\w+) (?P<timestamp>\d{2} \w{3} \d{4} \d{2}:\d{2}:\d{2}\.\d+) (?P<level>[\*\.\#\-]) (?P<message>.*)$'
+
+            - timestamp:
+                source: timestamp
+                format: '02 Jan 2006 15:04:05.000'
+
+            - labels:
+                level:
+
+      # OpenSearch 로그 파싱
+      - match:
+          selector: '{service="opensearch"}'
+          stages:
+            - json:
+                expressions:
+                  timestamp: timestamp
+                  level: level
+                  message: message
+                  component: component
+
+            - timestamp:
+                source: timestamp
+                format: '2006-01-02T15:04:05.000Z'
+
+            - labels:
+                level:
+                component:
+
+      # 레벨별 필터링 (DEBUG 로그 제외)
+      - match:
+          selector: '{level="DEBUG"}'
+          action: drop

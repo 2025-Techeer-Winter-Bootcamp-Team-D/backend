@@ -1,0 +1,78 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'techeer-winter'
+    environment: 'production'
+
+# Alertmanager 설정
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+# Alert 규칙 파일
+rule_files:
+  - 'alerts.yml'
+
+scrape_configs:
+  # Prometheus 자체 모니터링
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Monitoring Layer
+  - job_name: 'node-exporter-monitoring'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          layer: 'monitoring'
+
+  # App Layer
+  - job_name: 'django-app'
+    metrics_path: /internal/metrics
+    static_configs:
+      - targets: ['${APP_PRIVATE_IP}:8000']
+        labels:
+          layer: 'app'
+          service: 'django'
+
+  - job_name: 'node-exporter-app'
+    static_configs:
+      - targets: ['${APP_PRIVATE_IP}:9100']
+        labels:
+          layer: 'app'
+
+  - job_name: 'cadvisor-app'
+    static_configs:
+      - targets: ['${APP_PRIVATE_IP}:8081']
+        labels:
+          layer: 'app'
+
+  # Data Layer
+  - job_name: 'node-exporter-data'
+    static_configs:
+      - targets: ['${DATA_PRIVATE_IP}:9100']
+        labels:
+          layer: 'data'
+
+  - job_name: 'postgres-exporter'
+    static_configs:
+      - targets: ['${DATA_PRIVATE_IP}:9187']
+        labels:
+          layer: 'data'
+          service: 'postgresql'
+
+  - job_name: 'redis-exporter'
+    static_configs:
+      - targets: ['${DATA_PRIVATE_IP}:9121']
+        labels:
+          layer: 'data'
+          service: 'redis'
+
+  - job_name: 'opensearch-exporter'
+    static_configs:
+      - targets: ['${DATA_PRIVATE_IP}:9114']
+        labels:
+          layer: 'data'
+          service: 'opensearch'
