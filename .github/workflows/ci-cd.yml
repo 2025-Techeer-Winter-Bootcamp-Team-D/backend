@@ -225,10 +225,23 @@ jobs:
             echo "=== 컨테이너 상태 확인 ==="
             docker ps
 
+            echo "=== Nginx 로그 확인 ==="
+            docker logs nginx --tail 50 || true
+
+            echo "=== Django 로그 확인 ==="
+            docker logs django --tail 30 || true
+
+            echo "=== 서비스 안정화 대기 (30초) ==="
+            sleep 30
+
+            echo "=== 최종 컨테이너 상태 확인 ==="
+            docker ps
+
             echo "=== Django App Health Check ==="
-            sleep 10
             if ! curl -f http://localhost/health/; then
               echo "ERROR: Django health check failed"
+              echo "=== Nginx 에러 로그 ==="
+              docker logs nginx --tail 100
               exit 1
             fi
 
