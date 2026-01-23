@@ -14,10 +14,6 @@ distributor:
 ingester:
   max_block_duration: 5m
 
-compactor:
-  compaction:
-    block_retention: 168h  # 7일 보관
-
 storage:
   trace:
     backend: local
@@ -28,6 +24,9 @@ storage:
     pool:
       max_workers: 100
       queue_depth: 10000
+    blocklist_poll: 5m
+    block:
+      retention: 168h  # 7일 보관
 
 # Query 성능 최적화
 query_frontend:
