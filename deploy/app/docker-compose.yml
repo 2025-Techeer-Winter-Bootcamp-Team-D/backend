@@ -142,7 +142,8 @@ services:
     container_name: celery-flower
     env_file:
       - .env
-    command: celery -A config flower --port=5555
+    # [수정] url_prefix를 통해 하위 경로 인식
+    command: celery -A config flower --port=5555 --url_prefix=celery-flower
     ports:
       - "127.0.0.1:5555:5555"
     environment:
@@ -173,11 +174,18 @@ services:
       - "127.0.0.1:3000:3000"
     volumes:
       - ./grafana_data:/var/lib/grafana
+      # 프로젝트 루트의 grafana/provisioning 디렉토리를 마운트
+      # docker-compose.yml 위치: deploy/app/
+      # 상대 경로: ../../grafana/provisioning -> Backend/grafana/provisioning
+      - ../../grafana/provisioning:/etc/grafana/provisioning:ro
     networks:
       - app-network
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
-      - GF_SERVER_ROOT_URL=http://localhost:3000
+      # [수정] 외부 접속 주소 및 하위 경로 설정 적용
+      - GF_SERVER_DOMAIN=3.38.58.47
+      - GF_SERVER_ROOT_URL=http://3.38.58.47/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
     restart: always
 
   node-exporter:

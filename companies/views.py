@@ -1967,7 +1967,6 @@ def sync_all_companies_news(request):
     DB에 있는 모든 기업에 대해 뉴스 동기화 작업을 등록합니다.
     """
     from news.tasks.company_news import sync_company_news_task
-    from datetime import datetime
 
     # 쿼리 파라미터 처리
     try:
@@ -2024,7 +2023,6 @@ def sync_all_companies_news(request):
 
     # 비동기 실행
     if use_async:
-        task_groups = []
         task_count = 0
 
         # 배치 단위로 기업을 처리

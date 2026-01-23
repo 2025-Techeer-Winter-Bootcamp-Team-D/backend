@@ -178,7 +178,6 @@ jobs:
             sudo chown -R 1000:1000 /home/ubuntu/infra-data/opensearch
             
             docker compose pull
-            # --build를 사용하여 Dockerfile이 정의된 OpenSearch 등을 로컬에서 빌드 및 반영
             docker compose up -d --build --remove-orphans
             docker image prune -f
 
@@ -190,15 +189,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Prepare directories
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.APP_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # [수정] sudo를 사용하여 권한 거부를 우회하고 소유권을 현재 유저($USER)로 가져옵니다.
+            sudo mkdir -p ~/techeer-deploy/grafana/provisioning/dashboards/json
+            sudo mkdir -p ~/techeer-deploy/grafana/provisioning/datasources
+            sudo chown -R $USER:$USER ~/techeer-deploy
+            chmod -R 755 ~/techeer-deploy/grafana/provisioning
+
       - name: Copy deployment files
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.APP_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "deploy/app/*"
-          target: "~/techeer-deploy/deploy/app"
-          strip_components: 2
+          source: "deploy/app/*,grafana/**"
+          target: "~/techeer-deploy"
+          strip_components: 0
+          overwrite: true
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -210,19 +223,12 @@ jobs:
             cd ~/techeer-deploy/deploy/app
             echo "${{ secrets.ENV_FILE_APP }}" > .env
             
+            # Prometheus 데이터 권한 설정
             mkdir -p prometheus_data
             sudo chown -R 65534:65534 prometheus_data
             
-            # GHCR 로그인
+            # GHCR 로그인 및 배포
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            
-            # 최신 이미지 Pull
             docker compose pull
-            
-            # [중요 수정] 
-            # 1. --build: Nginx 처럼 'build:' 설정이 된 서비스를 EC2에서 새로 빌드함
-            # 2. --remove-orphans: docker-compose에서 삭제된 서비스의 컨테이너를 정리함
             docker compose up -d --build --remove-orphans
-            
-            # 미사용 이미지 정리 (디스크 용량 확보)
             docker image prune -af
