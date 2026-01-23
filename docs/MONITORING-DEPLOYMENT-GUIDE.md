@@ -100,6 +100,46 @@ ssh -i ~/.ssh/your-key.pem ubuntu@${MONITORING_PUBLIC_IP}
 | Custom TCP | TCP | 9121 | Monitoring Layer SG | Redis Exporter |
 | Custom TCP | TCP | 9114 | Monitoring Layer SG | OpenSearch Exporter |
 
+### 2.4 보안 그룹 설정 주의사항
+
+#### ⚠️ CIDR vs Security Group 참조 선택
+
+AWS 보안 그룹 규칙에서 Source를 지정할 때 두 가지 방식이 있습니다:
+
+**방법 1: Private IP (CIDR 형식) 사용 (권장)**
+```
+소스 유형: 사용자 지정
+소스: <MONITORING_PRIVATE_IP>/32
+예: 10.0.3.50/32
+```
+
+**방법 2: Security Group ID 참조**
+```
+소스 유형: 사용자 지정
+소스: sg-xxxxxxxxx (Monitoring Layer의 Security Group ID)
+```
+
+#### ⚠️ 규칙 충돌 해결
+
+**오류 메시지:**
+```
+기존 IPv4 CIDR 규칙에 참조된 그룹 ID를 지정할 수 없습니다.
+```
+
+**원인:**
+- 동일한 포트에 대해 CIDR 블록 규칙이 이미 존재하는 상태에서 Security Group ID 규칙을 추가하려고 할 때 발생
+
+**해결 방법:**
+1. **기존 규칙 확인**: 해당 포트(예: 9100)의 기존 규칙 확인
+2. **기존 CIDR 규칙 삭제**: `0.0.0.0/0` 또는 다른 CIDR 블록으로 된 규칙 제거
+3. **새 규칙 추가**: Private IP/32 형식 또는 Security Group ID로 새 규칙 추가
+
+**예시:**
+```bash
+# 삭제할 규칙: Port 9100, Source: 0.0.0.0/0
+# 추가할 규칙: Port 9100, Source: 10.0.3.50/32
+```
+
 ---
 
 ## 3. Monitoring Layer 배포
@@ -485,6 +525,30 @@ rate(django_http_requests_total_by_view_transport_method_total[5m])
 ---
 
 ## 7. 트러블슈팅
+
+### 7.0 보안 그룹 설정 오류
+
+#### 오류: "기존 IPv4 CIDR 규칙에 참조된 그룹 ID를 지정할 수 없습니다"
+
+**원인:**
+- 동일한 포트에 대해 CIDR 블록 규칙과 Security Group ID 규칙을 동시에 가질 수 없음
+
+**해결:**
+```bash
+# 1. AWS Console에서 기존 규칙 확인
+# EC2 → Security Groups → 해당 SG 선택 → Inbound rules
+
+# 2. 해당 포트의 기존 CIDR 규칙 삭제 (예: 0.0.0.0/0)
+
+# 3. 새 규칙 추가 (두 가지 방법 중 선택)
+
+# 방법 A: Private IP CIDR 형식 (권장)
+# 소스: <MONITORING_PRIVATE_IP>/32
+# 예: 10.0.3.50/32
+
+# 방법 B: Security Group 참조
+# 소스: sg-xxxxxxxxx (Monitoring Layer SG ID)
+```
 
 ### 7.1 Prometheus 타겟이 DOWN 상태
 
