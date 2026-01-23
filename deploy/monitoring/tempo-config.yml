@@ -13,9 +13,13 @@ distributor:
 ingester:
   max_block_duration: 5m
 
-# Tempo 2.x 스키마: compaction 설정
-compaction:
-  block_retention: 168h  # 7일 보관
+# Tempo 2.x 스키마: compactor 설정
+compactor:
+  compaction:
+    block_retention: 168h  # 7일 보관
+    compacted_block_retention: 1h
+    compaction_window: 1h
+    max_compaction_objects: 1000000
 
 storage:
   trace:
