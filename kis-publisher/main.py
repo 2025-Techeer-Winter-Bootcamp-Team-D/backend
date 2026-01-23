@@ -3,6 +3,7 @@ import json
 import os
 import websockets
 import redis.asyncio as redis
+import aio_pika
 import aiohttp
 from fetch_symbols import get_all_listed_symbols, get_stock_codes_from_db
 
@@ -172,24 +173,23 @@ async def run_publisher():
             "No stock codes to subscribe. Please check database connection or fallback configuration."
         )
 
-    # Redis 연결
-    redis_host = os.getenv("REDIS_HOST", "redis")
-    redis_password = os.getenv("REDIS_PASSWORD")
-    
-    if redis_password:
-        redis_url = f"redis://:{redis_password}@{redis_host}:6379/0"
-    else:
-        redis_url = f"redis://{redis_host}:6379/0"
-        
-    redis_client = redis.from_url(redis_url)
-    print(f"[INIT] Redis client connected: {redis_url}")
+    # RabbitMQ 연결
+    rabbitmq_url = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
+    print(f"[INIT] Connecting to RabbitMQ: {rabbitmq_url}")
 
-    # Redis 연결 테스트
     try:
-        await redis_client.ping()
-        print("[INIT] Redis ping successful")
+        rabbitmq_connection = await aio_pika.connect_robust(rabbitmq_url)
+        rabbitmq_channel = await rabbitmq_connection.channel()
+
+        # Exchange 선언 (Fanout 타입)
+        rabbitmq_exchange = await rabbitmq_channel.declare_exchange(
+            "stock.realtime",
+            aio_pika.ExchangeType.FANOUT,
+            durable=True
+        )
+        print("[INIT] RabbitMQ connected and exchange 'stock.realtime' declared")
     except Exception as e:
-        print(f"[ERROR] Redis ping failed: {e}")
+        print(f"[ERROR] RabbitMQ connection failed: {e}")
         raise
 
     # KIS WebSocket 연결
@@ -331,26 +331,23 @@ async def run_publisher():
 
                 async for message in ws:
                     try:
-                        # 테스트/실제 환경 공통: KIS API 형식 메시지 파싱 후 Redis Stream에 추가
+                        # 테스트/실제 환경 공통: KIS API 형식 메시지 파싱 후 RabbitMQ에 발행
                         if message and len(message) > 0 and message[0] in ["0", "1"]:
                             parsed_data = KISParser.parse_trade_data(message)
                             if parsed_data:
-                                # Redis Stream에 XADD (stock:realtime 단일 스트림)
-                                stream_key = "stock:realtime"
-                                entry_id = await redis_client.xadd(
-                                    stream_key,
-                                    {
-                                        "stock_code": parsed_data["stock_code"],
-                                        "symbol": parsed_data["symbol"],
-                                        "time": parsed_data["time"],
-                                        "price": str(parsed_data["price"]),
-                                        "volume": str(parsed_data["volume"]),
-                                    },
-                                    maxlen=1000000,  # 스트림 최대 길이 제한
+                                # RabbitMQ에 메시지 발행
+                                rabbitmq_message = aio_pika.Message(
+                                    body=json.dumps(parsed_data).encode(),
+                                    content_type="application/json",
+                                    delivery_mode=aio_pika.DeliveryMode.PERSISTENT  # 영속성
+                                )
+                                await rabbitmq_exchange.publish(
+                                    rabbitmq_message,
+                                    routing_key=""  # Fanout이므로 routing_key 불필요
                                 )
                                 mode = "[TEST]" if uri == TEST_URL else "[PROD]"
                                 print(
-                                    f"{mode} XADD: {stream_key}, id={entry_id}, "
+                                    f"{mode} PUBLISH: stock.realtime exchange, "
                                     f"stock={parsed_data['stock_code']}, price={parsed_data['price']}"
                                 )
                     except Exception as e:

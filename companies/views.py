@@ -47,6 +47,7 @@ from .services.outlook import (
 )
 from .services.sankey import SankeyDataService
 from rest_framework.views import APIView
+from .tests.services.e2e_runner import E2ETestRunner
 
 logger = logging.getLogger(__name__)
 
@@ -521,12 +522,25 @@ def sync_company_from_dart(request, stock_code):
                 results["info"] = "동기화 작업이 큐에 등록되었습니다."
             if sync_financials:
                 # 현재부터 과거 N년치 재무제표 동기화 작업 등록
+                financial_task_count = 0
                 for year_offset in range(years):
                     target_year = current_year - year_offset
+
+                    # 2025년, 2026년 제외 (아직 재무지표가 제공되지 않음)
+                    if target_year >= 2025:
+                        logger.debug(
+                            f"재무제표 동기화 제외 (미제공): {stock_code} ({target_year}년)"
+                        )
+                        continue
+
                     sync_financial_statements.delay(stock_code, target_year)
+                    financial_task_count += 1
+
+                # 실제로 등록된 연도 계산
+                valid_years = [current_year - i for i in range(years) if current_year - i < 2025]
+                year_range = f"({min(valid_years)}~{max(valid_years)}년)" if valid_years else "(제외됨)"
                 results["financials"] = (
-                    f"최근 {years}년 재무제표 동기화 작업이 큐에 등록되었습니다. "
-                    f"({current_year - years + 1}~{current_year}년)"
+                    f"{financial_task_count}개 연도 재무제표 동기화 작업이 큐에 등록되었습니다. {year_range}"
                 )
             if sync_reports:
                 sync_company_reports.delay(stock_code, days)
@@ -585,6 +599,14 @@ def sync_company_from_dart(request, stock_code):
                 # 현재부터 과거 N년치 재무제표 동기화
                 for year_offset in range(years):
                     target_year = current_year - year_offset
+
+                    # 2025년, 2026년 제외 (아직 재무지표가 제공되지 않음)
+                    if target_year >= 2025:
+                        logger.debug(
+                            f"재무제표 동기화 제외 (미제공): {stock_code} ({target_year}년)"
+                        )
+                        continue
+
                     try:
                         # 재무제표 동기화
                         statements = service.sync_financial_statements(
@@ -843,15 +865,22 @@ def sync_all_companies_from_dart(request):
             if sync_financials:
                 # 현재부터 과거 N년치 재무제표 동기화 작업 등록
                 financials_tasks = []
+                financial_task_count = 0
                 for stock_code in company_list:
                     for year_offset in range(years):
                         target_year = current_year - year_offset
+
+                        # 2025년, 2026년 제외 (아직 재무지표가 제공되지 않음)
+                        if target_year >= 2025:
+                            continue
+
                         financials_tasks.append(
                             sync_financial_statements.s(stock_code, target_year)
                         )
+                        financial_task_count += 1
                 financials_tasks_group = group(financials_tasks)
                 task_groups.append(("financials", financials_tasks_group))
-                task_count += total_count * years
+                task_count += financial_task_count
 
             if sync_reports:
                 reports_tasks = group(
@@ -940,6 +969,14 @@ def sync_all_companies_from_dart(request):
                     # 현재부터 과거 N년치 재무제표 동기화
                     for year_offset in range(years):
                         target_year = current_year - year_offset
+
+                        # 2025년, 2026년 제외 (아직 재무지표가 제공되지 않음)
+                        if target_year >= 2025:
+                            logger.debug(
+                                f"재무제표 동기화 제외 (미제공): {stock_code} ({target_year}년)"
+                            )
+                            continue
+
                         try:
                             statements = financial_service.sync_financial_statements(
                                 company, target_year, sync_all_reports=False
@@ -2406,5 +2443,297 @@ class MainRecentReportListView(ListAPIView):
         # 1. select_related('company'): 기업 테이블과 JOIN하여 쿼리 횟수 최적화 (N+1 문제 해결)
         # 2. order_by('-submitted_at'): 접수일자 기준 내림차순(최신순) 정렬
         # 3. [:10]: 상위 10개만 슬라이싱
-        return Report.objects.select_related('company').all().order_by('-submitted_at')[:10]
+        return (
+            Report.objects.select_related("company")
+            .all()
+            .order_by("-submitted_at")[:10]
+        )
 
+
+# ------------------------ 관리자 전용: 상위 기업 동기화 --------------------------
+@extend_schema(
+    summary="시가총액 상위 기업 동기화",
+    description="""
+시가총액 기준 상위 N개 기업을 DART API와 동기화합니다.
+
+**기능**:
+- FinanceDataReader를 통해 시가총액 상위 기업 조회
+- DART API에서 기업 정보 가져오기
+- Company 테이블에 자동 저장
+- 정확히 요청한 개수(limit)만큼 기업을 저장
+
+**특징**:
+- 시가총액 순서 유지
+- DART에 없는 기업 자동 필터링
+- 중복 저장 방지
+- 백그라운드 작업 없음 (즉시 동기화)
+
+**주의사항**:
+- limit이 클수록 처리 시간이 오래 걸립니다 (100개 기준 약 30초)
+- 관리자 권한 필요
+    """,
+    request={
+        "application/json": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "동기화할 기업 수 (기본값: 100)",
+                    "default": 100,
+                },
+                "update_existing": {
+                    "type": "boolean",
+                    "description": "기존 기업 정보 업데이트 여부 (기본값: false)",
+                    "default": False,
+                },
+            },
+        }
+    },
+    responses={
+        200: {
+            "type": "object",
+            "properties": {
+                "status": {"type": "integer", "example": 200},
+                "message": {"type": "string", "example": "상위 100개 기업 동기화 완료"},
+                "data": {
+                    "type": "object",
+                    "properties": {
+                        "stats": {
+                            "type": "object",
+                            "properties": {
+                                "created": {
+                                    "type": "integer",
+                                    "description": "새로 생성된 기업 수",
+                                },
+                                "updated": {
+                                    "type": "integer",
+                                    "description": "업데이트된 기업 수",
+                                },
+                                "skipped": {
+                                    "type": "integer",
+                                    "description": "건너뛴 기업 수",
+                                },
+                                "error": {
+                                    "type": "integer",
+                                    "description": "오류 발생 기업 수",
+                                },
+                            },
+                        },
+                        "total_count": {
+                            "type": "integer",
+                            "description": "총 동기화된 기업 수",
+                        },
+                        "companies": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "stock_code": {"type": "string"},
+                                    "company_name": {"type": "string"},
+                                    "corp_code": {"type": "string"},
+                                    "market": {"type": "string"},
+                                    "market_amount": {"type": "number", "nullable": True},
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        400: OpenApiResponse(description="잘못된 요청 (limit 범위 초과 등)"),
+        403: OpenApiResponse(description="권한 없음 (관리자 전용)"),
+        500: OpenApiResponse(description="서버 오류"),
+    },
+    tags=["Admin"],
+)
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def sync_top_companies(request):
+    """시가총액 상위 기업 동기화 API"""
+    from companies.services.top_companies_sync import TopCompaniesSyncService
+
+    # 요청 파라미터 파싱
+    limit = request.data.get("limit", 100)
+    update_existing = request.data.get("update_existing", False)
+
+    # 유효성 검증
+    if not isinstance(limit, int) or limit <= 0 or limit > 500:
+        return Response(
+            {
+                "status": 400,
+                "error": "limit은 1~500 사이의 정수여야 합니다.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        # 동기화 서비스 실행
+        service = TopCompaniesSyncService()
+        result = service.sync_top_companies(
+            limit=limit, update_existing=update_existing
+        )
+
+        logger.info(
+            f"상위 {limit}개 기업 동기화 완료: "
+            f"생성={result['stats']['created']}, "
+            f"업데이트={result['stats']['updated']}, "
+            f"건너뜀={result['stats']['skipped']}, "
+            f"오류={result['stats']['error']}"
+        )
+
+        return Response(
+            {
+                "status": 200,
+                "message": f"상위 {limit}개 기업 동기화 완료",
+                "data": result,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    except Exception as e:
+        logger.error(f"상위 기업 동기화 실패: {e}", exc_info=True)
+        return Response(
+            {
+                "status": 500,
+                "error": f"동기화 중 오류가 발생했습니다: {str(e)}",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+# ------------------------ E2E 테스트 ----------------------------------
+@extend_schema(
+    summary="E2E 테스트 실행 (관리자용)",
+    description="""
+    End-to-End 테스트 API - 전체 시스템의 연결 및 데이터 정합성을 검증합니다.
+
+    **Phase 1: 인프라 검증 (~6초)**
+    - PostgreSQL (TimescaleDB)
+    - Redis
+    - RabbitMQ
+    - OpenSearch
+
+    **Phase 2: 외부 API 검증 (~5초)**
+    - DART API
+    - Gemini API (최소 토큰 사용: ~5 tokens)
+
+    **Phase 3: 데이터 정합성 검증 (~6초)**
+    - Company 데이터
+    - FinancialStatement 데이터 (2025-2026 제외)
+    - Report 데이터
+    - Price 데이터
+
+    **Phase 4: 보고서 처리 파이프라인 검증 (~16초)**
+    - 가장 짧은 보고서 선택
+    - 전체 처리 파이프라인 실행
+    - Gemini API 사용: ~650 tokens
+    - 예상 비용: $0.00011 (Gemini Flash 기준)
+
+    **총 실행 시간: ~33초**
+    **총 Gemini 토큰: ~655 tokens**
+    **총 예상 비용: $0.00011**
+    """,
+    request={
+        "application/json": {
+            "type": "object",
+            "properties": {
+                "phases": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "실행할 Phase 리스트 (예: [1, 2, 3, 4]). 없으면 전체 실행",
+                    "default": [1, 2, 3, 4],
+                },
+                "skip_gemini": {
+                    "type": "boolean",
+                    "description": "Gemini API 사용 스킵 여부 (Phase 2, 4 스킵)",
+                    "default": False,
+                },
+            },
+        }
+    },
+    responses={
+        200: {
+            "type": "object",
+            "properties": {
+                "status": {"type": "string", "example": "success"},
+                "total_duration": {"type": "number", "example": 33.5},
+                "gemini_tokens_used": {"type": "integer", "example": 655},
+                "estimated_cost": {"type": "number", "example": 0.00011},
+                "phases": {
+                    "type": "object",
+                    "properties": {
+                        "phase1_infrastructure": {"type": "object"},
+                        "phase2_external_api": {"type": "object"},
+                        "phase3_data_integrity": {"type": "object"},
+                        "phase4_report_pipeline": {"type": "object"},
+                    },
+                },
+            },
+        },
+        400: OpenApiResponse(description="Bad Request"),
+        403: OpenApiResponse(description="Forbidden (관리자 전용)"),
+        500: OpenApiResponse(description="Internal Server Error"),
+    },
+    tags=["Admin"],
+)
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def run_e2e_tests(request):
+    """
+    E2E 테스트 실행 API (관리자용)
+
+    전체 시스템의 연결 및 데이터 정합성을 검증합니다.
+    """
+    # 요청 파라미터 파싱
+    phases = request.data.get("phases", [1, 2, 3, 4])
+    skip_gemini = request.data.get("skip_gemini", False)
+
+    # phases 유효성 검증
+    if not isinstance(phases, list):
+        return Response(
+            {
+                "status": 400,
+                "error": "phases는 배열이어야 합니다.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    valid_phases = {1, 2, 3, 4}
+    invalid_phases = set(phases) - valid_phases
+    if invalid_phases:
+        return Response(
+            {
+                "status": 400,
+                "error": f"유효하지 않은 Phase: {invalid_phases}. 유효한 Phase: [1, 2, 3, 4]",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        # E2E 테스트 실행
+        logger.info(f"E2E 테스트 시작 - phases: {phases}, skip_gemini: {skip_gemini}")
+        results = E2ETestRunner.run(phases=phases, skip_gemini=skip_gemini)
+
+        # 상태 코드 결정
+        if results["status"] == "success":
+            http_status = status.HTTP_200_OK
+        else:
+            http_status = status.HTTP_500_INTERNAL_SERVER_ERROR
+
+        logger.info(
+            f"E2E 테스트 완료 - 상태: {results['status']}, "
+            f"실행 시간: {results['total_duration']}초, "
+            f"Gemini 토큰: {results['gemini_tokens_used']}"
+        )
+
+        return Response(results, status=http_status)
+
+    except Exception as e:
+        logger.error(f"E2E 테스트 실패: {e}", exc_info=True)
+        return Response(
+            {
+                "status": "error",
+                "error": f"E2E 테스트 실행 중 오류가 발생했습니다: {str(e)}",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

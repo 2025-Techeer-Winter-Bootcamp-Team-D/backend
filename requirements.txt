@@ -20,6 +20,7 @@ websockets
 
 # Cache & Message Broker
 redis==5.0.1
+aio-pika>=9.0.0
 celery>=5.4.0
 flower
 

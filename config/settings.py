@@ -230,8 +230,10 @@ CHANNEL_LAYERS = {
 }
 
 # Celery Configuration
-# Docker 환경에서는 redis 호스트명 사용, 로컬에서는 localhost 사용
-CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL)
+# RabbitMQ를 Celery 브로커로 사용 (메시지 큐 처리)
+RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", RABBITMQ_URL)
+# Redis는 Result Backend로만 사용 (빠른 결과 조회)
 CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", REDIS_URL)
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
