@@ -186,50 +186,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare directories
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.APP_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            # [수정] sudo를 사용하여 권한 거부를 우회하고 소유권을 현재 유저($USER)로 가져옵니다.
-            sudo mkdir -p ~/techeer-deploy/grafana/provisioning/dashboards/json
-            sudo mkdir -p ~/techeer-deploy/grafana/provisioning/datasources
-            sudo chown -R $USER:$USER ~/techeer-deploy
-            chmod -R 755 ~/techeer-deploy/grafana/provisioning
-
       - name: Copy deployment files
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.APP_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "deploy/app/*,grafana/**"
+          source: "deploy/app/*"
           target: "~/techeer-deploy"
           strip_components: 0
           overwrite: true
-
-      - name: Verify Grafana files and set permissions
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.APP_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            echo "=== Grafana 파일 구조 확인 ==="
-            ls -la ~/techeer-deploy/grafana/provisioning/ || echo "grafana provisioning 디렉토리가 없습니다!"
-            ls -la ~/techeer-deploy/grafana/provisioning/dashboards/ || echo "dashboards 디렉토리가 없습니다!"
-            ls -la ~/techeer-deploy/grafana/provisioning/dashboards/json/ || echo "json 디렉토리가 없습니다!"
-
-            echo "=== Grafana 파일 권한 설정 ==="
-            chmod -R 755 ~/techeer-deploy/grafana/provisioning
-            chmod 644 ~/techeer-deploy/grafana/provisioning/dashboards/*.yml
-            chmod 644 ~/techeer-deploy/grafana/provisioning/datasources/*.yml
-            chmod 644 ~/techeer-deploy/grafana/provisioning/dashboards/json/*.json
-
-            echo "=== 최종 확인 ==="
-            find ~/techeer-deploy/grafana -type f -exec ls -lh {} \;
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -241,33 +207,148 @@ jobs:
             cd ~/techeer-deploy/deploy/app
             echo "${{ secrets.ENV_FILE_APP }}" > .env
 
-            # Prometheus 데이터 권한 설정
-            mkdir -p prometheus_data
-            sudo chown -R 65534:65534 prometheus_data
-
             # GHCR 로그인 및 배포
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             docker compose pull
             docker compose up -d --build --remove-orphans
             docker image prune -af
 
-      - name: Verify Grafana deployment
+      - name: Verify App deployment
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.APP_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            echo "=== Grafana 컨테이너 상태 확인 ==="
-            docker ps | grep grafana
+            set -e  # 명령 실패 시 즉시 종료
 
-            echo "=== Grafana 로그 확인 (최근 50줄) ==="
-            docker logs grafana --tail 50
+            echo "=== 컨테이너 상태 확인 ==="
+            docker ps
 
-            echo "=== Grafana provisioning 확인 ==="
-            docker exec grafana ls -la /etc/grafana/provisioning/dashboards/
-            docker exec grafana ls -la /etc/grafana/provisioning/dashboards/json/ | head -10
+            echo "=== Django App Health Check ==="
+            sleep 10
+            if ! curl -f http://localhost/health/; then
+              echo "ERROR: Django health check failed"
+              exit 1
+            fi
+
+            echo "=== Node Exporter Health Check ==="
+            if ! curl -f http://localhost:9100/metrics; then
+              echo "ERROR: Node Exporter health check failed"
+              exit 1
+            fi
+
+            echo "=== cAdvisor Health Check ==="
+            if ! curl -f http://localhost:8081/metrics; then
+              echo "ERROR: cAdvisor health check failed"
+              exit 1
+            fi
+
+            echo "All health checks passed successfully"
+
+  deploy-monitoring:
+    name: Deploy Monitoring Layer
+    needs: [deploy-app]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy monitoring deployment files
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.MONITORING_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "deploy/monitoring/*"
+          target: "~/techeer-deploy"
+          strip_components: 0
+          overwrite: true
+
+      - name: Deploy Monitoring Stack via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.MONITORING_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd ~/techeer-deploy/deploy/monitoring
+            echo "${{ secrets.ENV_FILE_MONITORING }}" > .env
+
+            # 환경 변수 로드
+            source .env
+
+            # 필수 환경 변수 검증
+            if [ -z "$APP_PRIVATE_IP" ]; then
+              echo "ERROR: APP_PRIVATE_IP is not set in .env file"
+              exit 1
+            fi
+
+            if [ -z "$DATA_PRIVATE_IP" ]; then
+              echo "ERROR: DATA_PRIVATE_IP is not set in .env file"
+              exit 1
+            fi
+
+            echo "Environment variables validated:"
+            echo "  APP_PRIVATE_IP: $APP_PRIVATE_IP"
+            echo "  DATA_PRIVATE_IP: $DATA_PRIVATE_IP"
+
+            # prometheus.yml에 IP 주소 치환
+            sed -i "s/\${APP_PRIVATE_IP}/$APP_PRIVATE_IP/g" prometheus.yml
+            sed -i "s/\${DATA_PRIVATE_IP}/$DATA_PRIVATE_IP/g" prometheus.yml
+
+            # Docker Compose로 모니터링 스택 시작
+            docker compose pull
+            docker compose up -d --build --remove-orphans
+            docker image prune -af
+
+      - name: Verify Monitoring Stack
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.MONITORING_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e  # 명령 실패 시 즉시 종료
+
+            echo "=== 컨테이너 상태 확인 ==="
+            docker ps
+
+            echo "=== Prometheus Health Check ==="
+            sleep 15
+            if ! curl -f http://localhost:9090/-/healthy; then
+              echo "ERROR: Prometheus health check failed"
+              exit 1
+            fi
 
             echo "=== Grafana Health Check ==="
-            sleep 10
-            curl -f http://localhost:3000/api/health || echo "Grafana health check failed"
+            if ! curl -f http://localhost:3000/api/health; then
+              echo "ERROR: Grafana health check failed"
+              exit 1
+            fi
+
+            echo "=== Loki Health Check ==="
+            if ! curl -f http://localhost:3100/ready; then
+              echo "ERROR: Loki health check failed"
+              exit 1
+            fi
+
+            echo "=== Tempo Health Check ==="
+            if ! curl -f http://localhost:3200/ready; then
+              echo "ERROR: Tempo health check failed"
+              exit 1
+            fi
+
+            echo "=== Alertmanager Health Check ==="
+            if ! curl -f http://localhost:9093/-/healthy; then
+              echo "ERROR: Alertmanager health check failed"
+              exit 1
+            fi
+
+            echo "=== Portainer Health Check ==="
+            if ! curl -f http://localhost:9000/api/status; then
+              echo "ERROR: Portainer health check failed"
+              exit 1
+            fi
+
+            echo "All monitoring services health checks passed successfully"
