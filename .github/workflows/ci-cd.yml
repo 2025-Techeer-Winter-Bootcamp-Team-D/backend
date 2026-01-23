@@ -151,6 +151,8 @@ jobs:
           source: "deploy/data/docker-compose.yml"
           target: "~/techeer-deploy/deploy/data"
           strip_components: 2
+          timeout: 120s
+          command_timeout: 15m
 
       - name: Copy OpenSearch Dockerfile
         uses: appleboy/scp-action@v0.1.7
@@ -161,6 +163,8 @@ jobs:
           source: "opensearch/*"
           target: "~/techeer-deploy/opensearch"
           strip_components: 1
+          timeout: 120s
+          command_timeout: 15m
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -168,6 +172,8 @@ jobs:
           host: ${{ secrets.DATA_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          timeout: 120s
+          command_timeout: 15m
           script: |
             cd ~/techeer-deploy/deploy/data
             echo "${{ secrets.ENV_FILE_DATA }}" > .env
@@ -196,6 +202,8 @@ jobs:
           target: "~/techeer-deploy"
           strip_components: 0
           overwrite: true
+          timeout: 120s
+          command_timeout: 15m
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -203,6 +211,8 @@ jobs:
           host: ${{ secrets.APP_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          timeout: 120s
+          command_timeout: 15m
           script: |
             cd ~/techeer-deploy/deploy/app
             echo "${{ secrets.ENV_FILE_APP }}" > .env
@@ -219,6 +229,8 @@ jobs:
           host: ${{ secrets.APP_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          timeout: 120s
+          command_timeout: 10m
           script: |
             set -e  # 명령 실패 시 즉시 종료
 
@@ -277,6 +289,8 @@ jobs:
           target: "~/techeer-deploy"
           strip_components: 0
           overwrite: true
+          timeout: 120s
+          command_timeout: 15m
 
       - name: Deploy Monitoring Stack via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -284,6 +298,8 @@ jobs:
           host: ${{ secrets.MONITORING_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          timeout: 120s
+          command_timeout: 15m
           script: |
             cd ~/techeer-deploy/deploy/monitoring
             echo "${{ secrets.ENV_FILE_MONITORING }}" > .env
@@ -321,6 +337,8 @@ jobs:
           host: ${{ secrets.MONITORING_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          timeout: 120s
+          command_timeout: 10m
           script: |
             set -e  # 명령 실패 시 즉시 종료
 
