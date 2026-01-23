@@ -23,32 +23,3 @@ datasources:
     jsonData:
       maxLines: 1000
       timeout: 60
-
-  # Tempo
-  - name: Tempo
-    uid: tempo
-    type: tempo
-    access: proxy
-    url: http://tempo:3200
-    editable: false
-    jsonData:
-      httpMethod: GET
-      tracesToLogs:
-        datasourceUid: 'loki'
-        tags: ['container', 'service']
-        mappedTags: [{ key: 'service.name', value: 'service' }]
-        mapTagNamesEnabled: true
-        spanStartTimeShift: '1m'
-        spanEndTimeShift: '1m'
-        filterByTraceID: false
-        filterBySpanID: false
-      tracesToMetrics:
-        datasourceUid: 'prometheus'
-        tags: [{ key: 'service.name', value: 'service' }]
-        queries:
-          - name: 'Sample query'
-            query: 'sum(rate(http_request_duration_seconds_bucket[5m]))'
-      serviceMap:
-        datasourceUid: 'prometheus'
-      nodeGraph:
-        enabled: true
