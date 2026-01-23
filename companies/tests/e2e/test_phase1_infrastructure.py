@@ -199,7 +199,7 @@ class Phase1InfrastructureTest:
             cluster_health = client.cluster.health()
 
             # 간단한 검색 쿼리 테스트 (존재하지 않는 인덱스도 OK)
-            search_result = client.search(
+            _ = client.search(
                 index="_all",
                 body={"query": {"match_all": {}}, "size": 0}
             )

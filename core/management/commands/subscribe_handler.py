@@ -1,11 +1,9 @@
 import asyncio
 import os
 import json
-import redis.asyncio as redis
 import aio_pika
 from channels.layers import get_channel_layer
 from django.core.management.base import BaseCommand
-from django.conf import settings
 
 # RabbitMQ 설정
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")

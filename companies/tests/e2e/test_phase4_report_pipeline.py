@@ -13,7 +13,6 @@ from typing import Dict, Any, Optional
 from django.db.models import Length
 from companies.models import Report
 from companies.tasks.report_processing import process_single_report_pipeline
-from celery.result import AsyncResult
 
 logger = logging.getLogger(__name__)
 

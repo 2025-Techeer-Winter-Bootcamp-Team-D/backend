@@ -13,7 +13,6 @@ import FinanceDataReader as fdr
 from companies.models import Company
 from companies.services.dart_api import DartAPIClient
 from companies.services.corp_code_parser import CorpCodeParser
-from industries.models import KsicCategory, Industry, KisIndustry
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,6 @@
 import asyncio
 import os
 import json
-import redis.asyncio as redis
 import aio_pika
 import asyncpg
 import re

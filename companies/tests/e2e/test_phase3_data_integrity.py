@@ -11,8 +11,6 @@ Phase 3: 데이터 정합성 검증 테스트
 import time
 import logging
 from typing import Dict, Any
-from datetime import datetime
-from django.utils import timezone
 from companies.models import Company, FinancialStatement, Report
 from core.models import StockPrice1d
 
@@ -98,8 +96,13 @@ class Phase3DataIntegrityTest:
             # 삼성전자 존재 확인 (테스트용)
             samsung = Company.objects.filter(stock_code="005930", is_deleted=False).first()
 
+            is_valid = (
+                invalid_count == 0
+                and invalid_corp_code == 0
+                and invalid_stock_code == 0
+            )
             return {
-                "status": "ok" if invalid_count == 0 and invalid_corp_code == 0 and invalid_stock_code == 0 else "warning",
+                "status": "ok" if is_valid else "warning",
                 "duration": round(time.time() - start_time, 2),
                 "count": company_count,
                 "invalid_required_fields": invalid_count,

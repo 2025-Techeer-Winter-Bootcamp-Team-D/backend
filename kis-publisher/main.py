@@ -2,7 +2,6 @@ import asyncio
 import json
 import os
 import websockets
-import redis.asyncio as redis
 import aio_pika
 import aiohttp
 from fetch_symbols import get_all_listed_symbols, get_stock_codes_from_db
