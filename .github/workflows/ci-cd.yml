@@ -345,8 +345,10 @@ jobs:
             echo "=== 컨테이너 상태 확인 ==="
             docker ps
 
+            echo "=== 서비스 초기화 대기 (30초) ==="
+            sleep 30
+
             echo "=== Prometheus Health Check ==="
-            sleep 15
             if ! curl -f http://localhost:9090/-/healthy; then
               echo "ERROR: Prometheus health check failed"
               exit 1
@@ -358,17 +360,35 @@ jobs:
               exit 1
             fi
 
-            echo "=== Loki Health Check ==="
-            if ! curl -f http://localhost:3100/ready; then
-              echo "ERROR: Loki health check failed"
-              exit 1
-            fi
+            echo "=== Loki Health Check (재시도 포함) ==="
+            for i in {1..6}; do
+              if curl -f http://localhost:3100/ready 2>/dev/null; then
+                echo "Loki is ready"
+                break
+              fi
+              if [ $i -eq 6 ]; then
+                echo "ERROR: Loki health check failed after 6 attempts"
+                docker logs loki --tail 50
+                exit 1
+              fi
+              echo "Loki not ready, waiting 10 seconds... (attempt $i/6)"
+              sleep 10
+            done
 
-            echo "=== Tempo Health Check ==="
-            if ! curl -f http://localhost:3200/ready; then
-              echo "ERROR: Tempo health check failed"
-              exit 1
-            fi
+            echo "=== Tempo Health Check (재시도 포함) ==="
+            for i in {1..6}; do
+              if curl -f http://localhost:3200/ready 2>/dev/null; then
+                echo "Tempo is ready"
+                break
+              fi
+              if [ $i -eq 6 ]; then
+                echo "ERROR: Tempo health check failed after 6 attempts"
+                docker logs tempo --tail 50
+                exit 1
+              fi
+              echo "Tempo not ready, waiting 10 seconds... (attempt $i/6)"
+              sleep 10
+            done
 
             echo "=== Alertmanager Health Check ==="
             if ! curl -f http://localhost:9093/-/healthy; then
@@ -381,5 +401,8 @@ jobs:
               echo "ERROR: Portainer health check failed"
               exit 1
             fi
+
+            echo "=== 최종 컨테이너 상태 확인 ==="
+            docker ps
 
             echo "All monitoring services health checks passed successfully"
