@@ -686,7 +686,7 @@ class FinancialService:
                     continue
                 if (
                     key in ["revenue", "operating_profit", "net_income"]
-                    and sj_div != "IS"
+                    and sj_div not in ["IS", "CIS"]
                 ):
                     logger.debug(
                         f"재무제표 구분 불일치 (스킵): {account_nm} ({account_id}) - sj_div: {sj_div}"
@@ -789,7 +789,7 @@ class FinancialService:
                     continue
                 if (
                     matched_key in ["revenue", "operating_profit", "net_income"]
-                    and sj_div != "IS"
+                    and sj_div not in ["IS", "CIS"]
                 ):
                     logger.debug(
                         f"재무제표 구분 불일치 (스킵): {account_nm} - sj_div: {sj_div}"
