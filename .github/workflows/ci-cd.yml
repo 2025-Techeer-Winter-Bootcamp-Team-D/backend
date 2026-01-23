@@ -220,18 +220,31 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            set -e  # 명령 실패 시 즉시 종료
+
             echo "=== 컨테이너 상태 확인 ==="
             docker ps
 
             echo "=== Django App Health Check ==="
             sleep 10
-            curl -f http://localhost/health/ || echo "Django health check failed"
+            if ! curl -f http://localhost/health/; then
+              echo "ERROR: Django health check failed"
+              exit 1
+            fi
 
             echo "=== Node Exporter Health Check ==="
-            curl -f http://localhost:9100/metrics || echo "Node Exporter health check failed"
+            if ! curl -f http://localhost:9100/metrics; then
+              echo "ERROR: Node Exporter health check failed"
+              exit 1
+            fi
 
             echo "=== cAdvisor Health Check ==="
-            curl -f http://localhost:8081/metrics || echo "cAdvisor health check failed"
+            if ! curl -f http://localhost:8081/metrics; then
+              echo "ERROR: cAdvisor health check failed"
+              exit 1
+            fi
+
+            echo "All health checks passed successfully"
 
   deploy-monitoring:
     name: Deploy Monitoring Layer
@@ -262,8 +275,25 @@ jobs:
             cd ~/techeer-deploy/deploy/monitoring
             echo "${{ secrets.ENV_FILE_MONITORING }}" > .env
 
-            # prometheus.yml에 IP 주소 치환
+            # 환경 변수 로드
             source .env
+
+            # 필수 환경 변수 검증
+            if [ -z "$APP_PRIVATE_IP" ]; then
+              echo "ERROR: APP_PRIVATE_IP is not set in .env file"
+              exit 1
+            fi
+
+            if [ -z "$DATA_PRIVATE_IP" ]; then
+              echo "ERROR: DATA_PRIVATE_IP is not set in .env file"
+              exit 1
+            fi
+
+            echo "Environment variables validated:"
+            echo "  APP_PRIVATE_IP: $APP_PRIVATE_IP"
+            echo "  DATA_PRIVATE_IP: $DATA_PRIVATE_IP"
+
+            # prometheus.yml에 IP 주소 치환
             sed -i "s/\${APP_PRIVATE_IP}/$APP_PRIVATE_IP/g" prometheus.yml
             sed -i "s/\${DATA_PRIVATE_IP}/$DATA_PRIVATE_IP/g" prometheus.yml
 

@@ -78,7 +78,7 @@ groups:
 
       # Redis 메모리 사용률 높음
       - alert: RedisHighMemoryUsage
-        expr: redis_memory_used_bytes / redis_memory_max_bytes * 100 > 80
+        expr: redis_memory_max_bytes > 0 and (redis_memory_used_bytes / redis_memory_max_bytes * 100) > 80
         for: 5m
         labels:
           severity: warning
@@ -100,9 +100,9 @@ groups:
           summary: "Django 애플리케이션이 다운되었습니다"
           description: "Django 애플리케이션에 연결할 수 없습니다."
 
-      # 5xx 에러율 높음
+      # 5xx 에러율 높음 (전체 요청 대비 10% 초과)
       - alert: HighErrorRate
-        expr: rate(django_http_responses_total_by_status_total{status=~"5.."}[5m]) > 0.1
+        expr: sum(rate(django_http_responses_total_by_status_total{status=~"5.."}[5m])) / sum(rate(django_http_responses_total_by_status_total[5m])) > 0.1
         for: 5m
         labels:
           severity: warning

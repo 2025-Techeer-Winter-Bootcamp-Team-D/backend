@@ -13,6 +13,7 @@ services:
       - '--storage.tsdb.retention.size=10GB'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-remote-write-receiver'
     ports:
       - "9090:9090"
     networks:
@@ -53,6 +54,7 @@ services:
     image: grafana/promtail:2.9.0
     container_name: promtail-app
     volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./promtail-app-config.yml:/etc/promtail/promtail-config.yml
     command: -config.file=/etc/promtail/promtail-config.yml
     networks:
@@ -63,6 +65,7 @@ services:
     image: grafana/promtail:2.9.0
     container_name: promtail-data
     volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./promtail-data-config.yml:/etc/promtail/promtail-config.yml
     command: -config.file=/etc/promtail/promtail-config.yml
     networks:

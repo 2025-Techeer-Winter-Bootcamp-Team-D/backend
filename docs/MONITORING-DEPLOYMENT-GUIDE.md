@@ -787,9 +787,18 @@ docker-compose logs loki | grep compactor
 ### 백업 (월 1회)
 
 ```bash
-# Grafana 대시보드 백업
-docker exec grafana grafana-cli admin export-dashboards --output /tmp/dashboards
-docker cp grafana:/tmp/dashboards ~/grafana-dashboards-backup-$(date +%Y%m%d).tar.gz
+# Grafana 데이터베이스 백업 (방법 1: 전체 DB)
+docker cp grafana:/var/lib/grafana/grafana.db ~/grafana-db-backup-$(date +%Y%m%d).db
+
+# Grafana 대시보드 백업 (방법 2: API 사용)
+# 먼저 Grafana에서 API 키 생성 필요 (Configuration → API Keys)
+# 대시보드 목록 조회
+curl -H "Authorization: Bearer YOUR_API_KEY" http://localhost:3000/api/search?type=dash-db
+
+# 특정 대시보드 export (UID 필요)
+curl -H "Authorization: Bearer YOUR_API_KEY" \
+  http://localhost:3000/api/dashboards/uid/DASHBOARD_UID > \
+  ~/grafana-dashboard-DASHBOARD_UID-$(date +%Y%m%d).json
 
 # Prometheus 알림 규칙 백업
 cp ~/monitoring-deploy/prometheus-alerts.yml ~/prometheus-alerts-backup-$(date +%Y%m%d).yml

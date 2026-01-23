@@ -130,6 +130,27 @@ services:
         condition: service_healthy
     restart: always
 
+  opensearch-exporter:
+    image: prometheuscommunity/elasticsearch-exporter:latest
+    container_name: opensearch-exporter
+    command:
+      - '--es.uri=https://opensearch:9200'
+      - '--es.all'
+      - '--es.indices'
+      - '--es.timeout=30s'
+      - '--es.ssl-skip-verify'
+    environment:
+      - ES_USERNAME=admin
+      - ES_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD}
+    ports:
+      - "9114:9114"
+    networks:
+      - data-network
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    restart: always
+
   rabbitmq:
     image: rabbitmq:3.13-management
     container_name: rabbitmq

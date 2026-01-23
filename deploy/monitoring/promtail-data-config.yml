@@ -57,11 +57,16 @@ scrape_configs:
           selector: '{service="redis"}'
           stages:
             - regex:
-                expression: '^(?P<pid>\d+):(?P<role>\w+) (?P<timestamp>\d{2} \w{3} \d{4} \d{2}:\d{2}:\d{2}\.\d+) (?P<level>[\*\.\#\-]) (?P<message>.*)$'
+                expression: '^(?P<pid>\d+):(?P<role>\w+) (?P<timestamp>\d{2} \w{3} \d{4} \d{2}:\d{2}:\d{2}\.\d+) (?P<level_symbol>[\*\.\#\-]) (?P<message>.*)$'
 
             - timestamp:
                 source: timestamp
                 format: '02 Jan 2006 15:04:05.000'
+
+            # Redis 로그 레벨 심볼을 텍스트로 변환
+            - template:
+                source: level
+                template: '{{ if eq .level_symbol "." }}DEBUG{{ else if eq .level_symbol "-" }}VERBOSE{{ else if eq .level_symbol "*" }}NOTICE{{ else if eq .level_symbol "#" }}WARNING{{ else }}{{ .level_symbol }}{{ end }}'
 
             - labels:
                 level:
