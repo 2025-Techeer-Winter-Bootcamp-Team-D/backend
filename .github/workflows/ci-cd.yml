@@ -309,24 +309,46 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            set -e  # 명령 실패 시 즉시 종료
+
             echo "=== 컨테이너 상태 확인 ==="
             docker ps
 
             echo "=== Prometheus Health Check ==="
             sleep 15
-            curl -f http://localhost:9090/-/healthy || echo "Prometheus health check failed"
+            if ! curl -f http://localhost:9090/-/healthy; then
+              echo "ERROR: Prometheus health check failed"
+              exit 1
+            fi
 
             echo "=== Grafana Health Check ==="
-            curl -f http://localhost:3000/api/health || echo "Grafana health check failed"
+            if ! curl -f http://localhost:3000/api/health; then
+              echo "ERROR: Grafana health check failed"
+              exit 1
+            fi
 
             echo "=== Loki Health Check ==="
-            curl -f http://localhost:3100/ready || echo "Loki health check failed"
+            if ! curl -f http://localhost:3100/ready; then
+              echo "ERROR: Loki health check failed"
+              exit 1
+            fi
 
             echo "=== Tempo Health Check ==="
-            curl -f http://localhost:3200/ready || echo "Tempo health check failed"
+            if ! curl -f http://localhost:3200/ready; then
+              echo "ERROR: Tempo health check failed"
+              exit 1
+            fi
 
             echo "=== Alertmanager Health Check ==="
-            curl -f http://localhost:9093/-/healthy || echo "Alertmanager health check failed"
+            if ! curl -f http://localhost:9093/-/healthy; then
+              echo "ERROR: Alertmanager health check failed"
+              exit 1
+            fi
 
             echo "=== Portainer Health Check ==="
-            curl -f http://localhost:9000/api/status || echo "Portainer health check failed"
+            if ! curl -f http://localhost:9000/api/status; then
+              echo "ERROR: Portainer health check failed"
+              exit 1
+            fi
+
+            echo "All monitoring services health checks passed successfully"
