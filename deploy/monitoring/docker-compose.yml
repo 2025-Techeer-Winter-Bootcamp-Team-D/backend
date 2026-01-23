@@ -75,14 +75,16 @@ services:
   tempo:
     image: grafana/tempo:latest
     container_name: tempo
+    # 볼륨 쓰기 권한 확보 (보안 개선 권장: user: "10001:10001" + chown)
+    user: root
     volumes:
       - ./tempo-config.yml:/etc/tempo.yml
       - tempo_data:/tmp/tempo
     command: -config.file=/etc/tempo.yml
     ports:
-      - "3200:3200"
-      - "4317:4317"
-      - "4318:4318"
+      - "3200:3200"   # HTTP
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
     networks:
       - monitoring
     deploy:

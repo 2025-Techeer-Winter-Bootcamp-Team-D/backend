@@ -304,6 +304,10 @@ jobs:
             cd ~/techeer-deploy/deploy/monitoring
             echo "${{ secrets.ENV_FILE_MONITORING }}" > .env
 
+            # Tempo 데이터 디렉토리 권한 조정
+            sudo mkdir -p /var/lib/docker/volumes/monitoring_tempo_data/_data
+            sudo chmod -R 777 /var/lib/docker/volumes/monitoring_tempo_data/_data || true
+
             # 환경 변수 로드
             source .env
 

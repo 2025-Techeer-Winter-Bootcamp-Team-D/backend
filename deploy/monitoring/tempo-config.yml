@@ -3,7 +3,6 @@ server:
 
 distributor:
   receivers:
-    # OTLP gRPC 수신
     otlp:
       protocols:
         grpc:
@@ -13,6 +12,10 @@ distributor:
 
 ingester:
   max_block_duration: 5m
+
+# Tempo 2.x 스키마: compaction 설정
+compaction:
+  block_retention: 168h  # 7일 보관
 
 storage:
   trace:
@@ -25,7 +28,6 @@ storage:
       max_workers: 100
       queue_depth: 10000
 
-# Query 성능 최적화
 query_frontend:
   search:
     duration_slo: 5s
@@ -33,7 +35,6 @@ query_frontend:
   trace_by_id:
     duration_slo: 5s
 
-# 메트릭 생성
 metrics_generator:
   registry:
     external_labels:
@@ -45,9 +46,7 @@ metrics_generator:
       - url: http://prometheus:9090/api/v1/write
         send_exemplars: true
 
-# Overrides (리소스 제한)
 overrides:
-  per_tenant_override_config: /etc/tempo/overrides.yml
-  metrics_generator_processors:
-    - service-graphs
-    - span-metrics
+  defaults:
+    ingestion:
+      max_traces_per_user: 10000
