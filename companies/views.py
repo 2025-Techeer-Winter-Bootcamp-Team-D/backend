@@ -47,7 +47,6 @@ from .services.outlook import (
 )
 from .services.sankey import SankeyDataService
 from rest_framework.views import APIView
-from .tests.services.e2e_runner import E2ETestRunner
 
 logger = logging.getLogger(__name__)
 
@@ -2736,6 +2735,9 @@ def run_e2e_tests(request):
         )
 
     try:
+        # E2E 테스트 러너를 lazy import (테스트 의존성 분리)
+        from .tests.services.e2e_runner import E2ETestRunner
+
         # E2E 테스트 실행
         logger.info(f"E2E 테스트 시작 - phases: {phases}, skip_gemini: {skip_gemini}")
         results = E2ETestRunner.run(phases=phases, skip_gemini=skip_gemini)
