@@ -208,6 +208,14 @@ def sync_all_financial_statements(years: int = 3, batch_size: int = 50):
                 # 현재부터 과거 N년치 재무제표 동기화 작업 등록
                 for year_offset in range(years):
                     target_year = current_year - year_offset
+
+                    # 2025년, 2026년 제외 (아직 재무지표가 제공되지 않음)
+                    if target_year >= 2025:
+                        logger.debug(
+                            f"재무제표 동기화 제외 (미제공): {company.stock_code} ({target_year}년)"
+                        )
+                        continue
+
                     # countdown을 사용하여 작업을 시간차로 분산
                     countdown_offset = (i // batch_size) * 60 + year_offset * 10
                     task = sync_financial_statements.apply_async(
