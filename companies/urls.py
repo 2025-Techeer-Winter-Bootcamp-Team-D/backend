@@ -19,6 +19,8 @@ from .views import (
     SankeyAdminBulkSyncView,
     SankeyDataDetailView,
     MainRecentReportListView,
+    sync_top_companies,
+    run_e2e_tests,
 )
 
 urlpatterns = [
@@ -92,4 +94,8 @@ urlpatterns = [
         MainRecentReportListView.as_view(),
         name="main_recent_reports",
     ),
+    # 시가총액 상위 기업 동기화 (관리자용)
+    path("sync/top/", sync_top_companies, name="sync_top_companies"),
+    # E2E 테스트 (관리자용)
+    path("test/e2e/", run_e2e_tests, name="run_e2e_tests"),
 ]

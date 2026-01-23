@@ -1,10 +1,14 @@
 name: CI/CD
 
 on:
-  push:
-    branches: [ "develop" ]
-  pull_request:
-    branches: [ "develop" ]
+  # 자동 배포 일시 중단 (RabbitMQ 마이그레이션 중)
+  # push:
+  #   branches: [ "develop" ]
+  # pull_request:
+  #   branches: [ "develop" ]
+
+  # 수동 실행만 허용
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
