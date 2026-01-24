@@ -249,9 +249,9 @@ jobs:
             echo "=== 최종 컨테이너 상태 확인 ==="
             docker ps
 
-            echo "=== Django App Health Check ==="
-            if ! curl -f http://localhost/health/; then
-              echo "ERROR: Django health check failed"
+            echo "=== Nginx Health Check ==="
+            if ! curl -f http://localhost/health; then
+              echo "ERROR: Nginx health check failed"
               echo "=== Nginx 에러 로그 ==="
               docker logs nginx --tail 100
               exit 1
@@ -349,13 +349,13 @@ jobs:
             sleep 30
 
             echo "=== Prometheus Health Check ==="
-            if ! curl -f http://localhost:9090/-/healthy; then
+            if ! curl -f http://localhost:9090/prometheus/-/healthy; then
               echo "ERROR: Prometheus health check failed"
               exit 1
             fi
 
             echo "=== Grafana Health Check ==="
-            if ! curl -f http://localhost:3000/api/health; then
+            if ! curl -f http://localhost:3000/grafana/api/health; then
               echo "ERROR: Grafana health check failed"
               exit 1
             fi
@@ -376,7 +376,7 @@ jobs:
             done
 
             echo "=== Alertmanager Health Check ==="
-            if ! curl -f http://localhost:9093/-/healthy; then
+            if ! curl -f http://localhost:9093/alertmanager/-/healthy; then
               echo "ERROR: Alertmanager health check failed"
               exit 1
             fi
