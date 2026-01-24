@@ -2,7 +2,7 @@
 # Upstream 정의
 # =============================================================================
 
-# App Layer
+# App Layer (Docker 내부 네트워크)
 upstream backend_server {
     server app:8000;
 }
@@ -11,28 +11,26 @@ upstream flower_server {
     server flower:5555;
 }
 
-# Monitoring Layer (환경변수로 호스트 지정, 기본값은 호스트 네트워크)
-# 같은 서버: host.docker.internal 또는 172.17.0.1
-# 다른 서버: 모니터링 서버 IP
+# Monitoring Layer (환경변수로 호스트 지정)
 upstream prometheus_server {
-    server ${MONITORING_HOST:-host.docker.internal}:9090;
+    server ${MONITORING_HOST}:9090;
 }
 
 upstream grafana_server {
-    server ${MONITORING_HOST:-host.docker.internal}:3000;
+    server ${MONITORING_HOST}:3000;
 }
 
 upstream alertmanager_server {
-    server ${MONITORING_HOST:-host.docker.internal}:9093;
+    server ${MONITORING_HOST}:9093;
 }
 
 upstream portainer_server {
-    server ${MONITORING_HOST:-host.docker.internal}:9000;
+    server ${MONITORING_HOST}:9000;
 }
 
-# Data Layer
+# Data Layer (환경변수로 호스트 지정)
 upstream rabbitmq_server {
-    server ${DATA_HOST:-host.docker.internal}:15672;
+    server ${DATA_HOST}:15672;
 }
 
 # =============================================================================

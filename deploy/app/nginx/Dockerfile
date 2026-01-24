@@ -5,7 +5,9 @@ COPY deploy/app/nginx/conf.d/default.conf.template /etc/nginx/templates/default.
 
 # nginx 공식 이미지는 /etc/nginx/templates/*.template 파일을
 # 자동으로 envsubst로 처리하여 /etc/nginx/conf.d/에 생성합니다.
-# 환경변수: MONITORING_HOST, DATA_HOST
+
+# MONITORING_HOST, DATA_HOST 변수만 치환 (nginx 변수 $host 등은 보호)
+ENV NGINX_ENVSUBST_FILTER=MONITORING_HOST|DATA_HOST
 
 # 기본값 설정 (docker-compose에서 override 가능)
 ENV MONITORING_HOST=host.docker.internal
