@@ -7,7 +7,7 @@ RPC 명령을 받아 KIS WebSocket에 구독/해제 메시지를 전송합니다
 import json
 import os
 import asyncio
-from typing import Set, Optional
+from typing import Set
 
 
 # KIS API 최대 구독 종목 수

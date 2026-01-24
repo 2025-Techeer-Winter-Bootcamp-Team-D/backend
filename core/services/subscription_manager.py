@@ -11,7 +11,6 @@ import uuid
 import os
 from typing import Set, Optional
 import aio_pika
-from django.core.cache import cache
 import redis.asyncio as redis
 
 
