@@ -376,7 +376,7 @@ jobs:
             done
 
             echo "=== Alertmanager Health Check ==="
-            if ! curl -f http://localhost:9093/alertmanager/-/healthy; then
+            if ! curl -f http://localhost:9093/-/healthy; then
               echo "ERROR: Alertmanager health check failed"
               exit 1
             fi

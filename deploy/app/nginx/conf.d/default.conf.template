@@ -109,7 +109,7 @@ server {
 
     # 7. Alertmanager
     location /alertmanager/ {
-        proxy_pass http://alertmanager_server/alertmanager/;
+        proxy_pass http://alertmanager_server/;
         proxy_set_header Host $host;
     }
 

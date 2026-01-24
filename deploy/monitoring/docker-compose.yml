@@ -85,8 +85,7 @@ services:
     command:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
       - '--storage.path=/alertmanager'
-      - '--web.external-url=/alertmanager/'
-      - '--web.route-prefix=/alertmanager/'
+      - '--web.route-prefix=/'
     ports:
       - "9093:9093"
     networks:
