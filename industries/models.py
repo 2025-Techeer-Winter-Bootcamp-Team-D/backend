@@ -3,23 +3,61 @@ from django.db import models
 
 
 class Industry(models.Model):
+    """산업 분류 모델
+
+    KIS 업종 지수와 1:1 매핑되는 산업 분류입니다.
+    기업(Company)은 이 Industry와 연결됩니다.
+    """
+
     # ERD상 산업 아이디 (PK)
     industry_id = models.BigAutoField(primary_key=True)
-    # 산업 이름
-    name = models.CharField(max_length=255)
-    # 업종코드 (KSIC 코드, 예: "264", "26", "C26")
-    induty_code = models.CharField(
-        max_length=20, unique=True, null=True, blank=True, db_index=True
+
+    # KIS 업종 코드 (0005, 0013 등) - 핵심 식별자
+    # 주의: 마이그레이션 완료 후 null=False, unique=True로 변경 예정
+    kis_code = models.CharField(
+        max_length=4,
+        null=True,  # 마이그레이션 후 False로 변경
+        blank=True,
+        db_index=True,
+        verbose_name="KIS 업종 코드",
+        help_text="한국투자증권 업종 지수 코드 (예: 0013=전기전자)",
     )
+
+    # 산업 이름
+    name = models.CharField(max_length=255, verbose_name="산업명")
+
     # 산업 설명
-    description = models.TextField(null=True, blank=True)
+    description = models.TextField(null=True, blank=True, verbose_name="설명")
+
+    # 표시 순서 (UI 정렬용)
+    display_order = models.IntegerField(
+        default=0, verbose_name="표시 순서", help_text="UI에서 정렬 시 사용"
+    )
+
+    # [DEPRECATED] 기존 업종코드 필드 - 마이그레이션 후 제거 예정
+    induty_code = models.CharField(
+        max_length=20,
+        unique=True,
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="[DEPRECATED] 업종코드",
+        help_text="kis_code로 대체됨. 마이그레이션 완료 후 제거 예정",
+    )
+
     # 생성/수정/삭제 필드 (공통)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_deleted = models.BooleanField(default=False)
 
     class Meta:
-        db_table = "industry"  # 실제 DB 테이블명 고정
+        db_table = "industry"
+        verbose_name = "산업"
+        verbose_name_plural = "산업 목록"
+        ordering = ["display_order", "kis_code"]
+
+    def __str__(self):
+        return f"{self.name} ({self.kis_code})"
 
 
 class IndustryRanking(models.Model):

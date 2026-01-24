@@ -26,6 +26,14 @@ class Company(models.Model):
     induty_code = models.CharField(
         max_length=20, null=True, blank=True, db_index=True
     )  # 업종코드 (KSIC 코드, 예: "264", "26", "C26")
+    original_ksic_code = models.CharField(
+        max_length=20,
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="원본 KSIC 코드",
+        help_text="DART API에서 가져온 원본 업종코드 (KIS 변환 전)",
+    )  # 원본 KSIC 코드 보관 (매핑 검증 및 롤백용)
     market = models.CharField(
         max_length=10,
         choices=MARKET_CHOICES,

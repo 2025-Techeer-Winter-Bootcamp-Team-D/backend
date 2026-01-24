@@ -16,7 +16,8 @@ import io
 from companies.models import Company
 from companies.services.dart_api import DartAPIClient
 from companies.services.corp_code_parser import CorpCodeParser
-from industries.models import KsicCategory, Industry, KisIndustry
+from companies.services.industry_mapping_rules import get_industry_kis_code
+from industries.models import Industry, KisIndustry
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,6 @@ class TopCompaniesSyncService:
 
     def __init__(self):
         self.dart_client = DartAPIClient()
-        self.ticker_to_kis = {}  # 종목코드 → KIS 코드 매핑 캐시
 
     def get_top_market_cap_tickers(self, target_count: int = 100) -> Set[str]:
         """
@@ -185,6 +185,7 @@ class TopCompaniesSyncService:
                             "corp_code": corp_code,
                             "company_name": corp_name,
                             "induty_code": raw_ksic_code,
+                            "original_ksic_code": raw_ksic_code,  # 원본 KSIC 코드 저장
                             "market": market,
                             "industry": None,
                             "description": "",
@@ -205,8 +206,9 @@ class TopCompaniesSyncService:
                         if (
                             include_industry_mapping
                             and raw_ksic_code
-                            and company.induty_code != raw_ksic_code
+                            and company.original_ksic_code != raw_ksic_code
                         ):
+                            company.original_ksic_code = raw_ksic_code
                             company.induty_code = raw_ksic_code
                             needs_update = True
 
@@ -231,19 +233,14 @@ class TopCompaniesSyncService:
 
         return stats
 
-    def _load_kis_master_and_mapping(self) -> Dict[str, str]:
+    def _load_kis_master(self):
         """
-        KIS 마스터 및 종목-업종 매핑을 메모리 딕셔너리로 로드
-
-        Returns:
-            ticker_to_kis: 종목코드 → KIS 코드 매핑 딕셔너리
+        KIS 업종 마스터 데이터를 KisIndustry 테이블에 로드
         """
-        logger.info("KIS 마스터 및 종목-업종 매핑 로드 시작")
+        logger.info("KIS 업종 마스터 로드 시작")
 
         base_url = "https://new.real.download.dws.co.kr/common/master/"
 
-        # STEP 1: KisIndustry 테이블 채우기
-        logger.info("STEP 1: KIS 업종 마스터 적재 중...")
         try:
             res_idx = requests.get(base_url + "idxcode.mst.zip", timeout=10)
             res_idx.raise_for_status()
@@ -269,192 +266,92 @@ class TopCompaniesSyncService:
                     kis_count += 1
             logger.info(f"✓ {kis_count}개 KIS 업종 코드 적재 완료")
 
-        # STEP 2: 종목-업종 매핑을 메모리 딕셔너리로 생성
-        logger.info("STEP 2: 종목-업종 매핑 메모리 적재 중...")
-        ticker_to_kis = {}
-        mapping_count = 0
-
-        for target in [
-            {"name": "KOSPI", "file": "kospi_code.mst.zip"},
-            {"name": "KOSDAQ", "file": "kosdaq_code.mst.zip"},
-        ]:
-            try:
-                res_stk = requests.get(base_url + target["file"], timeout=10)
-                res_stk.raise_for_status()
-            except requests.exceptions.Timeout:
-                logger.error(f"{target['name']} 종목 마스터 다운로드 타임아웃 (10초 초과)")
-                raise
-            except requests.exceptions.RequestException as e:
-                logger.error(f"{target['name']} 종목 마스터 다운로드 실패: {e}")
-                raise
-
-            with zipfile.ZipFile(io.BytesIO(res_stk.content)) as z:
-                content = z.read(z.namelist()[0])
-                for line in content.splitlines():
-                    if len(line) < 100 or line[61:63] != b"ST":
-                        continue
-                    ticker = (
-                        line[1:7].decode("cp949", errors="ignore").strip().zfill(6)
-                    )
-
-                    # 중분류(68:72)가 없으면 대분류(64:68)를 사용
-                    mid_code = line[68:72].decode("cp949", errors="ignore").strip()
-                    large_code = line[64:68].decode("cp949", errors="ignore").strip()
-
-                    kis_code = mid_code if mid_code != "0000" else large_code
-
-                    if kis_code and kis_code != "0000":
-                        # KisIndustry에 존재하는지 확인
-                        if KisIndustry.objects.filter(kis_code=kis_code).exists():
-                            ticker_to_kis[ticker] = kis_code
-                            mapping_count += 1
-            logger.info(f"✓ {target['name']} 종목-업종 매핑 적재 완료")
-
-        logger.info(f"✓ 총 {mapping_count}개 종목-업종 매핑 (메모리)")
-        return ticker_to_kis
-
-    def _create_ksic_mapping(self, ticker_to_kis: Dict[str, str]):
-        """
-        Company 테이블 기반으로 KSIC → KIS 매핑 생성
-
-        Args:
-            ticker_to_kis: 종목코드 → KIS 코드 매핑 딕셔너리
-        """
-        logger.info("KSIC → KIS 매핑 생성 시작")
-
-        # STEP 3: Company 테이블에서 KSIC 코드 수집 및 KsicCategory 생성
-        logger.info("STEP 3: KSIC 카테고리 생성 중...")
-        unique_ksic_codes = (
-            Company.objects.filter(induty_code__isnull=False)
-            .values_list("induty_code", flat=True)
-            .distinct()
-        )
-        ksic_count = 0
-        for code in unique_ksic_codes:
-            KsicCategory.objects.get_or_create(ksic_code=code)
-            ksic_count += 1
-        logger.info(f"✓ {ksic_count}개 KSIC 카테고리 생성 완료")
-
-        # STEP 4: KSIC → KIS 매핑 생성 (메모리 딕셔너리 사용)
-        logger.info("STEP 4: KSIC → KIS 매핑 생성 중...")
-        mapping_created = 0
-        for cat in KsicCategory.objects.all():
-            # 해당 KSIC 코드를 가진 기업들의 종목코드 수집
-            tickers = list(
-                Company.objects.filter(induty_code=cat.ksic_code).values_list(
-                    "stock_code", flat=True
-                )
-            )
-            if not tickers:
-                continue
-
-            # 메모리 딕셔너리에서 통계 계산
-            kis_counts = {}
-            for ticker in tickers:
-                kis_code = ticker_to_kis.get(ticker)
-                if kis_code and kis_code != "0001":  # 종합지수 제외
-                    kis_counts[kis_code] = kis_counts.get(kis_code, 0) + 1
-
-            if kis_counts:
-                # 가장 많이 나타나는 KIS 코드 찾기
-                best_kis_code = max(kis_counts.items(), key=lambda x: x[1])[0]
-                kis_obj = KisIndustry.objects.filter(kis_code=best_kis_code).first()
-
-                if kis_obj:
-                    cat.representative_kis_id = kis_obj.kis_code
-                    cat.name = kis_obj.name
-                    cat.save()
-                    mapping_created += 1
-
-        logger.info(f"✓ {mapping_created}개 KSIC → KIS 매핑 생성 완료")
-
     def _convert_ksic_to_kis_and_link_industry(self):
         """
-        Company의 induty_code를 KIS 코드로 변환하고 Industry 연결
+        규칙 기반으로 Company의 KSIC 코드를 KIS 코드로 변환하고 Industry 연결
         """
-        logger.info("Company 업종코드 KIS 변환 및 Industry 연결 시작")
+        logger.info("Company 업종코드 KIS 변환 및 Industry 연결 시작 (규칙 기반)")
 
         updated_companies = 0
+        unmapped_companies = 0
+
+        # original_ksic_code가 있는 기업 우선 처리
         companies_to_update = Company.objects.filter(
-            induty_code__isnull=False
-        ).exclude(induty_code="")
+            original_ksic_code__isnull=False
+        ).exclude(original_ksic_code="")
+
+        # original_ksic_code가 없으면 induty_code 사용
+        if not companies_to_update.exists():
+            companies_to_update = Company.objects.filter(
+                induty_code__isnull=False
+            ).exclude(induty_code="")
 
         total_companies = companies_to_update.count()
         logger.info(f"총 {total_companies}개 기업의 업종코드를 변환합니다...")
 
         for idx, company in enumerate(companies_to_update, 1):
             try:
-                induty_code = company.induty_code.strip()
+                # KSIC 코드 결정 (original_ksic_code 우선)
+                ksic_code = (
+                    company.original_ksic_code
+                    if company.original_ksic_code
+                    else company.induty_code
+                )
+                if not ksic_code:
+                    continue
 
-                # 이미 KIS 코드인지 확인
-                if KisIndustry.objects.filter(kis_code=induty_code).exists():
-                    # Industry만 연결
-                    industry = Industry.objects.filter(
-                        induty_code=induty_code,
-                        is_deleted=False,
+                ksic_code = ksic_code.strip()
+
+                # 규칙 기반 매핑으로 KIS 코드 결정
+                target_kis_code = get_industry_kis_code(company.stock_code, ksic_code)
+
+                if not target_kis_code:
+                    unmapped_companies += 1
+                    if idx % 100 == 0:
+                        logger.info(
+                            f"진행 중: {idx}/{total_companies} "
+                            f"(매핑 없음: {company.company_name}, KSIC: {ksic_code})"
+                        )
+                    continue
+
+                # kis_code로 Industry 찾기
+                industry = Industry.objects.filter(
+                    kis_code=target_kis_code,
+                    is_deleted=False,
+                ).first()
+
+                # Industry가 없으면 생성
+                if not industry:
+                    kis_industry = KisIndustry.objects.filter(
+                        kis_code=target_kis_code
                     ).first()
-
-                    # KisIndustry는 있지만 Industry가 없는 경우 생성
-                    if industry is None:
-                        kis_industry = KisIndustry.objects.get(kis_code=induty_code)
+                    if kis_industry:
                         industry = Industry.objects.create(
-                            induty_code=induty_code,
+                            kis_code=target_kis_code,
+                            induty_code=target_kis_code,  # 호환성 유지
                             name=kis_industry.name,
                             is_deleted=False,
                         )
-                        logger.info(f"Industry 생성: {induty_code} - {kis_industry.name}")
+                        logger.info(f"Industry 생성: {target_kis_code} - {kis_industry.name}")
+                    else:
+                        continue
 
-                    if industry and company.industry != industry:
-                        company.industry = industry
-                        company.save()
-                        updated_companies += 1
-                    continue
+                # Company 업데이트 필요 여부 확인
+                needs_update = False
+                if company.industry != industry:
+                    needs_update = True
+                if company.induty_code != target_kis_code:
+                    needs_update = True
 
-                # KSIC 코드를 KIS 코드로 변환
-                ksic_obj = KsicCategory.objects.filter(
-                    ksic_code=induty_code
-                ).first()
+                if needs_update:
+                    company.industry = industry
+                    company.induty_code = target_kis_code
+                    company.save()
+                    updated_companies += 1
 
-                if ksic_obj and ksic_obj.representative_kis:
-                    target_kis_code = ksic_obj.representative_kis.kis_code
-
-                    # KIS 코드로 Industry 찾기
-                    industry = Industry.objects.filter(
-                        induty_code=target_kis_code,
-                        is_deleted=False,
-                    ).first()
-
-                    if not industry:
-                        # Industry가 없으면 생성
-                        kis_industry = ksic_obj.representative_kis
-                        industry = Industry.objects.create(
-                            name=ksic_obj.name or kis_industry.name,
-                            induty_code=target_kis_code,
-                            description=f"KIS 지수 코드: {target_kis_code} (KSIC:{induty_code} 매핑)",
-                        )
-
-                    # Company 업데이트
-                    needs_update = False
-                    if company.induty_code != target_kis_code:
-                        needs_update = True
-                    if company.industry != industry:
-                        needs_update = True
-
-                    if needs_update:
-                        company.induty_code = target_kis_code
-                        company.industry = industry
-                        company.save()
-                        updated_companies += 1
-
-                        if idx % 10 == 0 or idx == total_companies:
-                            logger.info(
-                                f"진행 중: {idx}/{total_companies} ({updated_companies}개 업데이트)"
-                            )
-                else:
-                    # 매핑이 없는 경우 스킵
-                    if idx % 100 == 0:
+                    if idx % 50 == 0 or idx == total_companies:
                         logger.info(
-                            f"진행 중: {idx}/{total_companies} (매핑 없음: {company.company_name})"
+                            f"진행 중: {idx}/{total_companies} ({updated_companies}개 업데이트)"
                         )
             except Exception as e:
                 logger.warning(
@@ -462,7 +359,9 @@ class TopCompaniesSyncService:
                 )
                 continue
 
-        logger.info(f"✓ {updated_companies}개 기업의 업종코드를 KIS 코드로 변환 완료")
+        logger.info(f"✓ {updated_companies}개 기업 Industry 연결 완료")
+        if unmapped_companies > 0:
+            logger.warning(f"⚠️ {unmapped_companies}개 기업은 매핑 규칙 없음 (확인 필요)")
 
     def sync_top_companies(
         self, limit: int = 100, update_existing: bool = False
@@ -494,22 +393,10 @@ class TopCompaniesSyncService:
             include_industry_mapping=True,  # 업종 매핑 포함
         )
 
-        # 업종 매핑이 필요한지 확인
-        needs_mapping = (
-            not KsicCategory.objects.filter(
-                representative_kis__isnull=False
-            ).exists()
-            or not KisIndustry.objects.exists()
-        )
-
-        if needs_mapping or not self.ticker_to_kis:
-            logger.info("업종 매핑 데이터 로드 및 매핑 생성")
-            # KIS 마스터 및 종목-업종 매핑 로드
-            self.ticker_to_kis = self._load_kis_master_and_mapping()
-            # KSIC → KIS 매핑 생성
-            self._create_ksic_mapping(self.ticker_to_kis)
-        else:
-            logger.info("업종 매핑 데이터가 이미 준비되어 있습니다")
+        # KIS 업종 마스터 로드 (필요시)
+        if not KisIndustry.objects.exists():
+            logger.info("KIS 업종 마스터 로드 중...")
+            self._load_kis_master()
 
         # Company의 induty_code를 KIS 코드로 변환하고 Industry 연결
         self._convert_ksic_to_kis_and_link_industry()
