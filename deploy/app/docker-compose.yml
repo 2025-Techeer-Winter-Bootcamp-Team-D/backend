@@ -9,10 +9,17 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      # 모니터링 서버 호스트 (같은 서버면 host.docker.internal, 다른 서버면 IP 지정)
+      - MONITORING_HOST=${MONITORING_HOST:-host.docker.internal}
+      # 데이터 서버 호스트 (같은 서버면 host.docker.internal, 다른 서버면 IP 지정)
+      - DATA_HOST=${DATA_HOST:-host.docker.internal}
+    extra_hosts:
+      # Linux에서 host.docker.internal 지원
+      - "host.docker.internal:host-gateway"
     volumes:
       - ../../static:/app/static
       - ../../media:/app/media
-      - ./nginx/conf.d:/etc/nginx/conf.d
     depends_on:
       - app
     networks:

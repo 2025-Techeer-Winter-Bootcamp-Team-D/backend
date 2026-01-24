@@ -1,0 +1,168 @@
+# =============================================================================
+# Upstream 정의
+# =============================================================================
+
+# App Layer
+upstream backend_server {
+    server app:8000;
+}
+
+upstream flower_server {
+    server flower:5555;
+}
+
+# Monitoring Layer (환경변수로 호스트 지정, 기본값은 호스트 네트워크)
+# 같은 서버: host.docker.internal 또는 172.17.0.1
+# 다른 서버: 모니터링 서버 IP
+upstream prometheus_server {
+    server ${MONITORING_HOST:-host.docker.internal}:9090;
+}
+
+upstream grafana_server {
+    server ${MONITORING_HOST:-host.docker.internal}:3000;
+}
+
+upstream alertmanager_server {
+    server ${MONITORING_HOST:-host.docker.internal}:9093;
+}
+
+upstream portainer_server {
+    server ${MONITORING_HOST:-host.docker.internal}:9000;
+}
+
+# Data Layer
+upstream rabbitmq_server {
+    server ${DATA_HOST:-host.docker.internal}:15672;
+}
+
+# =============================================================================
+# Main Server Block
+# =============================================================================
+server {
+    listen 80;
+    server_name localhost;
+
+    # Docker 내부 DNS 서버 (변수 사용 시 필수)
+    resolver 127.0.0.11 valid=30s;
+
+    # 공통 Proxy 헤더 설정
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # =========================================================================
+    # App Layer
+    # =========================================================================
+
+    # 1. Django API 및 일반 HTTP 요청
+    location / {
+        set $target_app "backend_server";
+        proxy_pass http://$target_app;
+    }
+
+    # 2. WebSocket 요청 처리 (Daphne/Channels)
+    location /ws/ {
+        set $target_ws "backend_server";
+        proxy_pass http://$target_ws;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 86400;
+    }
+
+    # 3. Celery Flower 모니터링
+    location /celery-flower/ {
+        set $target_flower "flower_server";
+        proxy_pass http://$target_flower;
+        proxy_set_header Host $host;
+    }
+
+    # 4. 정적 및 미디어 파일
+    location /static/ {
+        alias /app/static/;
+    }
+
+    location /media/ {
+        alias /app/media/;
+    }
+
+    # =========================================================================
+    # Monitoring Layer
+    # =========================================================================
+
+    # 5. Grafana 대시보드
+    location /grafana/ {
+        proxy_pass http://grafana_server/;
+        proxy_set_header Host $host;
+
+        # WebSocket 지원 (Live 기능)
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # 6. Prometheus
+    location /prometheus/ {
+        proxy_pass http://prometheus_server/prometheus/;
+        proxy_set_header Host $host;
+    }
+
+    # 7. Alertmanager
+    location /alertmanager/ {
+        proxy_pass http://alertmanager_server/alertmanager/;
+        proxy_set_header Host $host;
+    }
+
+    # 8. Portainer
+    location /portainer/ {
+        proxy_pass http://portainer_server/;
+        proxy_set_header Host $host;
+        proxy_set_header Connection "";
+
+        # WebSocket 지원
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # Portainer API
+    location /portainer/api/ {
+        proxy_pass http://portainer_server/api/;
+        proxy_set_header Host $host;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # =========================================================================
+    # Data Layer
+    # =========================================================================
+
+    # 9. RabbitMQ Management UI
+    location /rabbitmq/ {
+        proxy_pass http://rabbitmq_server/;
+        proxy_set_header Host $host;
+
+        # RabbitMQ는 서브패스 지원을 위해 rewrite 필요
+        rewrite ^/rabbitmq/(.*)$ /$1 break;
+    }
+
+    # =========================================================================
+    # Health & Status
+    # =========================================================================
+
+    # 10. Nginx 상태 확인 (Prometheus 용)
+    location /stub_status {
+        stub_status;
+        allow all;
+    }
+
+    # 11. Health check 엔드포인트
+    location /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+    }
+}
