@@ -15,11 +15,19 @@ Django 6.0 기반의 REST API 백엔드 프로젝트입니다. TimescaleDB(Postg
 
 ## 기술 스택
 
-- **웹 프레임워크**: Django 6.0, Django REST Framework
+- **웹 프레임워크**: Django 6.0, Django REST Framework, Django Channels (WebSocket)
 - **데이터베이스**: TimescaleDB (PostgreSQL 16 기반 시계열 DB)
-- **캐시**: Redis 7
+- **캐시/세션**: Redis 7
+- **메시지 브로커**: RabbitMQ 3.13 (Celery 작업 큐)
 - **검색 엔진**: OpenSearch
+- **비동기 작업**: Celery 5.4+ with Flower 모니터링
 - **API 문서화**: drf-spectacular (OpenAPI/Swagger)
+- **모니터링**: Prometheus, Grafana, Node Exporter, cAdvisor
+- **외부 API**:
+  - KIS WebSocket API (실시간 주가 데이터)
+  - DART OpenAPI (기업 공시 정보)
+  - Naver News API (뉴스 검색)
+  - Gemini API (AI 텍스트 처리 및 임베딩)
 
 ## 개발 환경 설정
 
@@ -67,7 +75,13 @@ docker-compose down -v
 - Django App: `8000`
 - PostgreSQL (TimescaleDB): `5432`
 - Redis: `6379`
+- RabbitMQ: `5672` (AMQP), `15672` (Management UI)
 - OpenSearch: `9200` (REST API), `9600` (Performance Analyzer)
+- Celery Flower: `5555` (모니터링 대시보드)
+- KIS Mock Server: `8080` (테스트용)
+- Prometheus: `9090`
+- Grafana: `3000`
+- cAdvisor: `8081`
 
 ## 데이터베이스 아키텍처
 
@@ -223,3 +237,328 @@ docs/
 - **버전 관리**: Git으로 관리하며, 중요한 변경사항은 커밋 메시지에 명시
 - **Plan 문서**: 모든 plan은 `docs/plans/` 디렉토리에 저장
 - **Notion 루트 페이지**: "2025 Winter Bootcamp"
+
+## 시스템 아키텍처
+
+이 프로젝트는 마이크로서비스 아키텍처로 설계되어 있으며, 크게 3가지 핵심 시스템으로 구성됩니다:
+
+### 1. 실시간 주가 데이터 처리 (KIS WebSocket)
+
+**서비스 구성**: kis-publisher → Redis Pub/Sub → persistence-worker + subscribe-handler
+
+- **kis-publisher**: KIS WebSocket API에서 실시간 체결 데이터를 수신하여 Redis Pub/Sub에 발행
+- **persistence-worker**: Redis에서 데이터를 구독하여 TimescaleDB에 배치 저장 (COPY 명령 사용)
+- **subscribe-handler**: Django 내부에서 데이터 구독 및 WebSocket 전송 (Django Channels)
+
+**주요 데이터 모델**:
+- `StockTick` (core/models.py): TimescaleDB Hypertable로 시계열 데이터 최적화
+- Continuous Aggregates: 1분/15분/1시간/1일봉 자동 생성
+
+### 2. 뉴스 크롤링 및 AI 분석 시스템
+
+**Celery Canvas 파이프라인** (6단계):
+1. 검색 (Naver API) → 2. 본문 추출 (Jina API) → 3. 정제+요약 (Gemini AI) → 4. 임베딩 (Gemini) → 5. DB 저장 → 6. 클러스터링+OpenSearch 저장
+
+**주요 서비스**:
+- `news/tasks/`: Celery 태스크 정의 (workflows.py가 전체 파이프라인 조율)
+- `news/services/`: 외부 API 클라이언트 (jina_api.py, refiner.py, summarizer.py, embedding.py)
+- OpenSearch 벡터 검색: HNSW 알고리즘 + 코사인 유사도 (768차원)
+
+### 3. DART 기업 정보 동기화
+
+**배치 작업** (Celery Beat 스케줄링):
+- 기업 개황 동기화 (companies/tasks/dart_sync.py)
+- 재무제표 동기화 (FinancialStatement 모델)
+- 공시보고서 동기화 (Report 모델)
+- 시가총액 동기화 (KIS REST API)
+
+**주요 서비스**:
+- `companies/services/dart_api.py`: DART OpenAPI 클라이언트
+- `companies/services/company_info.py`: 기업 정보 동기화
+- `companies/services/financial.py`: 재무제표 처리
+
+### 4. Django 앱 구조
+
+```
+companies/     # 기업 정보 (Company, FinancialStatement, Report)
+core/          # 주가 데이터 (StockTick, Celery 태스크)
+industries/    # 산업 분류 및 지수
+news/          # 뉴스 크롤링 및 검색
+users/         # 사용자 인증 (JWT)
+comparisons/   # 기업 비교 매치업
+indices/       # 시장 지수 (KOSPI, KOSDAQ)
+```
+
+### 5. 비동기 작업 처리
+
+**Celery 설정**:
+- Broker: RabbitMQ (메시지 큐 처리, AMQP 프로토콜)
+- Result Backend: Redis (빠른 결과 조회)
+- Beat Scheduler: 주기적 작업 스케줄링 (crontab)
+
+**주요 스케줄**:
+- 뉴스 크롤링: 3시간마다
+- DART 동기화: 새벽 3시 (일 1회)
+- 시가총액 갱신: 평일 16:10 (장 마감 후)
+- 주가 데이터 동기화: 장중 30초~1시간 간격
+
+## 주요 Management Commands
+
+### 데이터 동기화
+
+```bash
+# 시가총액 상위 기업 동기화 (API 또는 Shell)
+# API: POST /api/companies/admin/sync-top-companies/
+# Body: {"limit": 100, "update_existing": false}
+
+# Django Shell에서 실행:
+python manage.py shell -c "
+from companies.services.top_companies_sync import TopCompaniesSyncService
+service = TopCompaniesSyncService()
+result = service.sync_top_companies(limit=100)
+print(result['stats'])
+"
+
+# 뉴스 크롤링 (비동기)
+python manage.py crawl_news --keywords "AI" "반도체" --max-articles 10 --async
+
+# 실시간 주가 구독 핸들러 시작
+python manage.py subscribe_handler
+
+# 시가총액 순위 계산
+python manage.py update_rankings
+```
+
+### Celery 작업 실행
+
+```bash
+# Celery Worker 시작
+celery -A config worker --loglevel=info
+
+# Celery Beat 시작 (스케줄러)
+celery -A config beat --loglevel=info
+
+# Flower 모니터링 대시보드
+celery -A config flower --port=5555
+```
+
+## 테스트
+
+### 단위 테스트
+
+```bash
+# 전체 테스트 실행
+python manage.py test
+
+# 특정 앱 테스트
+python manage.py test companies
+python manage.py test news
+
+# 특정 테스트 케이스
+python manage.py test companies.tests.test_dart_api
+```
+
+### API 테스트
+
+```bash
+# Swagger UI 접속
+http://localhost:8000/api/schema/swagger-ui/
+
+# API 문서 JSON
+http://localhost:8000/api/schema/
+```
+
+## 데이터베이스 관리
+
+### TimescaleDB 특수 명령
+
+```sql
+-- Hypertable 생성 (마이그레이션에서 자동 실행)
+SELECT create_hypertable('stock_ticks', 'time');
+
+-- Continuous Aggregate 생성 예시
+CREATE MATERIALIZED VIEW stock_prices_1m
+WITH (timescaledb.continuous) AS
+SELECT time_bucket('1 minute', time) AS bucket,
+       stock_code,
+       first(price, time) AS open,
+       max(price) AS high,
+       min(price) AS low,
+       last(price, time) AS close,
+       sum(volume) AS volume
+FROM stock_ticks
+GROUP BY bucket, stock_code;
+
+-- Continuous Aggregate 수동 리프레시
+CALL refresh_continuous_aggregate('stock_prices_1m', NULL, NULL);
+```
+
+### 마이그레이션 주의사항
+
+- TimescaleDB Hypertable은 `managed=False` 모델로 정의
+- `migrations.RunSQL()`로 CREATE TABLE 및 create_hypertable() 실행
+- Continuous Aggregates는 별도 마이그레이션 파일로 관리
+
+## 모니터링 및 디버깅
+
+### Celery 작업 모니터링
+
+```bash
+# Flower 대시보드
+http://localhost:5555
+
+# Celery 작업 상태 확인
+celery -A config inspect active
+celery -A config inspect stats
+
+# 특정 작업 취소
+celery -A config revoke <task_id>
+```
+
+### 로그 확인
+
+```bash
+# Django 앱 로그
+docker-compose logs -f app
+
+# Celery Worker 로그
+docker-compose logs -f celery-worker
+
+# kis-publisher 로그
+docker-compose logs -f kis-publisher
+
+# persistence-worker 로그
+docker-compose logs -f persistence-worker
+```
+
+### Prometheus/Grafana 모니터링
+
+```bash
+# Prometheus UI
+http://localhost:9090
+
+# Grafana 대시보드
+http://localhost:3000
+# 기본 계정: admin / admin (환경변수로 변경 가능)
+```
+
+## 환경별 설정
+
+### 배치 작업 활성화 (개발 환경 토큰 절감)
+
+`.env` 파일에서 배치 작업을 개별적으로 활성화/비활성화할 수 있습니다:
+
+```bash
+# 뉴스 크롤링 (Gemini 토큰 사용)
+NEWS_BATCH_ENABLED=false  # 기본값
+
+# DART 동기화 (무료 API)
+DART_SYNC_ENABLED=true  # 기본값
+
+# 보고서 처리 (Gemini 토큰 사용)
+REPORT_PROCESSING_ENABLED=false  # 기본값
+
+# 마켓 지수 동기화
+MARKET_INDEX_SYNC_ENABLED=true  # 기본값
+
+# 주가 데이터 동기화
+STOCK_PRICE_SYNC_ENABLED=true  # 기본값
+```
+
+### KIS API 테스트 모드
+
+실제 KIS API 없이도 테스트 가능:
+
+```bash
+KIS_USE_TEST_MODE=true
+KIS_TEST_WS_URL=ws://kis-mock-server:8080
+```
+
+## 주요 API 엔드포인트
+
+자세한 API 명세는 Swagger UI 참조: `http://localhost:8000/api/schema/swagger-ui/`
+
+### 기업 정보
+
+```
+GET /api/companies/              # 기업 목록
+GET /api/companies/{stock_code}/ # 기업 상세 정보
+GET /api/companies/{stock_code}/financials/  # 재무제표
+GET /api/companies/{stock_code}/reports/     # 공시보고서
+```
+
+### 뉴스
+
+```
+GET /api/news/                   # 뉴스 목록
+GET /api/news/{id}/              # 뉴스 상세
+GET /api/news/search/            # 벡터 유사도 검색 (OpenSearch)
+```
+
+### 주가 데이터
+
+```
+GET /api/stocks/{stock_code}/prices/  # 주가 데이터 (시간봉 지정)
+GET /api/stocks/{stock_code}/realtime/  # 실시간 WebSocket 연결
+```
+
+## 트러블슈팅
+
+### Celery Worker 응답 없음
+
+```bash
+# Worker 재시작
+docker-compose restart celery-worker
+
+# Worker 상태 확인
+celery -A config inspect ping
+
+# Broker 연결 확인 (RabbitMQ)
+docker-compose exec rabbitmq rabbitmqctl status
+```
+
+### KIS WebSocket 연결 끊김
+
+```bash
+# 재연결 시도 횟수 증가
+export KIS_MAX_RECONNECT=10
+
+# 구독 종목 수 제한 (과부하 방지)
+export KIS_SYMBOL_LIMIT=10
+
+# kis-publisher 재시작
+docker-compose restart kis-publisher
+```
+
+### TimescaleDB Hypertable 오류
+
+```bash
+# Hypertable 상태 확인
+docker-compose exec db psql -U postgres -d postgres
+postgres=# SELECT * FROM timescaledb_information.hypertables;
+
+# Continuous Aggregate 확인
+postgres=# SELECT * FROM timescaledb_information.continuous_aggregates;
+```
+
+### OpenSearch 연결 실패
+
+```bash
+# 클러스터 상태 확인
+curl -X GET "http://localhost:9200/_cluster/health?pretty"
+
+# 인덱스 목록
+curl -X GET "http://localhost:9200/_cat/indices?v"
+```
+
+## 참고 문서
+
+상세한 시스템 아키텍처는 `docs/SYSTEM_ARCHITECTURE.md` 참조
+
+### 에이전트 작동 규칙
+
+1. 오류 해결 시에는 명확한 원인을 찾고, 원인이 불분명할 때는 사용자에게 필요한 정보를 요청하거나 인터넷 검색을 통해 레퍼런스를 찾습니다.
+2. 코드 변경 시 관련 테스트 파일도 함께 확인합니다.
+3. 새로운 Celery 태스크 추가 시 `config/celery.py`에 명시적으로 import하여 등록합니다.
+4. TimescaleDB 관련 변경은 일반 Django 마이그레이션이 아닌 `migrations.RunSQL()`을 사용합니다.
+5. 로컬 명령어 사용할 때는 반드시 가상환경을 활성화한 다음 실행.

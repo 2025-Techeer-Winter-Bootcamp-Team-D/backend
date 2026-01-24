@@ -86,7 +86,7 @@ class CompanyInfoService:
                         f"지원하지 않는 시장 구분: {company.stock_code} → corp_cls={corp_cls}"
                     )
 
-            # 업종코드는 sync_corp_codes에서만 관리하므로 여기서는 저장하지 않음
+            # 업종코드는 TopCompaniesSyncService에서 관리하므로 여기서는 저장하지 않음
 
             # KIS REST API를 통해 시가총액 갱신 (실패해도 전체 동기화는 계속)
             market_amount_synced = False
