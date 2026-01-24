@@ -1,6 +1,6 @@
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAdminUser
+from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter
 from django.db import connection
@@ -91,25 +91,26 @@ def health_check(request):
 
 
 # =============================================================================
-# 주가 데이터 동기화 API (관리자용)
+# 주가 데이터 동기화 API
 # =============================================================================
 
 
 @extend_schema(
-    summary="주가 히스토리 동기화 (관리자용)",
+    summary="주가 히스토리 동기화",
     description="""
     yfinance API를 통해 특정 종목의 과거 OHLCV 데이터를 동기화합니다.
-    
+
     **수집 범위:**
     - 1분봉: 최근 1일
     - 15분봉: 최근 5일
     - 1시간봉: 최근 1달
     - 1일봉: 최근 1년
-    
+
     **참고:**
     - 시장 정보(KOSPI/KOSDAQ)는 Company 테이블의 market 필드에서 자동으로 조회됩니다.
     - KOSPI 종목은 `.KS`, KOSDAQ 종목은 `.KQ` suffix가 자동 추가됩니다.
     - `async=true`(기본값)일 경우 Celery 태스크로 비동기 실행됩니다.
+    - 프론트엔드에서 기업 상세 페이지 진입 시 호출하여 최신 데이터를 동기화합니다.
     """,
     parameters=[
         OpenApiParameter(
@@ -137,14 +138,12 @@ def health_check(request):
         200: OpenApiResponse(description="동기화 완료 (동기 실행)"),
         202: OpenApiResponse(description="동기화 작업 시작됨 (비동기 실행)"),
         400: OpenApiResponse(description="잘못된 요청"),
-        401: OpenApiResponse(description="인증 필요"),
-        403: OpenApiResponse(description="권한 없음"),
         404: OpenApiResponse(description="종목을 찾을 수 없음"),
     },
-    tags=["Admin"],
+    tags=["Stocks"],
 )
 @api_view(["POST"])
-@permission_classes([IsAdminUser])
+@permission_classes([AllowAny])
 def sync_stock_history(request, stock_code: str):
     """
     단일 종목 주가 히스토리 동기화 API

@@ -18,5 +18,6 @@ COPY kis-publisher/main.py .
 COPY kis-publisher/fetch_symbols.py .
 COPY kis-publisher/companies_data.csv .
 COPY kis-publisher/mock_server.py .
+COPY kis-publisher/subscription_handler.py .
 
 CMD ["python", "main.py"]

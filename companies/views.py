@@ -1437,18 +1437,20 @@ def process_single_report_view(request, stock_code, rcept_no):
     summary="기업 주가 데이터 조회",
     description="""
     특정 종목의 OHLCV 주가 데이터를 조회합니다.
-    
+
     **지원하는 시간 단위 및 조회 기간:**
     - `1m`: 1분봉 - 최근 1일치 데이터
     - `15m`: 15분봉 - 최근 5일치(일주일) 데이터
     - `1h`: 1시간봉 - 최근 1달치 데이터
     - `1d`: 1일봉 - 최근 1년치 데이터
-    
+
     **쿼리 파라미터:**
     - `interval`: 조회할 시간 단위 (1m, 15m, 1h, 1d). 없으면 모든 interval 반환
-    
+
     **참고:**
-    - DB에 저장된 모든 데이터를 최신순으로 반환합니다.
+    - 호출 시 자동으로 yfinance에서 최신 데이터를 동기화합니다.
+    - 동기화는 비동기로 실행되며, 기존 데이터가 있으면 즉시 반환합니다.
+    - 데이터가 없으면 동기화 완료 후 반환합니다.
     """,
     parameters=[
         OpenApiParameter(
@@ -1479,11 +1481,11 @@ def get_company_prices(request, stock_code: str):
     기업 주가 데이터 조회 API
 
     특정 종목의 OHLCV 데이터를 조회합니다.
-    DB에 저장된 모든 데이터를 최신순으로 반환합니다.
+    호출 시 자동으로 yfinance에서 최신 데이터를 동기화합니다.
     """
-    # 종목 존재 확인
+    # 종목 존재 및 market 정보 확인
     try:
-        Company.objects.get(stock_code=stock_code, is_deleted=False)
+        company = Company.objects.get(stock_code=stock_code, is_deleted=False)
     except Company.DoesNotExist:
         return Response(
             {"status": 404, "error": f"종목 {stock_code}을(를) 찾을 수 없습니다."},
@@ -1492,6 +1494,14 @@ def get_company_prices(request, stock_code: str):
 
     # 쿼리 파라미터 파싱
     interval = request.query_params.get("interval", None)
+
+    # 자동 동기화 트리거 (market 정보가 있는 경우에만)
+    if company.market:
+        from core.tasks.yfinance_sync import sync_stock_history_task
+
+        # 요청된 interval만 동기화 (없으면 전체)
+        sync_intervals = [interval] if interval else None
+        sync_stock_history_task.delay(stock_code=stock_code, intervals=sync_intervals)
 
     # interval 유효성 검사
     valid_intervals = ["1m", "15m", "1h", "1d"]

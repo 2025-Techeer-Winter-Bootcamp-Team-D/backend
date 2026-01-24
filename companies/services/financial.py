@@ -1115,6 +1115,14 @@ class FinancialService:
             # 기본값: 사업보고서(11011)만 조회하여 중복 데이터 방지
             queryset = queryset.filter(report_code="11011")
 
+        # 주요 재무 데이터가 모두 null인 레코드 제외 (아직 제공되지 않은 연도)
+        # revenue, operating_profit, net_income 중 하나라도 있으면 유효한 데이터로 판단
+        queryset = queryset.exclude(
+            revenue__isnull=True,
+            operating_profit__isnull=True,
+            net_income__isnull=True,
+        )
+
         financial_statements = queryset.order_by("-fiscal_year", "-report_code")
 
         return list(financial_statements)

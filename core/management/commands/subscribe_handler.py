@@ -1,3 +1,9 @@
+"""
+RabbitMQ에서 실시간 주가 데이터를 구독하여 Django Channels로 전송하는 핸들러.
+
+종목별 Channels 그룹(stock_{code})으로 선택적 브로드캐스트.
+"""
+
 import asyncio
 import os
 import json
@@ -12,7 +18,7 @@ QUEUE_NAME = "stock.ticks.channels"
 
 
 class Command(BaseCommand):
-    help = "Redis Stream을 구독하여 실시간 주가 데이터를 Django Channels로 전송합니다."
+    help = "RabbitMQ를 구독하여 실시간 주가 데이터를 Django Channels로 전송합니다."
 
     def handle(self, *args, **options):
         asyncio.run(self.main())
@@ -63,6 +69,7 @@ class Command(BaseCommand):
             raise RuntimeError("Channel layer not configured")
 
         self.stdout.write("[INIT] Channel layer initialized")
+        self.stdout.write("[INIT] Broadcasting to stock-specific groups (stock_{code})")
         self.stdout.write("[INIT] Listening for messages...")
 
         message_count = 0
@@ -85,11 +92,12 @@ class Command(BaseCommand):
                         price = data.get("price", "N/A")
                         volume = data.get("volume", "N/A")
 
-                        # Django Channels를 통해 클라이언트에게 전송
+                        # 종목별 그룹으로 브로드캐스트
+                        group_name = f"stock_{stock_code}"
                         await channel_layer.group_send(
-                            "stock_prices",  # StockPriceConsumer의 group_name
+                            group_name,
                             {
-                                "type": "stock_price_update",  # Consumer 메서드 이름
+                                "type": "stock_price_update",
                                 "stock_code": stock_code,
                                 "symbol": symbol,
                                 "time": time_str,
@@ -104,7 +112,7 @@ class Command(BaseCommand):
                             self.stdout.write(
                                 self.style.SUCCESS(
                                     f"[BROADCAST] Processed {message_count} messages, "
-                                    f"broadcasted {broadcast_count} to clients"
+                                    f"broadcasted {broadcast_count} to stock groups"
                                 )
                             )
 

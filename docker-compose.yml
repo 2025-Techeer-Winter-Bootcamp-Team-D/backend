@@ -176,7 +176,7 @@ services:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
       - PYTHONUNBUFFERED=1
       - KRX_SYMBOLS_CSV_PATH=/app/companies_data.csv
-      - KIS_SYMBOL_LIMIT=50
+      - KIS_SYMBOL_LIMIT=0
       - KIS_USE_TEST_MODE=true
       - KIS_TEST_WS_URL=ws://kis-mock-server:8080
       - KIS_MAX_RECONNECT=3
