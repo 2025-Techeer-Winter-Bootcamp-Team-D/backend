@@ -6,12 +6,13 @@ from .views import (
 )
 
 urlpatterns = [
-    # Admin - Stock Data Sync
+    # Stock Data Sync (공개 API)
     path(
-        "admin/stocks/<str:stock_code>/sync-history/",
+        "stocks/<str:stock_code>/sync-history/",
         sync_stock_history,
         name="sync_stock_history",
     ),
+    # Admin - Stock Data Sync
     path(
         "admin/stocks/sync-history/",
         sync_multiple_stocks_history,
