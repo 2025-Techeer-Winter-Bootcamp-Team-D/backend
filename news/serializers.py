@@ -4,7 +4,7 @@
 """
 
 from rest_framework import serializers
-from .models import News, CompanyNews
+from .models import News
 
 
 # === 기본 필드 정의 ===
