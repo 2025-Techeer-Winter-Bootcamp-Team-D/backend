@@ -1,31 +1,28 @@
-from google import genai
-from google.genai.types import GenerateContentConfig
-from django.conf import settings
+# news/services/summarizer.py
+"""
+뉴스 요약 서비스
+
+Gemini API를 사용하여 뉴스 본문 요약 및 감성 분석
+"""
+
 import json
 import logging
+from typing import Dict
+
+from services.base import GeminiGenerativeClient
 
 logger = logging.getLogger(__name__)
 
 
-class SummarizeService:
+class SummarizeService(GeminiGenerativeClient):
     """
     정제된 본문을 기반으로 단순 요약만 수행
     """
 
     def __init__(self):
-        api_key = settings.GEMINI_API_KEY
-        if not api_key:
-            error_msg = "GEMINI_API_KEY is missing or empty. Please set GEMINI_API_KEY in environment variables."
-            logger.error(error_msg)
-            raise ValueError(error_msg)
+        super().__init__(model_name="gemini-2.5-flash-lite")
 
-        self.client = genai.Client(api_key=api_key)
-
-        # 모델 이름 (가성비 좋은 모델 우선: Flash 모델이 빠르고 저렴)
-        self.model_name = "gemini-2.5-flash-lite"
-        logger.info(f"Gemini 클라이언트 초기화 성공: {self.model_name}")
-
-    def get_summary_only(self, perfect_text):
+    def get_summary_only(self, perfect_text: str) -> Dict[str, str]:
         """
         본문을 3줄로 요약하고 감성분석을 수행하여 JSON으로 반환
 
@@ -33,12 +30,15 @@ class SummarizeService:
         - 입력 텍스트를 명확한 구분자로 분리
         - 입력 길이 제한
         - safety_settings 적용
+
+        Args:
+            perfect_text: 정제된 뉴스 본문
+
+        Returns:
+            {"summary": "요약 내용", "sentiment": "positive|neutral|negative"}
         """
         # 입력 길이 제한 (프롬프트 인젝션 방지 및 토큰 절감)
-        max_input_length = 50000
-        if len(perfect_text) > max_input_length:
-            perfect_text = perfect_text[:max_input_length]
-            logger.warning(f"입력 텍스트가 {max_input_length}자를 초과하여 잘랐습니다.")
+        perfect_text = self.truncate_text(perfect_text, max_length=50000)
 
         # 프롬프트 인젝션 방지를 위해 입력 텍스트를 명확한 구분자로 분리
         prompt = """다음 뉴스 본문을 읽고 핵심 내용을 3줄 이내로 요약하고, 이 뉴스의 감성을 분석하여
@@ -67,33 +67,7 @@ JSON 형식으로 응답하세요.
         )
 
         try:
-            # safety_settings를 적용하여 안전한 응답만 허용
-            safety_settings = [
-                {
-                    "category": "HARM_CATEGORY_HARASSMENT",
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE",
-                },
-                {
-                    "category": "HARM_CATEGORY_HATE_SPEECH",
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE",
-                },
-                {
-                    "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE",
-                },
-                {
-                    "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE",
-                },
-            ]
-
-            # response_mime_type은 최신 API에서만 지원되므로 일반 텍스트로 요청 후 파싱
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config=GenerateContentConfig(safety_settings=safety_settings),
-            )
-            text = response.text.strip()
+            text = self.generate_content(prompt, use_safety_settings=True)
 
             # JSON 형식으로 파싱 시도
             if "{" in text and "}" in text:
@@ -108,14 +82,12 @@ JSON 형식으로 응답하세요.
             # JSON 형식이 아니면 그냥 텍스트로 반환 (감성은 중립)
             return {"summary": text, "sentiment": "neutral"}
         except Exception as e:
-            error_message = str(e)
-            # 쿼터 초과(429) 에러 명시적 처리
-            if "429" in error_message or "quota" in error_message.lower():
+            if self.is_quota_error(e):
                 logger.warning("Gemini API 쿼터 초과: 요약 생성 불가")
                 return {
                     "summary": "Gemini API 토큰 부족으로 요약 생성 실패",
                     "sentiment": "neutral",
                 }
             else:
-                logger.error(f"Summarization failed: {error_message}")
+                logger.error(f"Summarization failed: {e}")
                 return {"summary": "요약 생성 실패", "sentiment": "neutral"}
