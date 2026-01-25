@@ -36,7 +36,6 @@ BATCH_SIZE = int(os.getenv("KIS_BATCH_SIZE", "5"))
 # PINGPONG 설정
 PING_INTERVAL = int(os.getenv("KIS_PING_INTERVAL", "30"))  # 30초마다 PING
 PING_TIMEOUT = int(os.getenv("KIS_PING_TIMEOUT", "10"))  # PONG 응답 타임아웃
-CONNECTION_CONFIRM_TIMEOUT = int(os.getenv("KIS_CONNECTION_CONFIRM_TIMEOUT", "10"))  # 연결 확인 타임아웃
 
 # 종료 플래그
 shutdown_event = asyncio.Event()
@@ -82,27 +81,6 @@ class KISParser:
             return False
         # KIS API PINGPONG 메시지 형식 확인
         return "PINGPONG" in message.upper() or message.strip().upper() == "PING"
-
-    @staticmethod
-    def is_connection_confirm(message: str) -> bool:
-        """연결 확인 메시지인지 확인"""
-        if not message:
-            return False
-        try:
-            # JSON 형식 응답 확인
-            data = json.loads(message)
-            # 연결 성공 응답 확인 (tr_id가 있거나 성공 메시지)
-            if isinstance(data, dict):
-                header = data.get("header", {})
-                body = data.get("body", {})
-                # 연결 확인 또는 구독 성공 응답
-                if header.get("tr_id") or body.get("rt_cd") == "0":
-                    return True
-        except (json.JSONDecodeError, TypeError):
-            pass
-        # 문자열 형식 확인
-        msg_upper = message.upper()
-        return "CONNECTED" in msg_upper or "SUCCESS" in msg_upper
 
 
 class HeartbeatManager:
@@ -445,25 +423,9 @@ async def run_publisher():
                     ping_timeout=PING_TIMEOUT
                 )
 
-                # [KIS 가이드라인] 1단계: 접속 확인 대기
-                print("[WS] Waiting for connection confirmation...")
-                try:
-                    confirm_msg = await asyncio.wait_for(
-                        ws.recv(),
-                        timeout=CONNECTION_CONFIRM_TIMEOUT
-                    )
-                    if KISParser.is_connection_confirm(confirm_msg):
-                        print(f"[WS] Connection confirmed: {confirm_msg[:100]}...")
-                    else:
-                        print(f"[WS] First message received (treating as connected): {confirm_msg[:100]}...")
-                except asyncio.TimeoutError:
-                    # 테스트 모드에서는 확인 메시지 없이 진행
-                    if is_test_mode:
-                        print("[WS] No confirmation message (test mode), proceeding...")
-                    else:
-                        print("[WS] Connection confirmation timeout, proceeding anyway...")
+                print("[WS] Connected, proceeding to subscription...")
 
-                # [KIS 가이드라인] 2단계: 구독 정보 등록
+                # [KIS 가이드라인] 1단계: 구독 정보 등록
                 if subscription_handler.subscription_count > 0:
                     # 재연결: 기존 구독 복원
                     print("[WS] Restoring previous subscriptions...")
@@ -479,13 +441,13 @@ async def run_publisher():
                 reconnect_count = 0
                 reconnect_delay = 5
 
-                # [KIS 가이드라인] 3단계: PINGPONG 처리를 위한 하트비트 시작
+                # [KIS 가이드라인] 2단계: PINGPONG 처리를 위한 하트비트 시작
                 await heartbeat_manager.start()
 
                 print(f"[WS] Listening for real-time data... "
                       f"(Active subscriptions: {subscription_handler.subscription_count})")
 
-                # [KIS 가이드라인] 4단계: 정보 수신
+                # [KIS 가이드라인] 3단계: 정보 수신
                 async for message in ws:
                     # 종료 이벤트 체크
                     if shutdown_event.is_set():
