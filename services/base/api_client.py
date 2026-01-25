@@ -61,6 +61,11 @@ class ExternalAPIClient:
                 timeout=request_timeout,
             )
             response.raise_for_status()
+
+            # 204 No Content 또는 빈 응답 처리
+            if response.status_code == 204 or not response.content:
+                return {}
+
             return response.json()
         except HTTPError as e:
             logger.error(f"HTTP 오류: {url} - {e.response.status_code}")
@@ -68,6 +73,10 @@ class ExternalAPIClient:
         except Timeout:
             logger.error(f"요청 타임아웃: {url}")
             raise
+        except ValueError as e:
+            # JSON 디코드 실패 (빈 응답 또는 잘못된 JSON 형식)
+            logger.warning(f"JSON 디코드 실패: {url} - {e}")
+            return {}
         except RequestException as e:
             logger.error(f"API 요청 실패: {url} - {e}")
             raise
