@@ -37,9 +37,6 @@ BATCH_SIZE = int(os.getenv("KIS_BATCH_SIZE", "5"))
 PING_INTERVAL = int(os.getenv("KIS_PING_INTERVAL", "30"))  # 30초마다 PING
 PING_TIMEOUT = int(os.getenv("KIS_PING_TIMEOUT", "10"))  # PONG 응답 타임아웃
 
-# 종료 플래그
-shutdown_event = asyncio.Event()
-
 # RPC 설정
 RPC_QUEUE_NAME = "subscription.commands"
 
@@ -127,6 +124,8 @@ class HeartbeatManager:
         """
         PINGPONG 메시지 처리.
 
+        KIS 가이드라인: 동일한 페이로드를 응답해야 함.
+
         Returns:
             True: PINGPONG 메시지 처리됨
             False: PINGPONG 메시지 아님
@@ -135,18 +134,17 @@ class HeartbeatManager:
             return False
 
         try:
-            # PONG 응답 전송
-            pong_response = json.dumps({"type": "PONG"})
-            await self._websocket.send(pong_response)
+            # 원본 메시지를 그대로 에코 (KIS 가이드라인)
+            await self._websocket.send(message)
             self.record_activity()
-            print("[HEARTBEAT] PINGPONG received, PONG sent")
+            print(f"[HEARTBEAT] PINGPONG received, echoed back: {message[:50]}")
             return True
         except Exception as e:
             print(f"[HEARTBEAT] Error sending PONG: {e}")
             return True
 
     async def _heartbeat_loop(self):
-        """주기적 PING 전송 및 타임아웃 체크"""
+        """비활성 타임아웃 체크 (서버 PINGPONG에 응답하는 방식)"""
         while self._is_running:
             try:
                 await asyncio.sleep(self._ping_interval)
@@ -163,14 +161,7 @@ class HeartbeatManager:
                     print(f"[HEARTBEAT] Connection timeout ({elapsed:.1f}s since last activity)")
                     raise websockets.ConnectionClosed(None, None)
 
-                # PING 메시지 전송
-                try:
-                    ping_message = json.dumps({"type": "PING"})
-                    await self._websocket.send(ping_message)
-                    print(f"[HEARTBEAT] PING sent (last activity: {elapsed:.1f}s ago)")
-                except websockets.ConnectionClosed:
-                    print("[HEARTBEAT] Connection closed during PING")
-                    break
+                print(f"[HEARTBEAT] Connection alive (last activity: {elapsed:.1f}s ago)")
 
             except asyncio.CancelledError:
                 break
@@ -275,6 +266,9 @@ async def setup_rpc_consumer(rabbitmq_channel, subscription_handler: Subscriptio
 
 async def run_publisher():
     global SUBSCRIBE_SYMBOLS
+
+    # 종료 이벤트 (per-loop 생성)
+    shutdown_event = asyncio.Event()
 
     # DB에서 초기 종목 코드 가져오기
     max_db_retries = 3
