@@ -40,7 +40,7 @@ class SankeyDataService:
             # 1. 데이터 로드 및 업종 분석
             fs = FinancialStatement.objects.filter(company=company, fiscal_year=year, report_code='11011').first()
             report = Report.objects.filter(company=company, report_name__contains=str(year)).first()
-            ext_info = report.extracted_info if report else {}
+            ext_info = (report.extracted_info or {}) if report else {}
             is_finance = any(x in company.company_name for x in ["금융", "지주", "은행", "보험", "생명", "화재"])
 
             params = {
