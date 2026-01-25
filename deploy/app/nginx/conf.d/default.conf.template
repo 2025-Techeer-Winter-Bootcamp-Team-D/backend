@@ -138,10 +138,27 @@ server {
     }
 
     # =========================================================================
+    # Internal (Prometheus 메트릭)
+    # =========================================================================
+
+    # 10. Django Prometheus 메트릭 (내부 접근만 허용)
+    location /internal/ {
+        # 내부 네트워크만 허용 (EC2 VPC 대역)
+        allow 10.0.0.0/8;
+        allow 172.16.0.0/12;
+        allow 192.168.0.0/16;
+        allow 127.0.0.1;
+        deny all;
+
+        set $target_internal "backend_server";
+        proxy_pass http://$target_internal;
+    }
+
+    # =========================================================================
     # Health & Status
     # =========================================================================
 
-    # 10. Nginx 상태 확인 (Prometheus 용)
+    # 11. Nginx 상태 확인 (Prometheus 용)
     location /stub_status {
         stub_status;
         allow all;
