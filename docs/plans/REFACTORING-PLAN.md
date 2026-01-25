@@ -55,7 +55,7 @@ MIDDLEWARE = [
 
 ---
 
-### 2.2 industries 태스크 __init__.py 수정
+### 2.2 industries 태스크 `__init__.py` 수정
 
 **파일**: `industries/tasks/__init__.py`
 
@@ -284,7 +284,7 @@ class GeminiClientMixin:
 **문제**: 4개 파일의 책임 경계가 불명확
 
 **현재 구조**:
-```
+```text
 companies/services/
 ├── report_extractor.py
 ├── report_info_extractor.py
@@ -294,7 +294,7 @@ companies/services/
 
 **조치**: 디렉토리 구조화
 
-```
+```text
 companies/services/report_processing/
 ├── __init__.py           # 통합 인터페이스
 ├── content_extractor.py  # 본문 추출
@@ -581,7 +581,7 @@ class SankeyData(models.Model):
 
 ### 수정 필요
 
-```
+```text
 config/settings.py
 config/celery.py
 industries/tasks/__init__.py
@@ -593,7 +593,7 @@ news/services/*.py
 
 ### 신규 생성
 
-```
+```text
 utils/responses.py
 utils/pagination.py
 services/base/gemini_client.py
@@ -603,7 +603,7 @@ companies/services/report_processing/__init__.py
 
 ### 삭제 대상
 
-```
+```text
 news/tasks.py
 users/forms.py
 ```

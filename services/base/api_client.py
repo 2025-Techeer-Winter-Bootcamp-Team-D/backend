@@ -19,7 +19,7 @@ class ExternalAPIClient:
 
     base_url: str = ""
     timeout: int = 30
-    default_headers: Dict[str, str] = {}
+    default_headers: Optional[Dict[str, str]] = None
 
     def _request(
         self,
@@ -48,7 +48,7 @@ class ExternalAPIClient:
             RequestException: 요청 실패 시
         """
         url = f"{self.base_url}{endpoint}"
-        request_headers = {**self.default_headers, **(headers or {})}
+        request_headers = {**(self.default_headers or {}), **(headers or {})}
         request_timeout = timeout or self.timeout
 
         try:

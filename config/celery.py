@@ -14,6 +14,7 @@ app.autodiscover_tasks()
 try:
     import core.tasks.price_sync  # noqa: F401
     import core.tasks.yfinance_sync  # noqa: F401
+    import industries.tasks.index_sync  # noqa: F401
     # companies.tasks는 __init__.py에서 이미 import되어 autodiscover_tasks()로 자동 등록됨
 except ImportError:
     pass

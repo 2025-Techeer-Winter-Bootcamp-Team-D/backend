@@ -4,7 +4,7 @@
 
 ## 디렉토리 구조
 
-```
+```text
 docs/
 ├── README.md                       # 이 파일
 ├── PRD.md                          # 제품 요구사항 문서
@@ -24,7 +24,7 @@ docs/
 │   └── INDUSTRY-MAPPING-ANALYSIS.md# 기업-산업 매핑 분석
 │
 └── plans/                          # 구현 계획 문서
-    ├── REFACTORING_PLAN.md         # 리팩토링 계획 (진행 중)
+    ├── REFACTORING-PLAN.md         # 리팩토링 계획 (진행 중)
     ├── report-processing-enhancement.md # 보고서 처리 강화 (보류)
     └── archive/                    # 완료된 계획서 보관
 ```

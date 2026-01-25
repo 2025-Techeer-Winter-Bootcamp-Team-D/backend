@@ -588,7 +588,7 @@ from services.base import GeminiEmbeddingClient
 
 class MyEmbeddingService(GeminiEmbeddingClient):
     def get_vectors(self, texts: list[str]) -> list:
-        return self.embed_batch(texts, batch_size=100)
+        return self.get_embeddings_batch(texts, task_type="RETRIEVAL_DOCUMENT")
 ```
 
 **베이스 클래스 제공 메서드**:
@@ -597,11 +597,10 @@ class MyEmbeddingService(GeminiEmbeddingClient):
 |--------|--------|------|
 | `GeminiGenerativeClient` | `generate_content(prompt)` | 텍스트 생성 |
 | | `truncate_text(text, max_length)` | 텍스트 길이 제한 |
-| | `clean_json_response(text)` | JSON 응답 정리 |
-| `GeminiEmbeddingClient` | `embed_content(text)` | 단일 텍스트 임베딩 |
-| | `embed_batch(texts, batch_size)` | 배치 임베딩 |
-| `ExternalAPIClient` | `get(endpoint, params)` | GET 요청 (자동 재시도) |
-| | `post(endpoint, data)` | POST 요청 (자동 재시도) |
+| `GeminiEmbeddingClient` | `create_embedding(text, task_type)` | 단일 텍스트 임베딩 |
+| | `get_embeddings_batch(texts, task_type)` | 배치 임베딩 |
+| `ExternalAPIClient` | `get(endpoint, params)` | GET 요청 |
+| | `post(endpoint, data)` | POST 요청 |
 
 ### 공통 유틸리티
 
@@ -634,18 +633,23 @@ class CompanyNewsSerializer(serializers.Serializer):
 새 디렉토리 추가 시 `Dockerfile`에 COPY 명령 추가 필요:
 
 ```dockerfile
-# 현재 포함된 디렉토리
+# 현재 포함된 디렉토리 (9개)
 COPY config/ /app/config/
 COPY companies/ /app/companies/
+COPY comparisons/ /app/comparisons/
+COPY core/ /app/core/
+COPY industries/ /app/industries/
+COPY indices/ /app/indices/
 COPY news/ /app/news/
-COPY services/ /app/services/  # 베이스 클래스
-# ... 새 디렉토리 추가 시 여기에 COPY 추가
+COPY users/ /app/users/
+COPY services/ /app/services/
+# 새 디렉토리 추가 시 여기에 COPY 추가
 ```
 
 ## 참고 문서
 
 - 시스템 아키텍처: `docs/SYSTEM_ARCHITECTURE.md`
-- 리팩토링 계획: `docs/plans/REFACTORING_PLAN.md`
+- 리팩토링 계획: `docs/plans/REFACTORING-PLAN.md`
 
 ## 에이전트 작동 규칙
 
