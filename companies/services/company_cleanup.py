@@ -32,8 +32,8 @@ class CompanyCleanupService:
         기업의 가장 최근 재무제표에서 유효한 재무지표가 있는지 확인
 
         Returns:
-            True: 유효한 지표가 하나라도 있음
-            False: per, pbr, roe, debt_ratio, dividend_yield 모두 0이거나 null
+            True: 5가지 지표 중 4개 이상 유효함 (삭제하면 안 됨)
+            False: 5가지 지표 중 2개 이상이 0이거나 null (삭제 대상)
         """
         # 가장 최근 재무제표 조회
         latest_statement = (
@@ -46,7 +46,7 @@ class CompanyCleanupService:
             # 재무제표가 없으면 유효하지 않음
             return False
 
-        # 5가지 지표 중 하나라도 유효한 값이 있으면 True
+        # 5가지 지표 확인
         metrics = [
             latest_statement.per,
             latest_statement.pbr,
@@ -55,11 +55,14 @@ class CompanyCleanupService:
             latest_statement.dividend_yield,
         ]
 
-        for metric in metrics:
-            if not CompanyCleanupService.is_metric_empty(metric):
-                return True
+        # 비어있는(0 또는 null) 지표 개수 계산
+        empty_count = sum(
+            1 for metric in metrics if CompanyCleanupService.is_metric_empty(metric)
+        )
 
-        return False
+        # 2개 이상 비어있으면 삭제 대상 (False 반환)
+        # 1개 이하만 비어있으면 유효한 기업 (True 반환)
+        return empty_count < 2
 
     @staticmethod
     def find_companies_without_valid_metrics() -> List[str]:
