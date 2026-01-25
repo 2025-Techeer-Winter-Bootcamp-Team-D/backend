@@ -28,6 +28,7 @@ COPY industries/ /app/industries/
 COPY indices/ /app/indices/
 COPY news/ /app/news/
 COPY users/ /app/users/
+COPY services/ /app/services/
 
 
 # Daphne ASGI 서버 (WebSocket 지원)
