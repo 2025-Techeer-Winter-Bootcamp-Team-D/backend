@@ -8,6 +8,7 @@ from typing import Dict, Any, List
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import Q
 
 from companies.models import Company, FinancialStatement
 
@@ -37,10 +38,15 @@ class CompanyCleanupService:
         """
         # 가장 최근 사업보고서 조회 (report_code="11011"이 사업보고서)
         # 분기/반기보고서는 재무지표가 없을 수 있으므로 사업보고서만 확인
+        # 미래 연도(아직 재무지표가 계산되지 않은)를 제외하기 위해
+        # PER, PBR, ROE 중 하나라도 값이 있는 보고서만 조회
         latest_statement = (
             FinancialStatement.objects.filter(
                 company_id=stock_code,
-                report_code="11011"  # 사업보고서만
+                report_code="11011",  # 사업보고서만
+            )
+            .filter(
+                Q(per__isnull=False) | Q(pbr__isnull=False) | Q(roe__isnull=False)
             )
             .order_by("-fiscal_year")
             .first()
