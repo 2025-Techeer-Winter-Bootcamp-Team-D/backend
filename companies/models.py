@@ -62,6 +62,10 @@ class Company(models.Model):
 
     class Meta:
         db_table = "company"
+        indexes = [
+            models.Index(fields=["market", "-created_at"]),
+            models.Index(fields=["is_deleted", "-updated_at"]),
+        ]
 
 
 class FinancialStatement(models.Model):

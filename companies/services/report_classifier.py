@@ -6,13 +6,12 @@ Gemini를 사용하여 기업이 제조업, 금융지주사, 개별 금융사인
 import json
 import logging
 
-from django.conf import settings
-from google import genai
+from services.base import GeminiGenerativeClient
 
 logger = logging.getLogger(__name__)
 
 
-class ReportClassifierService:
+class ReportClassifierService(GeminiGenerativeClient):
     """보고서 기업 유형 분류 서비스"""
 
     COMPANY_TYPES = {
@@ -24,12 +23,7 @@ class ReportClassifierService:
     }
 
     def __init__(self):
-        api_key = settings.GEMINI_API_KEY
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY가 설정되지 않았습니다.")
-
-        self.client = genai.Client(api_key=api_key)
-        self.model_name = "gemini-2.5-flash-lite"
+        super().__init__(model_name="gemini-2.5-flash-lite")
 
     def classify_company_type(
         self, company_name: str, report_name: str, content_sample: str
@@ -46,8 +40,7 @@ class ReportClassifierService:
             기업 유형 코드 (manufacturing, financial_holding, financial_individual, service, other)
         """
         # 내용 샘플 길이 제한
-        if len(content_sample) > 5000:
-            content_sample = content_sample[:5000]
+        content_sample = self.truncate_text(content_sample, max_length=5000)
 
         prompt = f"""다음 기업의 보고서 정보를 바탕으로 기업 유형을 분류하세요.
 
@@ -73,11 +66,7 @@ class ReportClassifierService:
 위 정보를 바탕으로 기업 유형을 분류하여 JSON으로 응답하세요."""
 
         try:
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-            )
-            text = response.text.strip()
+            text = self.generate_content(prompt, use_safety_settings=False)
 
             # JSON 파싱
             if "{" in text and "}" in text:

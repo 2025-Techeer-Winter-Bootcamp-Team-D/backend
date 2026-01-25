@@ -1,44 +1,41 @@
-from google import genai
-from django.conf import settings
-import logging
+# news/services/refiner.py
+"""
+뉴스 본문 정제 서비스
+
+Gemini API를 사용하여 뉴스 및 보고서 본문에서 불필요한 요소 제거
+"""
+
 import re
+import logging
+
+from services.base import GeminiGenerativeClient
 
 logger = logging.getLogger(__name__)
 
 
-class RefineService:
+class RefineService(GeminiGenerativeClient):
     """
     AI(Gemini) 정제 서비스
     """
 
     def __init__(self):
-        api_key = settings.GEMINI_API_KEY
-        if not api_key:
-            error_msg = "GEMINI_API_KEY is missing or empty. Please set GEMINI_API_KEY in environment variables."
-            logger.error(error_msg)
-            raise ValueError(error_msg)
+        super().__init__(model_name="gemini-2.5-flash-lite")
 
-        self.client = genai.Client(api_key=api_key)
-
-        # 모델 이름 (가성비 좋은 모델 우선: Flash 모델이 빠르고 저렴)
-        self.model_name = "gemini-2.5-flash-lite"
-        logger.info(f"Gemini 클라이언트 초기화 성공: {self.model_name}")
-
-    def get_refined_body(self, raw_data):
+    def _preprocess_text(self, raw_data: str, is_news: bool = True) -> str:
         """
-        Markdown에서 메타데이터 제거 후 Gemini 정제를 통해 완벽한 본문 추출
+        텍스트 전처리 (공통 로직)
 
-        프롬프트 인젝션 방지를 위해:
-        - 입력 텍스트를 명확한 구분자로 분리
-        - 입력 길이 제한
-        - safety_settings 적용
+        Args:
+            raw_data: 원본 텍스트
+            is_news: 뉴스 여부 (True면 Markdown Content 추출)
+
+        Returns:
+            전처리된 텍스트
         """
-        # 1. Markdown 메타데이터 제거 (raw_data는 Jina Reader의 Markdown 출력)
-        # 형식: "Title: ...\n\nURL Source: ...\n\nPublished Time: ...\n\nMarkdown Content:\n실제내용"
         local_text = raw_data
 
-        # "Markdown Content:" 이후의 내용만 추출
-        if "Markdown Content:" in raw_data:
+        # 뉴스: "Markdown Content:" 이후의 내용만 추출
+        if is_news and "Markdown Content:" in raw_data:
             parts = raw_data.split("Markdown Content:", 1)
             if len(parts) == 2:
                 local_text = parts[1].strip()
@@ -47,22 +44,32 @@ class RefineService:
         if not local_text:
             local_text = raw_data
 
-        # 2. HTML 태그 제거 (Markdown에 남아있을 수 있는 HTML 태그)
-        # <tag>, </tag>, <tag/>, <tag attr="value"> 등 모든 형태 제거
+        # HTML 태그 제거
         local_text = re.sub(r"<[^>]+>", "", local_text)
 
-        # 3. 이미지 참조 텍스트 정리 (예: "Image 2: 로그인", "Image 3: 아이콘" 등)
+        # 이미지 참조 텍스트 정리
         local_text = re.sub(r"Image\s+\d+:\s*[^\n]*", "", local_text)
 
-        # 입력 길이 제한 (프롬프트 인젝션 방지 및 토큰 절감)
-        # 뉴스: ~10,000자, 보고서: ~50,000자 허용
-        max_input_length = 50000
-        if len(local_text) > max_input_length:
-            local_text = local_text[:max_input_length]
-            logger.warning(f"입력 텍스트가 {max_input_length}자를 초과하여 잘랐습니다.")
+        # 입력 길이 제한
+        return self.truncate_text(local_text, max_length=50000)
 
-        # 2. Gemini 2차 정제 (데이터 순도 보장용)
-        # 프롬프트 인젝션 방지를 위해 입력 텍스트를 명확한 구분자로 분리
+    def get_refined_body(self, raw_data: str) -> str:
+        """
+        Markdown에서 메타데이터 제거 후 Gemini 정제를 통해 완벽한 본문 추출
+
+        프롬프트 인젝션 방지를 위해:
+        - 입력 텍스트를 명확한 구분자로 분리
+        - 입력 길이 제한
+        - safety_settings 적용
+
+        Args:
+            raw_data: Jina Reader의 Markdown 출력
+
+        Returns:
+            정제된 뉴스 본문
+        """
+        local_text = self._preprocess_text(raw_data, is_news=True)
+
         prompt = """당신은 데이터 정제 전문가입니다. 아래에 제공된 텍스트에서 뉴스 기사 본문과 직접적인
 관련이 없는 모든 요소(광고, 추천, 메뉴)를 제거하세요.
 
@@ -83,47 +90,18 @@ class RefineService:
         )
 
         try:
-            # safety_settings를 적용하여 안전한 응답만 허용
-            safety_settings = [
-                {
-                    "category": "HARM_CATEGORY_HARASSMENT",
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE",
-                },
-                {
-                    "category": "HARM_CATEGORY_HATE_SPEECH",
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE",
-                },
-                {
-                    "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE",
-                },
-                {
-                    "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE",
-                },
-            ]
-
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config={
-                    "safety_settings": safety_settings,
-                },
-            )
-            return response.text.strip()
+            return self.generate_content(prompt, use_safety_settings=True)
         except Exception as e:
-            error_message = str(e)
-            # 쿼터 초과(429) 에러 명시적 처리
-            if "429" in error_message or "quota" in error_message.lower():
+            if self.is_quota_error(e):
                 logger.warning("Gemini API 쿼터 초과: 로컬 정제본 사용")
             else:
-                logger.error(f"Gemini Refinement failed: {error_message}")
+                logger.error(f"Gemini Refinement failed: {e}")
             return local_text  # AI 실패 시 로컬 정제본이라도 반환
 
-    def get_refined_report_body(self, raw_data):
+    def get_refined_report_body(self, raw_data: str) -> str:
         """
         보고서 본문 정제 (보고서 전용 프롬프트)
-        
+
         뉴스 기사와 달리 보고서는 구조화된 문서이므로,
         광고나 메뉴가 아닌 보고서 본문 내용을 보존하면서 정제합니다.
 
@@ -133,21 +111,8 @@ class RefineService:
         Returns:
             정제된 보고서 본문 텍스트
         """
-        local_text = raw_data
+        local_text = self._preprocess_text(raw_data, is_news=False)
 
-        # HTML 태그 제거
-        local_text = re.sub(r"<[^>]+>", "", local_text)
-
-        # 이미지 참조 텍스트 정리
-        local_text = re.sub(r"Image\s+\d+:\s*[^\n]*", "", local_text)
-
-        # 입력 길이 제한
-        max_input_length = 50000
-        if len(local_text) > max_input_length:
-            local_text = local_text[:max_input_length]
-            logger.warning(f"입력 텍스트가 {max_input_length}자를 초과하여 잘랐습니다.")
-
-        # 보고서 정제용 프롬프트
         prompt = """당신은 금융 보고서 정제 전문가입니다. 아래에 제공된 텍스트에서 보고서 본문과 직접적인
 관련이 없는 요소(광고, 메뉴, 네비게이션)만 제거하세요.
 
@@ -169,37 +134,10 @@ class RefineService:
         )
 
         try:
-            safety_settings = [
-                {
-                    "category": "HARM_CATEGORY_HARASSMENT",
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE",
-                },
-                {
-                    "category": "HARM_CATEGORY_HATE_SPEECH",
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE",
-                },
-                {
-                    "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE",
-                },
-                {
-                    "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE",
-                },
-            ]
-
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config={
-                    "safety_settings": safety_settings,
-                },
-            )
-            return response.text.strip()
+            return self.generate_content(prompt, use_safety_settings=True)
         except Exception as e:
-            error_message = str(e)
-            if "429" in error_message or "quota" in error_message.lower():
+            if self.is_quota_error(e):
                 logger.warning("Gemini API 쿼터 초과: 로컬 정제본 사용")
             else:
-                logger.error(f"Gemini 보고서 정제 실패: {error_message}")
+                logger.error(f"Gemini 보고서 정제 실패: {e}")
             return local_text  # AI 실패 시 로컬 정제본이라도 반환

@@ -84,27 +84,3 @@ def sync_dividend_and_calculate_task(self, stock_code: str, fiscal_year: int):
     except Exception as e:
         logger.error(f"배당 동기화 및 지표 계산 오류: {stock_code} - {e}")
         raise self.retry(countdown=60, exc=e)
-
-
-@shared_task
-def calculate_all_companies_metrics():
-    """
-    모든 기업의 최신 연도 재무 지표 계산 (주기적 실행용)
-    """
-    from datetime import datetime
-
-    current_year = datetime.now().year
-    companies = Company.objects.filter(is_deleted=False, corp_code__isnull=False)
-
-    total = companies.count()
-    logger.info(f"전체 기업 재무 지표 계산 시작: {total}개 기업")
-
-    for company in companies:
-        try:
-            # 최근 3년 재무 지표 계산
-            for year in range(current_year - 3, current_year):
-                sync_dividend_and_calculate_task.delay(company.stock_code, year)
-        except Exception as e:
-            logger.error(f"재무 지표 계산 작업 등록 실패: {company.stock_code} - {e}")
-
-    logger.info(f"전체 기업 재무 지표 계산 작업 등록 완료: {total}개")

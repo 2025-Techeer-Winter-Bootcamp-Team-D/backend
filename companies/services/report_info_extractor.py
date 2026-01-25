@@ -7,22 +7,16 @@ Gemini를 사용하여 보고서에서 구조화된 핵심 정보와 사업/수�
 import json
 import logging
 
-from django.conf import settings
-from google import genai
+from services.base import GeminiGenerativeClient
 
 logger = logging.getLogger(__name__)
 
 
-class ReportInfoExtractorService:
+class ReportInfoExtractorService(GeminiGenerativeClient):
     """통합 정보 추출 서비스 (요약 + 사업/수익 구성)"""
 
     def __init__(self):
-        api_key = settings.GEMINI_API_KEY
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY가 설정되지 않았습니다.")
-
-        self.client = genai.Client(api_key=api_key)
-        self.model_name = "gemini-2.5-flash-lite"
+        super().__init__(model_name="gemini-2.5-flash-lite")
 
     def extract_info(
         self,
@@ -128,11 +122,7 @@ class ReportInfoExtractorService:
 위 보고서의 핵심 정보를 JSON으로 응답하세요."""
 
         try:
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-            )
-            text = response.text.strip()
+            text = self.generate_content(prompt, use_safety_settings=False)
 
             # JSON 파싱
             if "{" in text and "}" in text:
@@ -161,5 +151,8 @@ class ReportInfoExtractorService:
             logger.error(f"JSON 파싱 오류: {e}")
             return {"error": f"JSON 파싱 오류: {str(e)}"}
         except Exception as e:
+            if self.is_quota_error(e):
+                logger.warning("Gemini API 쿼터 초과: 정보 추출 불가")
+                return {"error": "Gemini API 쿼터 초과"}
             logger.error(f"정보 추출 실패: {e}")
             return {"error": str(e)}
