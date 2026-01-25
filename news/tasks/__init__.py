@@ -25,6 +25,7 @@ from .company_news import (
     crawl_company_news_task,
     crawl_top_companies_news_task,
     crawl_single_company_news_sync,
+    sync_all_companies_news_task,
 )
 
 __all__ = [
@@ -49,4 +50,5 @@ __all__ = [
     "crawl_company_news_task",
     "crawl_top_companies_news_task",
     "crawl_single_company_news_sync",
+    "sync_all_companies_news_task",
 ]

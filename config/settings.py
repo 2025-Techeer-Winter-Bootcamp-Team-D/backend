@@ -286,6 +286,17 @@ CELERY_BEAT_SCHEDULE = {
             "max_articles_per_keyword": 10,
         },
     },
+    # 전체 기업 뉴스 동기화: 뉴스 크롤링 30분 후 실행 (OpenSearch 검색 → CompanyNews 매핑)
+    "sync-all-companies-news-every-3-hours": {
+        "task": "news.tasks.company_news.sync_all_companies_news_task",
+        "schedule": 3 * 60 * 60,  # 3시간 (초 단위)
+        "kwargs": {
+            "max_news": 20,
+            "days_back": 30,
+            "batch_size": 50,
+        },
+        "options": {"countdown": 30 * 60},  # 뉴스 크롤링 30분 후 실행
+    },
     "sync-industry-charts-daily": {
         # 오후 4시 10분에 실행
         "task": "industries.tasks.index_sync.sync_industry_charts_daily",

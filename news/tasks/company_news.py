@@ -396,6 +396,87 @@ def sync_company_news_task(
         return {"success": 0, "error": str(e)}
 
 
+@shared_task(bind=True, max_retries=2)
+def sync_all_companies_news_task(
+    self, max_news: int = 20, days_back: int = 30, batch_size: int = 50
+) -> Dict[str, Any]:
+    """
+    전체 기업 뉴스 동기화 태스크 (Celery Beat 스케줄용)
+
+    DB에 있는 모든 기업에 대해 뉴스 동기화 작업을 비동기로 등록합니다.
+    각 기업별로 OpenSearch에서 관련 뉴스를 검색하여 CompanyNews에 매핑합니다.
+
+    Args:
+        max_news: 기업당 최대 뉴스 수 (기본값: 20)
+        days_back: 검색 기간 (일, 기본값: 30)
+        batch_size: 배치 크기 (기본값: 50)
+
+    Returns:
+        dict: 동기화 결과 통계
+    """
+    from companies.models import Company
+
+    logger.info("[SyncAllCompaniesNews] 전체 기업 뉴스 동기화 시작")
+
+    try:
+        # 활성 기업 목록 조회
+        companies = Company.objects.filter(is_deleted=False).values_list(
+            "stock_code", flat=True
+        )
+        company_list = list(companies)
+        total_count = len(company_list)
+
+        if total_count == 0:
+            logger.warning("[SyncAllCompaniesNews] 동기화할 기업이 없습니다.")
+            return {"total_companies": 0, "scheduled_tasks": 0}
+
+        logger.info(f"[SyncAllCompaniesNews] {total_count}개 기업 동기화 예정")
+
+        # 배치로 나눠서 태스크 등록
+        scheduled_count = 0
+        for i in range(0, total_count, batch_size):
+            batch = company_list[i : i + batch_size]
+            countdown_offset = (i // batch_size) * 10  # 배치별 10초 간격
+
+            for stock_code in batch:
+                try:
+                    sync_company_news_task.apply_async(
+                        args=[stock_code, max_news, days_back],
+                        countdown=countdown_offset,
+                    )
+                    scheduled_count += 1
+                except Exception as e:
+                    logger.error(
+                        f"[SyncAllCompaniesNews] 태스크 등록 실패: {stock_code} - {e}"
+                    )
+
+            logger.info(
+                f"[SyncAllCompaniesNews] 배치 {i // batch_size + 1} 완료: "
+                f"{len(batch)}개 기업 등록"
+            )
+
+        result = {
+            "total_companies": total_count,
+            "scheduled_tasks": scheduled_count,
+            "max_news": max_news,
+            "days_back": days_back,
+        }
+
+        logger.info(
+            f"[SyncAllCompaniesNews] 완료: {scheduled_count}/{total_count}개 태스크 등록"
+        )
+
+        return result
+
+    except Exception as e:
+        logger.error(f"[SyncAllCompaniesNews] 오류 발생: {e}")
+
+        if self.request.retries < self.max_retries:
+            raise self.retry(exc=e, countdown=60)
+
+        return {"error": str(e)}
+
+
 def _is_content_relevant_to_company(title: str, content: str, company) -> bool:
     """
     뉴스 제목과 본문에서 기업명이 실제로 언급되는지 확인합니다.
