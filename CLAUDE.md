@@ -565,11 +565,89 @@ curl -X GET "http://localhost:9200/_cluster/health?pretty"
 curl -X GET "http://localhost:9200/_cat/indices?v"
 ```
 
+## 공통 서비스 베이스 클래스
+
+### Gemini API 서비스
+
+새로운 Gemini API 서비스 작성 시 베이스 클래스를 상속받아 사용합니다:
+
+```python
+# 텍스트 생성 서비스
+from services.base import GeminiGenerativeClient
+
+class MyTextService(GeminiGenerativeClient):
+    def __init__(self):
+        super().__init__(model_name="gemini-2.0-flash")
+
+    def process(self, text: str) -> str:
+        prompt = f"다음 텍스트를 처리하세요: {text}"
+        return self.generate_content(prompt)
+
+# 임베딩 서비스
+from services.base import GeminiEmbeddingClient
+
+class MyEmbeddingService(GeminiEmbeddingClient):
+    def get_vectors(self, texts: list[str]) -> list:
+        return self.embed_batch(texts, batch_size=100)
+```
+
+**베이스 클래스 제공 메서드**:
+
+| 클래스 | 메서드 | 설명 |
+|--------|--------|------|
+| `GeminiGenerativeClient` | `generate_content(prompt)` | 텍스트 생성 |
+| | `truncate_text(text, max_length)` | 텍스트 길이 제한 |
+| | `clean_json_response(text)` | JSON 응답 정리 |
+| `GeminiEmbeddingClient` | `embed_content(text)` | 단일 텍스트 임베딩 |
+| | `embed_batch(texts, batch_size)` | 배치 임베딩 |
+| `ExternalAPIClient` | `get(endpoint, params)` | GET 요청 (자동 재시도) |
+| | `post(endpoint, data)` | POST 요청 (자동 재시도) |
+
+### 공통 유틸리티
+
+```python
+from utils.pagination import paginate_queryset
+from utils.responses import success_response, error_response
+```
+
+## Serializer 작성 주의사항
+
+### drf-spectacular 호환성
+
+`ModelSerializer`에서 관계 필드를 `source`로 매핑할 때 Mixin 패턴 대신 명시적 필드 정의를 사용합니다:
+
+```python
+# ❌ 잘못된 방식 (drf-spectacular 스키마 생성 오류)
+class CompanyNewsSerializer(CompanyFieldsMixin, serializers.ModelSerializer):
+    class Meta:
+        model = CompanyNews
+        fields = ["title", "content"]  # title이 News 모델에 있으면 오류
+
+# ✅ 올바른 방식
+class CompanyNewsSerializer(serializers.Serializer):
+    title = serializers.CharField(source="news.title", read_only=True)
+    content = serializers.CharField(source="news.content", read_only=True)
+```
+
+## Dockerfile 수정 시 주의사항
+
+새 디렉토리 추가 시 `Dockerfile`에 COPY 명령 추가 필요:
+
+```dockerfile
+# 현재 포함된 디렉토리
+COPY config/ /app/config/
+COPY companies/ /app/companies/
+COPY news/ /app/news/
+COPY services/ /app/services/  # 베이스 클래스
+# ... 새 디렉토리 추가 시 여기에 COPY 추가
+```
+
 ## 참고 문서
 
-상세한 시스템 아키텍처는 `docs/SYSTEM_ARCHITECTURE.md` 참조
+- 시스템 아키텍처: `docs/SYSTEM_ARCHITECTURE.md`
+- 리팩토링 계획: `docs/plans/REFACTORING_PLAN.md`
 
-### 에이전트 작동 규칙
+## 에이전트 작동 규칙
 
 1. 오류 해결 시에는 명확한 원인을 찾고, 원인이 불분명할 때는 사용자에게 필요한 정보를 요청하거나 인터넷 검색을 통해 레퍼런스를 찾습니다.
 2. 코드 변경 시 관련 테스트 파일도 함께 확인합니다.
@@ -579,3 +657,5 @@ curl -X GET "http://localhost:9200/_cat/indices?v"
 4. TimescaleDB 관련 변경은 일반 Django 마이그레이션이 아닌 `migrations.RunSQL()`을 사용합니다.
 5. 로컬 명령어 사용할 때는 반드시 가상환경을 활성화한 다음 실행.
 6. PR 생성 시에는 `.github/pull_request_template.md`를 참조.
+7. 새 Gemini 서비스 작성 시 `services/base`의 베이스 클래스를 상속.
+8. 새 디렉토리 추가 시 `Dockerfile`에 COPY 명령 추가 필수.
