@@ -35,10 +35,14 @@ class CompanyCleanupService:
             True: 5가지 지표 중 4개 이상 유효함 (삭제하면 안 됨)
             False: 5가지 지표 중 2개 이상이 0이거나 null (삭제 대상)
         """
-        # 가장 최근 재무제표 조회
+        # 가장 최근 사업보고서 조회 (report_code="11011"이 사업보고서)
+        # 분기/반기보고서는 재무지표가 없을 수 있으므로 사업보고서만 확인
         latest_statement = (
-            FinancialStatement.objects.filter(company_id=stock_code)
-            .order_by("-fiscal_year", "-report_code")
+            FinancialStatement.objects.filter(
+                company_id=stock_code,
+                report_code="11011"  # 사업보고서만
+            )
+            .order_by("-fiscal_year")
             .first()
         )
 
