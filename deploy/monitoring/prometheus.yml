@@ -30,7 +30,7 @@ scrape_configs:
 
   # App Layer
   - job_name: 'django-app'
-    metrics_path: /internal/metrics
+    metrics_path: /internal/metrics/
     static_configs:
       - targets: ['${APP_PRIVATE_IP}:8000']
         labels:
