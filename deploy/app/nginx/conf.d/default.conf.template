@@ -11,6 +11,28 @@ upstream flower_server {
     server flower:5555;
 }
 
+# Monitoring Layer (환경변수로 호스트 지정)
+upstream prometheus_server {
+    server ${MONITORING_HOST}:9090;
+}
+
+upstream grafana_server {
+    server ${MONITORING_HOST}:3000;
+}
+
+upstream alertmanager_server {
+    server ${MONITORING_HOST}:9093;
+}
+
+upstream portainer_server {
+    server ${MONITORING_HOST}:9000;
+}
+
+# Data Layer (환경변수로 호스트 지정)
+upstream rabbitmq_server {
+    server ${DATA_HOST}:15672;
+}
+
 # =============================================================================
 # Main Server Block
 # =============================================================================
@@ -68,10 +90,9 @@ server {
     # Monitoring Layer
     # =========================================================================
 
-    # 5. Grafana 대시보드
+    # 5. Grafana 대시보드 (GF_SERVER_SERVE_FROM_SUB_PATH=true 설정됨)
     location /grafana/ {
-        set $grafana_upstream "${MONITORING_HOST}:3000";
-        proxy_pass http://$grafana_upstream;
+        proxy_pass http://grafana_server;
         proxy_set_header Host $host;
 
         # WebSocket 지원 (Live 기능)
@@ -80,38 +101,26 @@ server {
         proxy_set_header Connection "upgrade";
     }
 
-    # 6. Prometheus
+    # 6. Prometheus (--web.external-url, --web.route-prefix 설정됨)
     location /prometheus/ {
-        set $prometheus_upstream "${MONITORING_HOST}:9090";
-        proxy_pass http://$prometheus_upstream/prometheus/;
+        proxy_pass http://prometheus_server/prometheus/;
         proxy_set_header Host $host;
     }
 
-    # 7. Alertmanager
+    # 7. Alertmanager (서브패스 미지원 - rewrite 필요)
     location /alertmanager/ {
-        set $alertmanager_upstream "${MONITORING_HOST}:9093";
-        proxy_pass http://$alertmanager_upstream;
+        rewrite ^/alertmanager/(.*)$ /$1 break;
+        proxy_pass http://alertmanager_server;
         proxy_set_header Host $host;
     }
 
-    # 8. Portainer
+    # 8. Portainer (서브패스 미지원 - rewrite 필요)
     location /portainer/ {
-        set $portainer_upstream "${MONITORING_HOST}:9000";
-        proxy_pass http://$portainer_upstream;
+        rewrite ^/portainer/(.*)$ /$1 break;
+        proxy_pass http://portainer_server;
         proxy_set_header Host $host;
-        proxy_set_header Connection "";
 
         # WebSocket 지원
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-
-    # Portainer API
-    location /portainer/api/ {
-        set $portainer_api_upstream "${MONITORING_HOST}:9000";
-        proxy_pass http://$portainer_api_upstream/portainer/api/;
-        proxy_set_header Host $host;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -121,14 +130,11 @@ server {
     # Data Layer
     # =========================================================================
 
-    # 9. RabbitMQ Management UI
+    # 9. RabbitMQ Management UI (서브패스 미지원 - rewrite 필요)
     location /rabbitmq/ {
-        set $rabbitmq_upstream "${DATA_HOST}:15672";
-        proxy_pass http://$rabbitmq_upstream;
-        proxy_set_header Host $host;
-
-        # RabbitMQ는 서브패스 지원을 위해 rewrite 필요
         rewrite ^/rabbitmq/(.*)$ /$1 break;
+        proxy_pass http://rabbitmq_server;
+        proxy_set_header Host $host;
     }
 
     # =========================================================================
