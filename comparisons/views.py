@@ -26,6 +26,7 @@ class ComparisonBaseView(APIView):
         summary="기업 비교 목록 조회",
         responses={200: ComparisonDetailResponseSerializer},
         tags=["Comparison"],
+        operation_id="comparisons_list",
     )
     def get(self, request):
         queryset = Comparison.objects.filter(user=request.user, is_deleted=False)
@@ -44,6 +45,7 @@ class ComparisonBaseView(APIView):
         summary="기업 비교 매치업 생성",
         request=ComparisonCreateSerializer,
         tags=["Comparison"],
+        operation_id="comparisons_create_matchup",
     )
     def post(self, request):
         serializer = ComparisonCreateSerializer(
@@ -62,6 +64,7 @@ class ComparisonDetailView(APIView):
         summary="기업 비교 상세 조회",
         responses={200: ComparisonDetailResponseSerializer},
         tags=["Comparison"],
+        operation_id="comparisons_detail",
     )
     def get(self, request, comparison_id):  # stock_code 인자 제거
         comparison = get_object_or_404(
@@ -84,6 +87,7 @@ class ComparisonDetailView(APIView):
         summary="비교할 기업 추가",
         request=ComparisonItemAddSerializer,
         tags=["Comparison"],
+        operation_id="comparisons_add_company",
     )
     def post(self, request, comparison_id):  # stock_code 인자 제거
         comparison = get_object_or_404(
@@ -99,6 +103,7 @@ class ComparisonDetailView(APIView):
     @extend_schema(
         summary="매치업 전체 삭제",
         tags=["Comparison"],
+        operation_id="comparisons_delete_matchup",
     )
     def delete(self, request, comparison_id):  # stock_code 인자 제거
         comparison = get_object_or_404(
@@ -150,6 +155,7 @@ class ComparisonCompanyDeleteView(APIView):
     @extend_schema(
         summary="특정 기업만 삭제",
         tags=["Comparison"],
+        operation_id="comparisons_delete_company",
     )
     def delete(self, request, comparison_id, stock_code):
         comparison = get_object_or_404(

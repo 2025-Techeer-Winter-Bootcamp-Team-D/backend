@@ -7,7 +7,7 @@ from .models import Favorite
 from .serializers import FavoriteSerializer
 
 # 프로젝트 내부 모듈
-from .serializers import RegisterSerializer, LoginSerializer
+from .serializers import RegisterSerializer, LoginSerializer, LogoutRequestSerializer
 
 # swagger 관련
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
@@ -63,17 +63,11 @@ class LoginView(generics.GenericAPIView):
 # --로그아웃--
 class LogoutView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated]
-    serializer_class = serializers.Serializer
+    serializer_class = LogoutRequestSerializer
 
     @extend_schema(
         summary="로그아웃 (Refresh 토큰 필요)",
-        request={
-            "application/json": {
-                "type": "object",
-                "properties": {"refresh": {"type": "string"}},
-                "required": ["refresh"],
-            }
-        },
+        request=LogoutRequestSerializer,
         tags=["User"],
     )
     def post(self, request, *args, **kwargs):

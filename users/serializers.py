@@ -65,6 +65,12 @@ class LoginSerializer(serializers.Serializer):
         data['user'] = user
         return data
 
+# --- 로그아웃 시리얼라이저 ---
+class LogoutRequestSerializer(serializers.Serializer):
+    """로그아웃 요청용 Serializer"""
+    refresh = serializers.CharField(help_text="Refresh 토큰")
+
+
 # --- 즐겨찾기 시리얼라이저 ---
 class FavoriteSerializer(serializers.ModelSerializer):
     # 프론트엔드와 소통할 이름은 'companyId', 실제 DB 필드는 'company.stock_code'

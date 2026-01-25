@@ -271,6 +271,7 @@ def get_company_financials(request, stock_code):
         404: OpenApiResponse(description="Not Found"),
     },
     tags=["Reports"],
+    operation_id="companies_reports_list",
 )
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -354,6 +355,7 @@ def get_company_reports(request, stock_code):
         404: OpenApiResponse(description="Company or Report not found"),
     },
     tags=["Reports"],
+    operation_id="companies_reports_detail",
 )
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -1634,6 +1636,7 @@ def get_company_prices(request, stock_code: str):
         404: OpenApiResponse(description="Company not found"),
     },
     tags=["News"],
+    operation_id="companies_news_list",
 )
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -1735,6 +1738,7 @@ def get_company_news_list(request, stock_code):
         404: OpenApiResponse(description="News not found"),
     },
     tags=["News"],
+    operation_id="companies_news_detail",
 )
 @api_view(["GET"])
 @permission_classes([AllowAny])
