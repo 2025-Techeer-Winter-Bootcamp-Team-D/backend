@@ -122,6 +122,19 @@ PostgreSQL의 시계열 데이터 확장 버전을 사용합니다. 시계열 �
 
 ## 개발 워크플로우
 
+### 린트 및 코드 품질
+
+```bash
+# Ruff 린트 실행 (CI에서도 동일하게 실행)
+ruff check .
+
+# 자동 수정
+ruff check --fix .
+
+# 포맷팅
+ruff format .
+```
+
 ### Django 명령어
 
 ```bash
@@ -298,6 +311,7 @@ indices/       # 시장 지수 (KOSPI, KOSDAQ)
 
 **주요 스케줄**:
 - 뉴스 크롤링: 3시간마다
+- 전체 기업 뉴스 동기화: 3시간마다 (뉴스 크롤링 30분 후, OpenSearch → CompanyNews 매핑)
 - DART 동기화: 새벽 3시 (일 1회)
 - 시가총액 갱신: 평일 16:10 (장 마감 후)
 - 주가 데이터 동기화: 장중 30초~1시간 간격
@@ -559,6 +573,9 @@ curl -X GET "http://localhost:9200/_cat/indices?v"
 
 1. 오류 해결 시에는 명확한 원인을 찾고, 원인이 불분명할 때는 사용자에게 필요한 정보를 요청하거나 인터넷 검색을 통해 레퍼런스를 찾습니다.
 2. 코드 변경 시 관련 테스트 파일도 함께 확인합니다.
-3. 새로운 Celery 태스크 추가 시 `config/celery.py`에 명시적으로 import하여 등록합니다.
+3. 새로운 Celery 태스크 추가 시:
+   - 앱의 `tasks/__init__.py`에 import 및 `__all__` 목록에 추가하여 autodiscover가 인식하도록 합니다.
+   - 필요시 `config/celery.py`에 명시적 import를 추가합니다 (core.tasks 등 특수한 경우).
 4. TimescaleDB 관련 변경은 일반 Django 마이그레이션이 아닌 `migrations.RunSQL()`을 사용합니다.
 5. 로컬 명령어 사용할 때는 반드시 가상환경을 활성화한 다음 실행.
+6. PR 생성 시에는 `.github/pull_request_template.md`를 참조.
