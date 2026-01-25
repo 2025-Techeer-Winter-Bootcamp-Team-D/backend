@@ -118,29 +118,3 @@ def sync_all_market_amount():
         "success": success_count,
         "fail": fail_count,
     }
-
-
-@shared_task
-def sync_all_market_amount_async():
-    """
-    전체 기업 시가총액 비동기 배치 갱신
-
-    각 기업별로 별도 Celery task를 생성하여 병렬 처리
-    KIS API rate limit (초당 2회) 준수를 위해 countdown으로 스케줄링
-    """
-    companies = Company.objects.filter(is_deleted=False)
-    total = companies.count()
-    logger.info(f"전체 기업 시가총액 갱신 작업 등록 시작: {total}개 기업")
-
-    for idx, company in enumerate(companies):
-        try:
-            # KIS API rate limit 준수: 초당 2회 제한 (0.6초 간격)
-            # countdown을 사용하여 순차적으로 스케줄링
-            countdown = idx * REQUEST_DELAY
-            sync_market_amount.apply_async(
-                args=(company.stock_code,), countdown=countdown
-            )
-        except Exception as e:
-            logger.error(f"시가총액 갱신 작업 등록 실패: {company.stock_code} - {e}")
-
-    logger.info(f"전체 기업 시가총액 갱신 작업 등록 완료: {total}개")

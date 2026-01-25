@@ -21,6 +21,8 @@ from .views import (
     MainRecentReportListView,
     sync_top_companies,
     run_e2e_tests,
+    cleanup_companies_preview,
+    cleanup_companies_execute,
 )
 
 urlpatterns = [
@@ -98,4 +100,15 @@ urlpatterns = [
     path("sync/top/", sync_top_companies, name="sync_top_companies"),
     # E2E 테스트 (관리자용)
     path("test/e2e/", run_e2e_tests, name="run_e2e_tests"),
+    # 재무지표 없는 기업 정리 (관리자용)
+    path(
+        "cleanup/preview/",
+        cleanup_companies_preview,
+        name="cleanup_companies_preview",
+    ),
+    path(
+        "cleanup/execute/",
+        cleanup_companies_execute,
+        name="cleanup_companies_execute",
+    ),
 ]

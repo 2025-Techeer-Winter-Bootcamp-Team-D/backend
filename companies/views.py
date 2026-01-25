@@ -2775,3 +2775,168 @@ def run_e2e_tests(request):
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+# ------------------------ 기업 정리 (관리자용) --------------------------
+@extend_schema(
+    summary="재무지표 없는 기업 삭제 (미리보기)",
+    description="""
+    PER, PBR, ROE, 부채비율, 배당수익률이 모두 0이거나 null인 기업을 조회합니다.
+    실제로 삭제하지 않고 삭제 대상만 확인합니다 (dry_run).
+    """,
+    responses={
+        200: OpenApiResponse(
+            description="삭제 대상 기업 목록",
+            response={
+                "type": "object",
+                "properties": {
+                    "status": {"type": "integer"},
+                    "message": {"type": "string"},
+                    "data": {
+                        "type": "object",
+                        "properties": {
+                            "dry_run": {"type": "boolean"},
+                            "total_checked": {"type": "integer"},
+                            "total_invalid": {"type": "integer"},
+                            "deleted_count": {"type": "integer"},
+                            "companies": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "stock_code": {"type": "string"},
+                                        "company_name": {"type": "string"},
+                                        "market": {"type": "string"},
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        ),
+        403: OpenApiResponse(description="Forbidden (관리자 전용)"),
+        500: OpenApiResponse(description="Internal Server Error"),
+    },
+    tags=["Admin"],
+)
+@api_view(["GET"])
+@permission_classes([IsAdminUser])
+def cleanup_companies_preview(request):
+    """
+    재무지표가 없는 기업 삭제 미리보기 (관리자용)
+
+    PER, PBR, ROE, 부채비율, 배당수익률이 모두 0이거나 null인 기업을 조회합니다.
+    """
+    from .services.company_cleanup import CompanyCleanupService
+
+    try:
+        result = CompanyCleanupService.get_cleanup_preview()
+
+        return Response(
+            {
+                "status": 200,
+                "message": f"삭제 대상 기업 {result['total_invalid']}개 조회 완료 (미리보기)",
+                "data": result,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    except Exception as e:
+        logger.error(f"기업 정리 미리보기 실패: {e}", exc_info=True)
+        return Response(
+            {
+                "status": 500,
+                "error": f"기업 정리 미리보기 중 오류가 발생했습니다: {str(e)}",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@extend_schema(
+    summary="재무지표 없는 기업 삭제 (실행)",
+    description="""
+    PER, PBR, ROE, 부채비율, 배당수익률이 모두 0이거나 null인 기업을 soft delete 합니다.
+    is_deleted 필드를 True로 설정합니다.
+    """,
+    request={
+        "application/json": {
+            "type": "object",
+            "properties": {
+                "confirm": {
+                    "type": "boolean",
+                    "description": "삭제 확인 (true여야 실행됨)",
+                },
+            },
+            "required": ["confirm"],
+        },
+    },
+    responses={
+        200: OpenApiResponse(
+            description="삭제 완료",
+            response={
+                "type": "object",
+                "properties": {
+                    "status": {"type": "integer"},
+                    "message": {"type": "string"},
+                    "data": {
+                        "type": "object",
+                        "properties": {
+                            "dry_run": {"type": "boolean"},
+                            "total_checked": {"type": "integer"},
+                            "total_invalid": {"type": "integer"},
+                            "deleted_count": {"type": "integer"},
+                            "companies": {"type": "array"},
+                        },
+                    },
+                },
+            },
+        ),
+        400: OpenApiResponse(description="Bad Request (confirm 필드 누락)"),
+        403: OpenApiResponse(description="Forbidden (관리자 전용)"),
+        500: OpenApiResponse(description="Internal Server Error"),
+    },
+    tags=["Admin"],
+)
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def cleanup_companies_execute(request):
+    """
+    재무지표가 없는 기업 삭제 실행 (관리자용)
+
+    PER, PBR, ROE, 부채비율, 배당수익률이 모두 0이거나 null인 기업을 soft delete 합니다.
+    """
+    from .services.company_cleanup import CompanyCleanupService
+
+    # confirm 파라미터 확인
+    confirm = request.data.get("confirm", False)
+    if not confirm:
+        return Response(
+            {
+                "status": 400,
+                "error": "삭제를 실행하려면 confirm: true를 전달해야 합니다.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        result = CompanyCleanupService.execute_cleanup()
+
+        return Response(
+            {
+                "status": 200,
+                "message": f"재무지표 없는 기업 {result['deleted_count']}개 삭제 완료",
+                "data": result,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    except Exception as e:
+        logger.error(f"기업 정리 실행 실패: {e}", exc_info=True)
+        return Response(
+            {
+                "status": 500,
+                "error": f"기업 정리 실행 중 오류가 발생했습니다: {str(e)}",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
