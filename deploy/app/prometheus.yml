@@ -7,7 +7,7 @@ scrape_configs:
       - targets: ['localhost:9090']
 
   - job_name: 'django-app'
-    metrics_path: /internal/metrics/
+    metrics_path: /internal/metrics
     static_configs:
       # nginx를 통해 접근 (같은 네트워크 내)
       - targets: ['nginx:80']

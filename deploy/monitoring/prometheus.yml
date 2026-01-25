@@ -30,7 +30,7 @@ scrape_configs:
 
   # App Layer
   - job_name: 'django-app'
-    metrics_path: /internal/metrics/
+    metrics_path: /internal/metrics
     static_configs:
       # nginx(80)를 통해 접근 (Django 앱은 포트 미노출)
       - targets: ['${APP_PRIVATE_IP}:80']

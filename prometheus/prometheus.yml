@@ -26,5 +26,5 @@ scrape_configs:
   - job_name: 'django-app'
     static_configs:
       - targets: ['app:8000']
-    metrics_path: '/internal/metrics/'
+    metrics_path: '/internal/metrics'
     scrape_interval: 15s
