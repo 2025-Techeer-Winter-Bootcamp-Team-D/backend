@@ -18,6 +18,7 @@ rule_files:
 scrape_configs:
   # Prometheus 자체 모니터링
   - job_name: 'prometheus'
+    metrics_path: /prometheus/metrics
     static_configs:
       - targets: ['localhost:9090']
 

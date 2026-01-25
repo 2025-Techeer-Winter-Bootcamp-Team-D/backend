@@ -152,6 +152,8 @@ server {
 
         set $target_internal "backend_server";
         proxy_pass http://$target_internal;
+        # Prometheus가 IP로 직접 접근할 때 Django ALLOWED_HOSTS 오류 방지
+        proxy_set_header Host localhost;
     }
 
     # =========================================================================
