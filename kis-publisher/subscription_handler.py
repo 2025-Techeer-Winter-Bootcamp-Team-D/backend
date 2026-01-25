@@ -231,3 +231,32 @@ class SubscriptionHandler:
     def clear_subscriptions(self):
         """구독 목록 초기화"""
         self._subscribed_codes.clear()
+
+    async def unsubscribe_all(self) -> dict:
+        """
+        모든 종목 구독 해제.
+
+        정상 종료 시 KIS 가이드라인에 따라 모든 구독을 해제합니다.
+
+        Returns:
+            {
+                "success": bool,
+                "unsubscribed": list[str],
+                "error": str
+            }
+        """
+        if not self._subscribed_codes:
+            print("[SubscriptionHandler] No active subscriptions to unsubscribe")
+            return {
+                "success": True,
+                "unsubscribed": [],
+                "error": None
+            }
+
+        codes_to_unsubscribe = list(self._subscribed_codes)
+        print(f"[SubscriptionHandler] Unsubscribing all {len(codes_to_unsubscribe)} codes...")
+
+        result = await self.unsubscribe(codes_to_unsubscribe)
+
+        print(f"[SubscriptionHandler] Unsubscribed: {len(result['unsubscribed'])} codes")
+        return result

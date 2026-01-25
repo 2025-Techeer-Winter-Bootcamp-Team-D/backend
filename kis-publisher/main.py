@@ -3,11 +3,16 @@ KIS WebSocket Publisher.
 
 KIS API에서 실시간 체결 데이터를 수신하여 RabbitMQ로 발행합니다.
 RPC 명령을 통해 동적 구독/해제를 지원합니다.
+
+KIS 가이드라인 준수:
+- 연결 시도 → 접속 확인 → 구독 정보 등록 → 정보 수신 → PINGPONG 응답 처리 → 구독 해제 → 접속 해제
+- 연결/종료 간격 최소 1초 이상
 """
 
 import asyncio
 import json
 import os
+import signal
 import websockets
 import aio_pika
 import aiohttp
@@ -27,6 +32,14 @@ MAX_SUBSCRIBE_SYMBOLS = int(
 SUBSCRIPTION_DELAY = float(os.getenv("KIS_SUBSCRIPTION_DELAY", "0.5"))
 BATCH_DELAY = float(os.getenv("KIS_BATCH_DELAY", "1.0"))
 BATCH_SIZE = int(os.getenv("KIS_BATCH_SIZE", "5"))
+
+# PINGPONG 설정
+PING_INTERVAL = int(os.getenv("KIS_PING_INTERVAL", "30"))  # 30초마다 PING
+PING_TIMEOUT = int(os.getenv("KIS_PING_TIMEOUT", "10"))  # PONG 응답 타임아웃
+CONNECTION_CONFIRM_TIMEOUT = int(os.getenv("KIS_CONNECTION_CONFIRM_TIMEOUT", "10"))  # 연결 확인 타임아웃
+
+# 종료 플래그
+shutdown_event = asyncio.Event()
 
 # RPC 설정
 RPC_QUEUE_NAME = "subscription.commands"
@@ -61,6 +74,133 @@ class KISParser:
         except (IndexError, ValueError) as e:
             print(f"Parsing error: {e}")
             return None
+
+    @staticmethod
+    def is_pingpong_message(message: str) -> bool:
+        """PINGPONG 메시지인지 확인"""
+        if not message:
+            return False
+        # KIS API PINGPONG 메시지 형식 확인
+        return "PINGPONG" in message.upper() or message.strip().upper() == "PING"
+
+    @staticmethod
+    def is_connection_confirm(message: str) -> bool:
+        """연결 확인 메시지인지 확인"""
+        if not message:
+            return False
+        try:
+            # JSON 형식 응답 확인
+            data = json.loads(message)
+            # 연결 성공 응답 확인 (tr_id가 있거나 성공 메시지)
+            if isinstance(data, dict):
+                header = data.get("header", {})
+                body = data.get("body", {})
+                # 연결 확인 또는 구독 성공 응답
+                if header.get("tr_id") or body.get("rt_cd") == "0":
+                    return True
+        except (json.JSONDecodeError, TypeError):
+            pass
+        # 문자열 형식 확인
+        msg_upper = message.upper()
+        return "CONNECTED" in msg_upper or "SUCCESS" in msg_upper
+
+
+class HeartbeatManager:
+    """
+    KIS WebSocket PINGPONG 관리.
+
+    KIS 가이드라인: 데이터가 없을 시 PINGPONG 응답 처리 필수
+    """
+
+    def __init__(self, websocket, ping_interval: int = 30, ping_timeout: int = 10):
+        self._websocket = websocket
+        self._ping_interval = ping_interval
+        self._ping_timeout = ping_timeout
+        self._last_pong_time = asyncio.get_event_loop().time()
+        self._heartbeat_task = None
+        self._is_running = False
+
+    async def start(self):
+        """하트비트 태스크 시작"""
+        if self._heartbeat_task and not self._heartbeat_task.done():
+            return
+
+        self._is_running = True
+        self._last_pong_time = asyncio.get_event_loop().time()
+        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+        print(f"[HEARTBEAT] Started (interval={self._ping_interval}s, timeout={self._ping_timeout}s)")
+
+    async def stop(self):
+        """하트비트 태스크 중지"""
+        self._is_running = False
+        if self._heartbeat_task:
+            self._heartbeat_task.cancel()
+            try:
+                await self._heartbeat_task
+            except asyncio.CancelledError:
+                pass
+        print("[HEARTBEAT] Stopped")
+
+    def record_activity(self):
+        """데이터 수신 시 호출 - 연결 활성 상태 기록"""
+        self._last_pong_time = asyncio.get_event_loop().time()
+
+    async def handle_pingpong(self, message: str) -> bool:
+        """
+        PINGPONG 메시지 처리.
+
+        Returns:
+            True: PINGPONG 메시지 처리됨
+            False: PINGPONG 메시지 아님
+        """
+        if not KISParser.is_pingpong_message(message):
+            return False
+
+        try:
+            # PONG 응답 전송
+            pong_response = json.dumps({"type": "PONG"})
+            await self._websocket.send(pong_response)
+            self.record_activity()
+            print("[HEARTBEAT] PINGPONG received, PONG sent")
+            return True
+        except Exception as e:
+            print(f"[HEARTBEAT] Error sending PONG: {e}")
+            return True
+
+    async def _heartbeat_loop(self):
+        """주기적 PING 전송 및 타임아웃 체크"""
+        while self._is_running:
+            try:
+                await asyncio.sleep(self._ping_interval)
+
+                if not self._is_running:
+                    break
+
+                # 마지막 활동 시간 체크
+                current_time = asyncio.get_event_loop().time()
+                elapsed = current_time - self._last_pong_time
+
+                if elapsed > self._ping_interval + self._ping_timeout:
+                    # 타임아웃 - 연결이 끊어진 것으로 간주
+                    print(f"[HEARTBEAT] Connection timeout ({elapsed:.1f}s since last activity)")
+                    raise websockets.ConnectionClosed(None, None)
+
+                # PING 메시지 전송
+                try:
+                    ping_message = json.dumps({"type": "PING"})
+                    await self._websocket.send(ping_message)
+                    print(f"[HEARTBEAT] PING sent (last activity: {elapsed:.1f}s ago)")
+                except websockets.ConnectionClosed:
+                    print("[HEARTBEAT] Connection closed during PING")
+                    break
+
+            except asyncio.CancelledError:
+                break
+            except websockets.ConnectionClosed:
+                break
+            except Exception as e:
+                print(f"[HEARTBEAT] Error in heartbeat loop: {e}")
+                await asyncio.sleep(1)
 
 
 async def get_approval_key():
@@ -265,7 +405,22 @@ async def run_publisher():
     # RPC 소비자 설정
     await setup_rpc_consumer(rabbitmq_channel, subscription_handler)
 
-    while reconnect_count < max_reconnect_attempts:
+    # 종료 시그널 핸들러 설정
+    def signal_handler():
+        print("[SHUTDOWN] Received shutdown signal")
+        shutdown_event.set()
+
+    loop = asyncio.get_event_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, signal_handler)
+        except NotImplementedError:
+            # Windows에서는 지원하지 않음
+            pass
+
+    heartbeat_manager = None
+
+    while reconnect_count < max_reconnect_attempts and not shutdown_event.is_set():
         try:
             print(f"Connecting to WebSocket: {uri} (attempt {reconnect_count + 1})")
             async with websockets.connect(uri) as ws:
@@ -283,7 +438,32 @@ async def run_publisher():
                 subscription_handler.set_websocket(ws, approval_key)
                 subscription_handler.set_test_mode(is_test_mode)
 
-                # 초기 구독 또는 재연결 시 복원
+                # HeartbeatManager 초기화
+                heartbeat_manager = HeartbeatManager(
+                    ws,
+                    ping_interval=PING_INTERVAL,
+                    ping_timeout=PING_TIMEOUT
+                )
+
+                # [KIS 가이드라인] 1단계: 접속 확인 대기
+                print("[WS] Waiting for connection confirmation...")
+                try:
+                    confirm_msg = await asyncio.wait_for(
+                        ws.recv(),
+                        timeout=CONNECTION_CONFIRM_TIMEOUT
+                    )
+                    if KISParser.is_connection_confirm(confirm_msg):
+                        print(f"[WS] Connection confirmed: {confirm_msg[:100]}...")
+                    else:
+                        print(f"[WS] First message received (treating as connected): {confirm_msg[:100]}...")
+                except asyncio.TimeoutError:
+                    # 테스트 모드에서는 확인 메시지 없이 진행
+                    if is_test_mode:
+                        print("[WS] No confirmation message (test mode), proceeding...")
+                    else:
+                        print("[WS] Connection confirmation timeout, proceeding anyway...")
+
+                # [KIS 가이드라인] 2단계: 구독 정보 등록
                 if subscription_handler.subscription_count > 0:
                     # 재연결: 기존 구독 복원
                     print("[WS] Restoring previous subscriptions...")
@@ -299,11 +479,27 @@ async def run_publisher():
                 reconnect_count = 0
                 reconnect_delay = 5
 
+                # [KIS 가이드라인] 3단계: PINGPONG 처리를 위한 하트비트 시작
+                await heartbeat_manager.start()
+
                 print(f"[WS] Listening for real-time data... "
                       f"(Active subscriptions: {subscription_handler.subscription_count})")
 
+                # [KIS 가이드라인] 4단계: 정보 수신
                 async for message in ws:
+                    # 종료 이벤트 체크
+                    if shutdown_event.is_set():
+                        print("[WS] Shutdown event detected")
+                        break
+
                     try:
+                        # 연결 활성 상태 기록
+                        heartbeat_manager.record_activity()
+
+                        # [KIS 가이드라인] PINGPONG 응답 처리
+                        if await heartbeat_manager.handle_pingpong(message):
+                            continue
+
                         # KIS API 형식 메시지 파싱 후 RabbitMQ에 발행
                         if message and len(message) > 0 and message[0] in ["0", "1"]:
                             parsed_data = KISParser.parse_trade_data(message)
@@ -327,13 +523,28 @@ async def run_publisher():
                         print(f"[ERROR] Error processing message: {e}")
                         continue
 
+                # [KIS 가이드라인] 5단계: 정상 종료 시 구독 해제
+                if shutdown_event.is_set():
+                    print("[WS] Graceful shutdown: unsubscribing all...")
+                    await heartbeat_manager.stop()
+                    await subscription_handler.unsubscribe_all()
+                    print("[WS] All subscriptions removed")
+                    break
+
         except websockets.ConnectionClosed as e:
+            if heartbeat_manager:
+                await heartbeat_manager.stop()
+
+            if shutdown_event.is_set():
+                break
+
             reconnect_count += 1
             print(
                 f"[RECONNECT] WebSocket connection closed: {e}. "
                 f"Attempt {reconnect_count}/{max_reconnect_attempts}. "
                 f"Reconnecting in {reconnect_delay}s..."
             )
+            # [KIS 가이드라인] 연결/종료 간격 최소 1초 이상 (현재 5초)
             await asyncio.sleep(reconnect_delay)
             reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
 
@@ -341,6 +552,9 @@ async def run_publisher():
             print(f"[ERROR] Invalid WebSocket URI: {e}")
             raise
         except Exception as e:
+            if heartbeat_manager:
+                await heartbeat_manager.stop()
+
             # APP_KEY 중복 사용 에러 시 즉시 종료
             if "APP_KEY_IN_USE" in str(e):
                 print(
@@ -349,6 +563,9 @@ async def run_publisher():
                 await asyncio.sleep(60)
                 print("[FATAL] Exiting container to restart...")
                 raise SystemExit(1)
+
+            if shutdown_event.is_set():
+                break
 
             reconnect_count += 1
             print(f"[ERROR] Error in WebSocket loop: {e}")
