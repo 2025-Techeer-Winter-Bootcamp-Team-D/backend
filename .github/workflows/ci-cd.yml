@@ -17,17 +17,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install ruff
-          
+
+      - name: Install Ruff
+        run: pip install ruff
+
       - name: Run Ruff
         run: ruff check .
 
@@ -48,7 +46,7 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-      
+
       redis:
         image: redis:7-alpine
         ports:
@@ -61,25 +59,23 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Set up Python
+
+      - name: Set up Python with cache
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          
+          cache: 'pip'
+
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          
+        run: pip install -r requirements.txt
+
       - name: Run Tests
         env:
           DATABASE_URL: postgresql://postgres:password@localhost:5432/test_db
           REDIS_URL: redis://localhost:6379/0
           DJANGO_SECRET_KEY: test_secret_key
           DEBUG: "True"
-        run: |
-          python manage.py test
+        run: python manage.py test
 
   build-and-push:
     name: Build & Push Docker Images
@@ -109,6 +105,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
@@ -133,6 +132,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy-data:
     name: Deploy Data Layer
@@ -237,25 +238,21 @@ jobs:
             echo "=== 컨테이너 상태 확인 ==="
             docker ps
 
-            echo "=== Nginx 로그 확인 ==="
-            docker logs nginx --tail 50 || true
-
-            echo "=== Django 로그 확인 ==="
-            docker logs django --tail 30 || true
-
-            echo "=== 서비스 안정화 대기 (30초) ==="
-            sleep 30
-
-            echo "=== 최종 컨테이너 상태 확인 ==="
-            docker ps
-
-            echo "=== Nginx Health Check ==="
-            if ! curl -f http://localhost/health; then
-              echo "ERROR: Nginx health check failed"
-              echo "=== Nginx 에러 로그 ==="
-              docker logs nginx --tail 100
-              exit 1
-            fi
+            echo "=== Nginx Health Check (재시도 포함) ==="
+            for i in {1..12}; do
+              if curl -sf http://localhost/health; then
+                echo "Nginx is ready"
+                break
+              fi
+              if [ $i -eq 12 ]; then
+                echo "ERROR: Nginx health check failed after 12 attempts"
+                docker logs nginx --tail 100
+                docker logs django --tail 50
+                exit 1
+              fi
+              echo "Waiting for Nginx... (attempt $i/12)"
+              sleep 5
+            done
 
             echo "=== Node Exporter Health Check ==="
             if ! curl -f http://localhost:9100/metrics; then
@@ -345,14 +342,19 @@ jobs:
             echo "=== 컨테이너 상태 확인 ==="
             docker ps
 
-            echo "=== 서비스 초기화 대기 (30초) ==="
-            sleep 30
-
-            echo "=== Prometheus Health Check ==="
-            if ! curl -f http://localhost:9090/prometheus/-/healthy; then
-              echo "ERROR: Prometheus health check failed"
-              exit 1
-            fi
+            echo "=== Prometheus Health Check (재시도 포함) ==="
+            for i in {1..12}; do
+              if curl -sf http://localhost:9090/prometheus/-/healthy; then
+                echo "Prometheus is ready"
+                break
+              fi
+              if [ $i -eq 12 ]; then
+                echo "ERROR: Prometheus health check failed"
+                exit 1
+              fi
+              echo "Waiting for Prometheus... (attempt $i/12)"
+              sleep 5
+            done
 
             echo "=== Grafana Health Check ==="
             if ! curl -f http://localhost:3000/grafana/api/health; then
