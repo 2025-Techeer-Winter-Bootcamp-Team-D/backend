@@ -33,7 +33,8 @@ class CompanyCleanupService:
 
         Returns:
             True: 유효한 지표가 하나라도 있음
-            False: per, pbr, roe, debt_ratio, dividend_yield 모두 0이거나 null
+            False: per, pbr, roe, debt_ratio, dividend_yield 모두 0이거나 null이고,
+                   기본 재무 데이터(매출액, 자산 등)도 없음
         """
         # 가장 최근 재무제표 조회
         latest_statement = (
@@ -46,7 +47,18 @@ class CompanyCleanupService:
             # 재무제표가 없으면 유효하지 않음
             return False
 
-        # 5가지 지표 중 하나라도 유효한 값이 있으면 True
+        # 1. 기본 재무 데이터가 있으면 유효한 기업 (안전장치)
+        primary_data = [
+            latest_statement.revenue,
+            latest_statement.total_assets,
+            latest_statement.net_income,
+            latest_statement.total_equity,
+        ]
+        for data in primary_data:
+            if not CompanyCleanupService.is_metric_empty(data):
+                return True
+
+        # 2. 5가지 지표 중 하나라도 유효한 값이 있으면 True
         metrics = [
             latest_statement.per,
             latest_statement.pbr,
