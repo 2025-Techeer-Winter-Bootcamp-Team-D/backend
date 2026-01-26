@@ -38,7 +38,7 @@ class FinancialMetricsService:
 
     @staticmethod
     def calculate_debt_ratio(
-        total_liabilities: int, total_equity: int
+        total_liabilities: Optional[int], total_equity: Optional[int]
     ) -> Optional[Decimal]:
         """
         부채비율 계산
@@ -50,7 +50,9 @@ class FinancialMetricsService:
         Returns:
             부채비율 (%), None if 계산 불가
         """
-        if not total_equity or total_equity <= 0:
+        if total_liabilities is None or total_equity is None:
+            return None
+        if total_equity <= 0:
             return None
 
         try:
@@ -82,7 +84,7 @@ class FinancialMetricsService:
 
     @staticmethod
     def calculate_pbr(
-        market_cap: int, total_assets: int, total_liabilities: int
+        market_cap: int, total_assets: Optional[int], total_liabilities: Optional[int]
     ) -> Optional[Decimal]:
         """
         PBR (주가순자산비율) 계산
@@ -95,7 +97,7 @@ class FinancialMetricsService:
         Returns:
             PBR (배), None if 계산 불가
         """
-        if not total_assets or not total_liabilities:
+        if total_assets is None or total_liabilities is None:
             return None
 
         try:
@@ -234,8 +236,8 @@ class FinancialMetricsService:
 
         # 2. 부채비율 계산 (재무제표 데이터만 사용)
         debt_ratio = self.calculate_debt_ratio(
-            financial_statement.total_liabilities or 0,
-            financial_statement.total_equity or 0,
+            financial_statement.total_liabilities,
+            financial_statement.total_equity,
         )
 
         # 3. PER 계산 (시가총액 + 재무제표)
@@ -246,8 +248,8 @@ class FinancialMetricsService:
         # 4. PBR 계산 (시가총액 + 순자산)
         pbr = self.calculate_pbr(
             company.market_amount,
-            financial_statement.total_assets or 0,
-            financial_statement.total_liabilities or 0,
+            financial_statement.total_assets,
+            financial_statement.total_liabilities,
         )
 
         # 5. 배당수익률 계산 (배당금 + 현재가)
