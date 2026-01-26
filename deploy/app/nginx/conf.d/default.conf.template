@@ -55,6 +55,20 @@ server {
         add_header Content-Type text/plain;
     }
 
+    # Prometheus 메트릭 수집 (HTTP 허용 - 내부 네트워크)
+    location /internal/ {
+        # 내부 네트워크만 허용
+        allow 10.0.0.0/8;
+        allow 172.16.0.0/12;
+        allow 192.168.0.0/16;
+        allow 127.0.0.1;
+        deny all;
+
+        set $target_internal "backend_server";
+        proxy_pass http://$target_internal;
+        proxy_set_header Host localhost;
+    }
+
     # 나머지는 HTTPS로 리다이렉트
     location / {
         return 301 https://$host$request_uri;
