@@ -42,7 +42,7 @@ services:
     restart: always
 
   loki:
-    image: grafana/loki:2.9.0
+    image: grafana/loki:3.3.2
     container_name: loki
     volumes:
       - ./loki-config.yml:/etc/loki/loki-config.yml
@@ -55,7 +55,7 @@ services:
     restart: always
 
   promtail-app:
-    image: grafana/promtail:2.9.0
+    image: grafana/promtail:3.3.2
     container_name: promtail-app
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -66,7 +66,7 @@ services:
     restart: always
 
   promtail-data:
-    image: grafana/promtail:2.9.0
+    image: grafana/promtail:3.3.2
     container_name: promtail-data
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro

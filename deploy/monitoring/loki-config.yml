@@ -19,9 +19,9 @@ common:
 schema_config:
   configs:
     - from: 2024-01-01
-      store: boltdb-shipper
+      store: tsdb
       object_store: filesystem
-      schema: v11
+      schema: v13
       index:
         prefix: index_
         period: 24h
@@ -37,27 +37,21 @@ limits_config:
 # 로그 압축 및 삭제
 compactor:
   working_directory: /loki/compactor
-  shared_store: filesystem
   retention_enabled: true
+  delete_request_store: filesystem
   retention_delete_delay: 2h
   retention_delete_worker_count: 150
 
 # Query 성능 최적화
 query_range:
   parallelise_shardable_queries: true
-  cache_results: true
   results_cache:
     cache:
-      enable_fifocache: true
-      fifocache:
-        max_size_bytes: 500MB
-        validity: 24h
+      embedded_cache:
+        enabled: true
+        max_size_mb: 500
+        ttl: 24h
 
 # Chunk 캐시 설정
 chunk_store_config:
   max_look_back_period: 168h  # 7일
-
-# 테이블 관리
-table_manager:
-  retention_deletes_enabled: true
-  retention_period: 168h
