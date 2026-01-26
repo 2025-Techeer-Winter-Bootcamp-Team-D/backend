@@ -23,6 +23,7 @@ from .views import (
     run_e2e_tests,
     cleanup_companies_preview,
     cleanup_companies_execute,
+    recalculate_financial_metrics,
 )
 
 urlpatterns = [
@@ -110,5 +111,11 @@ urlpatterns = [
         "cleanup/execute/",
         cleanup_companies_execute,
         name="cleanup_companies_execute",
+    ),
+    # 재무 지표 재계산 (관리자용)
+    path(
+        "metrics/recalculate/",
+        recalculate_financial_metrics,
+        name="recalculate_financial_metrics",
     ),
 ]

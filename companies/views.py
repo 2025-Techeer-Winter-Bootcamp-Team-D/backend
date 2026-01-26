@@ -5,7 +5,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.generics import ListAPIView
-from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
 from celery import group
 
@@ -2941,6 +2941,127 @@ def cleanup_companies_execute(request):
             {
                 "status": 500,
                 "error": f"기업 정리 실행 중 오류가 발생했습니다: {str(e)}",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+# ------------------------ 관리자 전용: 재무 지표 재계산 --------------------------
+@extend_schema(
+    summary="전체 재무 지표 재계산",
+    description="""
+모든 재무제표의 재무 지표(PER, PBR, ROE, 부채비율, 배당수익률 등)를 재계산합니다.
+
+**사용 시나리오**:
+- 지표 계산 공식 변경 후 기존 데이터 일괄 업데이트
+- 시가총액 등 기준 데이터 갱신 후 지표 재계산
+
+**옵션**:
+- `report_code`: 재계산할 보고서 종류 (기본: 사업보고서)
+- `async`: true면 백그라운드 실행, false면 즉시 실행 (기본: true)
+
+**주의사항**:
+- 데이터가 많으면 시간이 오래 걸릴 수 있습니다
+- 동기 실행 시 타임아웃 주의 (async=true 권장)
+    """,
+    request={
+        "application/json": {
+            "type": "object",
+            "properties": {
+                "report_code": {
+                    "type": "string",
+                    "description": "보고서 코드 (11011: 사업보고서, 11012: 반기보고서, 11013: 1분기, 11014: 3분기)",
+                    "default": "11011",
+                    "example": "11011",
+                },
+                "async": {
+                    "type": "boolean",
+                    "description": "비동기 실행 여부 (기본: true)",
+                    "default": True,
+                },
+            },
+        }
+    },
+    responses={
+        200: OpenApiResponse(
+            description="재계산 완료 (동기 실행 시)",
+            examples=[
+                OpenApiExample(
+                    "성공",
+                    value={
+                        "status": 200,
+                        "message": "재무 지표 재계산 완료",
+                        "data": {
+                            "total": 500,
+                            "success": 498,
+                            "failed": 2,
+                            "errors": ["005930 (2023): 계산 오류"],
+                        },
+                    },
+                )
+            ],
+        ),
+        202: OpenApiResponse(
+            description="재계산 태스크 시작됨 (비동기 실행 시)",
+            examples=[
+                OpenApiExample(
+                    "태스크 시작",
+                    value={
+                        "status": 202,
+                        "message": "재무 지표 재계산 태스크가 시작되었습니다",
+                        "data": {"task_id": "abc123-def456"},
+                    },
+                )
+            ],
+        ),
+        403: OpenApiResponse(description="Forbidden (관리자 전용)"),
+        500: OpenApiResponse(description="Internal Server Error"),
+    },
+    tags=["Admin"],
+)
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def recalculate_financial_metrics(request):
+    """
+    전체 재무 지표 재계산 API (관리자용)
+
+    공식 변경 등으로 기존 데이터의 재무 지표를 일괄 재계산합니다.
+    """
+    from .tasks.financial_metrics import recalculate_all_financial_metrics_task
+
+    report_code = request.data.get("report_code", "11011")
+    is_async = request.data.get("async", True)
+
+    try:
+        if is_async:
+            # 비동기 실행
+            task = recalculate_all_financial_metrics_task.delay(report_code=report_code)
+            return Response(
+                {
+                    "status": 202,
+                    "message": "재무 지표 재계산 태스크가 시작되었습니다",
+                    "data": {"task_id": str(task.id)},
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+        else:
+            # 동기 실행
+            result = recalculate_all_financial_metrics_task(report_code=report_code)
+            return Response(
+                {
+                    "status": 200,
+                    "message": "재무 지표 재계산 완료",
+                    "data": result,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+    except Exception as e:
+        logger.error(f"재무 지표 재계산 실패: {e}", exc_info=True)
+        return Response(
+            {
+                "status": 500,
+                "error": f"재무 지표 재계산 중 오류가 발생했습니다: {str(e)}",
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
