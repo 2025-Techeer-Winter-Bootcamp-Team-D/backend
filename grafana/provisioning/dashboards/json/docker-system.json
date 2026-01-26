@@ -206,7 +206,7 @@
         "multi": false,
         "name": "server",
         "options": [],
-        "query": "label_values(up{job=\"node-exporter\"}, instance)",
+        "query": "label_values(up{job=~\"node-exporter.*\"}, instance)",
         "refresh": 1,
         "regex": "/([^:]+):.*/",
         "sort": 0,
@@ -370,7 +370,7 @@
           },
           "targets": [
             {
-              "expr": "((node_memory_MemTotal{instance=~\"$server.*\"} - node_memory_MemAvailable{instance=~\"$server.*\"}) / node_memory_MemTotal{instance=~\"$server.*\"}) * 100",
+              "expr": "((node_memory_MemTotal_bytes{instance=~\"$server.*\"} - node_memory_MemAvailable_bytes{instance=~\"$server.*\"}) / node_memory_MemTotal_bytes{instance=~\"$server.*\"}) * 100",
               "intervalFactor": 2,
               "refId": "A",
               "step": 1800
@@ -1114,7 +1114,7 @@
               "step": 30
             },
             {
-              "expr": "node_memory_Buffers{instance=~\"$server.*\"}",
+              "expr": "node_memory_Buffers_bytes{instance=~\"$server.*\"}",
               "hide": true,
               "intervalFactor": 2,
               "legendFormat": "node_memory_Dirty",
@@ -1122,7 +1122,7 @@
               "step": 30
             },
             {
-              "expr": "node_memory_MemFree{instance=~\"$server.*\"}",
+              "expr": "node_memory_MemFree_bytes{instance=~\"$server.*\"}",
               "hide": true,
               "intervalFactor": 2,
               "legendFormat": "{{__name__}}",
@@ -1130,7 +1130,7 @@
               "step": 30
             },
             {
-              "expr": "node_memory_MemAvailable{instance=~\"$server.*\"}",
+              "expr": "node_memory_MemAvailable_bytes{instance=~\"$server.*\"}",
               "hide": true,
               "intervalFactor": 2,
               "legendFormat": "Available Memory",
@@ -1138,7 +1138,7 @@
               "step": 600
             },
             {
-              "expr": "node_memory_MemTotal{instance=~\"$server.*\"} - node_memory_MemAvailable{instance=~\"$server.*\"}",
+              "expr": "node_memory_MemTotal_bytes{instance=~\"$server.*\"} - node_memory_MemAvailable_bytes{instance=~\"$server.*\"}",
               "hide": false,
               "intervalFactor": 2,
               "legendFormat": "Unavailable Memory",
@@ -1146,7 +1146,7 @@
               "step": 600
             },
             {
-              "expr": "node_memory_Inactive{instance=~\"$server.*\"}",
+              "expr": "node_memory_Inactive_bytes{instance=~\"$server.*\"}",
               "hide": true,
               "intervalFactor": 2,
               "legendFormat": "{{__name__}}",
@@ -1154,7 +1154,7 @@
               "step": 30
             },
             {
-              "expr": "node_memory_KernelStack{instance=~\"$server.*\"}",
+              "expr": "node_memory_KernelStack_bytes{instance=~\"$server.*\"}",
               "hide": true,
               "intervalFactor": 2,
               "legendFormat": "{{__name__}}",
@@ -1162,7 +1162,7 @@
               "step": 30
             },
             {
-              "expr": "node_memory_Active{instance=~\"$server.*\"}",
+              "expr": "node_memory_Active_bytes{instance=~\"$server.*\"}",
               "hide": true,
               "intervalFactor": 2,
               "legendFormat": "{{__name__}}",
@@ -1170,7 +1170,7 @@
               "step": 30
             },
             {
-              "expr": "node_memory_MemTotal{instance=~\"$server.*\"} - (node_memory_Active{instance=~\"$server.*\"} + node_memory_MemFree{instance=~\"$server.*\"} + node_memory_Inactive{instance=~\"$server.*\"})",
+              "expr": "node_memory_MemTotal_bytes{instance=~\"$server.*\"} - (node_memory_Active_bytes{instance=~\"$server.*\"} + node_memory_MemFree_bytes{instance=~\"$server.*\"} + node_memory_Inactive_bytes{instance=~\"$server.*\"})",
               "hide": true,
               "intervalFactor": 2,
               "legendFormat": "Unknown",
@@ -1178,7 +1178,7 @@
               "step": 40
             },
             {
-              "expr": "node_memory_MemFree{instance=~\"$server.*\"} + node_memory_Inactive{instance=~\"$server.*\"}",
+              "expr": "node_memory_MemFree_bytes{instance=~\"$server.*\"} + node_memory_Inactive_bytes{instance=~\"$server.*\"}",
               "hide": true,
               "intervalFactor": 2,
               "legendFormat": "{{__name__}}",
@@ -1194,7 +1194,7 @@
               "step": 30
             },
             {
-              "expr": "node_memory_Inactive{instance=~\"$server.*\"} + node_memory_MemFree{instance=~\"$server.*\"} + node_memory_MemAvailable{instance=~\"$server.*\"}",
+              "expr": "node_memory_Inactive_bytes{instance=~\"$server.*\"} + node_memory_MemFree_bytes{instance=~\"$server.*\"} + node_memory_MemAvailable_bytes{instance=~\"$server.*\"}",
               "hide": true,
               "intervalFactor": 2,
               "legendFormat": "",
