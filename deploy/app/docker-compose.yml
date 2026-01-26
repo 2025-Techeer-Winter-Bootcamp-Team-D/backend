@@ -22,8 +22,8 @@ services:
     volumes:
       - ../../static:/app/static
       - ../../media:/app/media
-      # SSL 인증서 및 Certbot 볼륨
-      - ./certbot/conf:/etc/letsencrypt:ro
+      # SSL 인증서 및 Certbot 볼륨 (rw: 더미 인증서 생성 허용)
+      - ./certbot/conf:/etc/letsencrypt
       - ./certbot/www:/var/www/certbot:ro
     depends_on:
       - app
