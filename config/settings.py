@@ -446,4 +446,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",  # 프런트엔드 개발 서버
     "http://127.0.0.1:5173",
+    "https://quasa.info",
+    "https://www.quasa.info",
+    "https://api.quasa.info",
 ]
