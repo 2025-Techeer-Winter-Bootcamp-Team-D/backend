@@ -84,3 +84,59 @@ def sync_dividend_and_calculate_task(self, stock_code: str, fiscal_year: int):
     except Exception as e:
         logger.error(f"배당 동기화 및 지표 계산 오류: {stock_code} - {e}")
         raise self.retry(countdown=60, exc=e)
+
+
+@shared_task(bind=True)
+def recalculate_all_financial_metrics_task(self, report_code: str = "11011"):
+    """
+    모든 재무제표의 재무 지표를 재계산
+
+    공식 변경 등으로 기존 데이터를 일괄 재계산할 때 사용합니다.
+
+    Args:
+        report_code: 보고서 코드 (기본: 11011 사업보고서)
+
+    Returns:
+        dict: 처리 결과 통계
+    """
+    service = FinancialMetricsService()
+
+    # 해당 보고서 코드의 모든 재무제표 조회
+    statements = FinancialStatement.objects.filter(
+        report_code=report_code,
+        company__is_deleted=False,
+    ).select_related("company")
+
+    total = statements.count()
+    success = 0
+    failed = 0
+    errors = []
+
+    logger.info(f"전체 재무 지표 재계산 시작: {total}건 (report_code={report_code})")
+
+    for fs in statements:
+        try:
+            service.update_financial_metrics(fs)
+            success += 1
+
+            if success % 100 == 0:
+                logger.info(f"재계산 진행 중: {success}/{total}")
+
+        except Exception as e:
+            failed += 1
+            error_msg = f"{fs.company.stock_code} ({fs.fiscal_year}): {e}"
+            errors.append(error_msg)
+            logger.error(f"재계산 실패: {error_msg}")
+
+    result = {
+        "total": total,
+        "success": success,
+        "failed": failed,
+        "errors": errors[:10],  # 처음 10개 오류만 반환
+    }
+
+    logger.info(
+        f"전체 재무 지표 재계산 완료: 성공 {success}건, 실패 {failed}건 / 총 {total}건"
+    )
+
+    return result
