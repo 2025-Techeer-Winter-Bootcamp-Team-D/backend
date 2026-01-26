@@ -118,8 +118,8 @@ else
     STAGING_ARG=""
 fi
 
-# Certbot 실행
-docker compose run --rm certbot certonly \
+# Certbot 실행 (entrypoint 재정의 필수 - docker-compose.yml의 renew 루프 우회)
+docker compose run --rm --entrypoint "certbot" certbot certonly \
     --webroot \
     --webroot-path=/var/www/certbot \
     $EMAIL_ARG \
