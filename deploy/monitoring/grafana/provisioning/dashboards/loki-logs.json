@@ -196,7 +196,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum by (container_name) (count_over_time({container_name=~\".+\"} |~ \"(?i)(error|exception|fail|critical)\" [$__interval]))",
+          "expr": "sum by (container_name) (count_over_time({container_name=~\".+\", container_name!~\"loki|promtail.*\"} |~ \"(?i)(error|exception|fail|critical)\" [$__interval]))",
           "legendFormat": "{{container_name}}",
           "queryType": "range",
           "refId": "A"
@@ -273,7 +273,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{container_name=~\"$container\"} |~ \"(?i)(error|exception|traceback|fail|critical)\"",
+          "expr": "{container_name=~\"$container\", container_name!~\"loki|promtail.*\"} |~ \"(?i)(error|exception|traceback|fail|critical)\"",
           "queryType": "range",
           "refId": "A"
         }
