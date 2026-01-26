@@ -105,7 +105,7 @@ class FinancialStatement(models.Model):
         null=True,
         blank=True,
         verbose_name="PBR (주가순자산비율)",
-        help_text="시가총액 ÷ 총자본",
+        help_text="시가총액 ÷ 순자산 (순자산 = 총자산 - 총부채)",
     )
     roe = models.DecimalField(
         max_digits=10,
