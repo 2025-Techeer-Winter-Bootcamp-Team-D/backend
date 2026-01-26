@@ -81,22 +81,30 @@ class FinancialMetricsService:
             return None
 
     @staticmethod
-    def calculate_pbr(market_cap: int, total_equity: int) -> Optional[Decimal]:
+    def calculate_pbr(
+        market_cap: int, total_assets: int, total_liabilities: int
+    ) -> Optional[Decimal]:
         """
         PBR (주가순자산비율) 계산
 
         Args:
             market_cap: 시가총액
-            total_equity: 총자본
+            total_assets: 총자산
+            total_liabilities: 총부채
 
         Returns:
             PBR (배), None if 계산 불가
         """
-        if not total_equity or total_equity <= 0:
+        if not total_assets or not total_liabilities:
             return None
 
         try:
-            pbr = Decimal(market_cap) / Decimal(total_equity)
+            # 순자산 = 총자산 - 총부채
+            net_assets = Decimal(total_assets) - Decimal(total_liabilities)
+            if net_assets <= 0:
+                return None
+
+            pbr = Decimal(market_cap) / net_assets
             return round(pbr, 2)
         except (InvalidOperation, ZeroDivisionError):
             return None
@@ -235,9 +243,11 @@ class FinancialMetricsService:
             company.market_amount, financial_statement.net_income or 0
         )
 
-        # 4. PBR 계산 (시가총액 + 재무제표)
+        # 4. PBR 계산 (시가총액 + 순자산)
         pbr = self.calculate_pbr(
-            company.market_amount, financial_statement.total_equity or 0
+            company.market_amount,
+            financial_statement.total_assets or 0,
+            financial_statement.total_liabilities or 0,
         )
 
         # 5. 배당수익률 계산 (배당금 + 현재가)
