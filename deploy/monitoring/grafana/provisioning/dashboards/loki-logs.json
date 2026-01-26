@@ -235,7 +235,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{container_name=~\"$container\"} |~ \"$search\"",
+          "expr": "{container_name=~\"$container\"}",
           "queryType": "range",
           "refId": "A"
         }
@@ -288,6 +288,7 @@
   "templating": {
     "list": [
       {
+        "allValue": ".+",
         "current": {
           "selected": true,
           "text": ["All"],
