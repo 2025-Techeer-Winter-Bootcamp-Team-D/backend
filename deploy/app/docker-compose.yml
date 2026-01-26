@@ -30,15 +30,8 @@ services:
     networks:
       - app-network
     restart: always
-    # SSL 인증서 갱신 시 자동 reload (12시간마다)
-    command: >
-      /bin/sh -c "
-        while :; do
-          sleep 12h & wait $${!};
-          nginx -s reload;
-        done &
-        nginx -g 'daemon off;'
-      "
+    # Dockerfile의 ENTRYPOINT/CMD 사용 (템플릿 처리 + nginx 시작)
+    # SSL 인증서 갱신은 certbot 컨테이너가 담당
 
   # Let's Encrypt Certbot (인증서 자동 갱신)
   certbot:
