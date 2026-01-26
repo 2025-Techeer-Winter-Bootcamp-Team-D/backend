@@ -10,6 +10,8 @@ services:
       - "80:80"
       - "443:443"
     environment:
+      # 도메인 설정 (SSL 인증서 경로에 사용)
+      - DOMAIN=${DOMAIN}
       # 모니터링 서버 호스트 (같은 서버면 host.docker.internal, 다른 서버면 IP 지정)
       - MONITORING_HOST=${MONITORING_HOST:-host.docker.internal}
       # 데이터 서버 호스트 (같은 서버면 host.docker.internal, 다른 서버면 IP 지정)
@@ -20,11 +22,35 @@ services:
     volumes:
       - ../../static:/app/static
       - ../../media:/app/media
+      # SSL 인증서 및 Certbot 볼륨
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
     depends_on:
       - app
     networks:
       - app-network
     restart: always
+    # SSL 인증서 갱신 시 자동 reload (12시간마다)
+    command: >
+      /bin/sh -c "
+        while :; do
+          sleep 12h & wait $${!};
+          nginx -s reload;
+        done &
+        nginx -g 'daemon off;'
+      "
+
+  # Let's Encrypt Certbot (인증서 자동 갱신)
+  certbot:
+    image: certbot/certbot
+    container_name: certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    # 12시간마다 갱신 확인 (만료 30일 전부터 갱신 시도)
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    networks:
+      - app-network
 
   app:
     image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/backend-core:latest
