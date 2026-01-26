@@ -98,10 +98,10 @@ fi
 # -----------------------------------------------------------------------------
 echo -e "${YELLOW}[5/6] Let's Encrypt 인증서 발급...${NC}"
 
-# 임시 인증서 삭제
-rm -rf "./certbot/conf/live/$DOMAIN"
-rm -rf "./certbot/conf/archive/$DOMAIN"
-rm -rf "./certbot/conf/renewal/$DOMAIN.conf"
+# 임시 인증서 삭제 (root 소유 파일일 수 있으므로 sudo 사용)
+sudo rm -rf "./certbot/conf/live/$DOMAIN"
+sudo rm -rf "./certbot/conf/archive/$DOMAIN"
+sudo rm -rf "./certbot/conf/renewal/$DOMAIN.conf"
 
 # 이메일 옵션
 if [ -n "$CERTBOT_EMAIL" ]; then
