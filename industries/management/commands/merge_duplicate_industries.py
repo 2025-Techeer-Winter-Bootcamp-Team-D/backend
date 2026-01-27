@@ -65,10 +65,10 @@ class Command(BaseCommand):
             primary = industries_list[0]
             to_merge = industries_list[1:]
 
-            self.stdout.write(f"  기준: {primary.induty_code} (id={primary.id})")
+            self.stdout.write(f"  기준: {primary.induty_code} (id={primary.industry_id})")
 
             for secondary in to_merge:
-                self.stdout.write(f"  병합 대상: {secondary.induty_code} (id={secondary.id})")
+                self.stdout.write(f"  병합 대상: {secondary.induty_code} (id={secondary.industry_id})")
 
                 # 해당 Industry를 참조하는 Company 수 확인
                 company_count = Company.objects.filter(industry=secondary).count()
