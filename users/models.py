@@ -32,3 +32,31 @@ class Favorite(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.company.company_name}"
+
+
+class CompanyVisit(models.Model):
+    """사용자의 기업 방문 기록"""
+
+    visit_id = models.AutoField(primary_key=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='company_visits'
+    )
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name='visited_by'
+    )
+    visited_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'company_visit'
+        ordering = ['-visited_at']
+        indexes = [
+            models.Index(fields=['user', '-visited_at']),
+            models.Index(fields=['company', '-visited_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.email} -> {self.company.company_name}"
