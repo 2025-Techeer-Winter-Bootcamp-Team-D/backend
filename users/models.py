@@ -48,7 +48,7 @@ class CompanyVisit(models.Model):
         on_delete=models.CASCADE,
         related_name='visited_by'
     )
-    visited_at = models.DateTimeField(auto_now_add=True)
+    visited_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'company_visit'

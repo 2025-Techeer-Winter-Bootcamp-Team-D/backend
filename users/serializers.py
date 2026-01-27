@@ -131,7 +131,11 @@ class CompanyVisitSerializer(serializers.ModelSerializer):
         stock_code = validated_data.pop('company')['stock_code']
         company = Company.objects.get(stock_code=stock_code, is_deleted=False)
 
-        return CompanyVisit.objects.create(
+        # 같은 유저+기업 조합이면 visited_at만 업데이트 (auto_now=True로 자동 갱신)
+        visit, created = CompanyVisit.objects.get_or_create(
             user=user,
-            company=company
+            company=company,
         )
+        if not created:
+            visit.save()  # visited_at 자동 갱신
+        return visit
