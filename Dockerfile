@@ -15,7 +15,8 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 COPY requirements.txt /app/
 
 # Install Python dependencies using uv (much faster than pip)
-RUN uv pip install --system --no-cache -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system -r requirements.txt
 
 # Copy application code (자주 변경되는 파일은 마지막에 복사하여 레이어 캐싱 최적화)
 # 자주 변경되지 않는 파일들을 먼저 복사

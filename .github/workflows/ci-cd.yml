@@ -75,7 +75,7 @@ jobs:
           REDIS_URL: redis://localhost:6379/0
           DJANGO_SECRET_KEY: test_secret_key
           DEBUG: "True"
-        run: python manage.py test
+        run: python manage.py test --parallel auto
 
   build-and-push:
     name: Build & Push Docker Images
@@ -132,8 +132,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
   deploy-data:
     name: Deploy Data Layer
@@ -327,10 +327,6 @@ jobs:
             docker compose pull
             docker compose up -d --build --remove-orphans --force-recreate
             docker image prune -af
-
-            # Loki가 안정적으로 시작될 때까지 대기
-            echo "Waiting for Loki to stabilize..."
-            sleep 15
 
       - name: Verify Monitoring Stack
         uses: appleboy/ssh-action@v1.0.3
