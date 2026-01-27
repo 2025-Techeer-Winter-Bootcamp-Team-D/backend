@@ -1,5 +1,6 @@
 import logging
 from django.contrib.auth.models import User
+from django.http import Http404
 from rest_framework import generics, status, viewsets, mixins
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -175,9 +176,9 @@ class CompanyVisitViewSet(
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return CompanyVisit.objects.filter(
-            user=self.request.user
-        ).select_related('company')
+        return CompanyVisit.objects.filter(user=self.request.user).select_related(
+            "company"
+        )
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -198,18 +199,22 @@ class CompanyVisitViewSet(
                 {"status": 200, "message": "방문 기록 삭제 성공", "data": None},
                 status=status.HTTP_200_OK,
             )
-        except Exception:
-            logger.exception("방문 기록 삭제 중 예외 발생")
+        except Http404:
+            logger.warning("방문 기록을 찾을 수 없음: %s", kwargs.get("pk"))
             return Response(
                 {"message": "해당 방문 기록을 찾을 수 없습니다."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-    @action(detail=False, methods=['delete'])
+    @action(detail=False, methods=["delete"])
     def clear(self, request):
         """전체 방문 기록 삭제"""
         deleted_count, _ = self.get_queryset().delete()
         return Response(
-            {"status": 200, "message": f"방문 기록 {deleted_count}건 삭제 완료", "data": None},
+            {
+                "status": 200,
+                "message": f"방문 기록 {deleted_count}건 삭제 완료",
+                "data": None,
+            },
             status=status.HTTP_200_OK,
         )
