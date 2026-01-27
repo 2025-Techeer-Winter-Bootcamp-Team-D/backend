@@ -17,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -43,8 +45,8 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
+          --health-interval 5s
+          --health-timeout 3s
           --health-retries 5
 
       redis:
@@ -53,21 +55,25 @@ jobs:
           - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
+          --health-interval 3s
+          --health-timeout 2s
           --health-retries 5
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
-      - name: Set up Python with cache
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: 'pip'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: uv pip install --system -r requirements.txt
 
       - name: Run Tests
         env:
@@ -104,6 +110,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -142,6 +150,8 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Copy deployment files
         uses: appleboy/scp-action@v0.1.7
@@ -149,21 +159,8 @@ jobs:
           host: ${{ secrets.DATA_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "deploy/data/docker-compose.yml"
-          target: "~/techeer-deploy/deploy/data"
-          strip_components: 2
-          timeout: 120s
-          command_timeout: 15m
-
-      - name: Copy OpenSearch Dockerfile
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.DATA_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          source: "opensearch/*"
-          target: "~/techeer-deploy/opensearch"
-          strip_components: 1
+          source: "deploy/data/docker-compose.yml,opensearch/*"
+          target: "~/techeer-deploy"
           timeout: 120s
           command_timeout: 15m
 
@@ -180,7 +177,7 @@ jobs:
             echo "${{ secrets.ENV_FILE_DATA }}" > .env
             sudo mkdir -p /home/ubuntu/infra-data/opensearch
             sudo chown -R 1000:1000 /home/ubuntu/infra-data/opensearch
-            
+
             docker compose pull
             docker compose up -d --build --remove-orphans
             docker image prune -f
@@ -192,6 +189,8 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Copy deployment files
         uses: appleboy/scp-action@v0.1.7
@@ -239,19 +238,19 @@ jobs:
             docker ps
 
             echo "=== Nginx Health Check (재시도 포함) ==="
-            for i in {1..12}; do
+            for i in {1..20}; do
               if curl -sf http://localhost/health; then
                 echo "Nginx is ready"
                 break
               fi
-              if [ $i -eq 12 ]; then
-                echo "ERROR: Nginx health check failed after 12 attempts"
+              if [ $i -eq 20 ]; then
+                echo "ERROR: Nginx health check failed after 20 attempts"
                 docker logs nginx --tail 100
                 docker logs django --tail 50
                 exit 1
               fi
-              echo "Waiting for Nginx... (attempt $i/12)"
-              sleep 5
+              echo "Waiting for Nginx... (attempt $i/20)"
+              sleep 3
             done
 
             echo "=== Node Exporter Health Check ==="
@@ -275,6 +274,8 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Copy monitoring deployment files
         uses: appleboy/scp-action@v0.1.7
@@ -343,47 +344,47 @@ jobs:
             docker ps
 
             echo "=== Prometheus Health Check (재시도 포함) ==="
-            for i in {1..12}; do
+            for i in {1..20}; do
               if curl -sf http://localhost:9090/prometheus/-/healthy; then
                 echo "Prometheus is ready"
                 break
               fi
-              if [ $i -eq 12 ]; then
+              if [ $i -eq 20 ]; then
                 echo "ERROR: Prometheus health check failed"
                 exit 1
               fi
-              echo "Waiting for Prometheus... (attempt $i/12)"
-              sleep 5
+              echo "Waiting for Prometheus... (attempt $i/20)"
+              sleep 3
             done
 
             echo "=== Grafana Health Check (재시도 포함) ==="
-            for i in {1..12}; do
+            for i in {1..20}; do
               if curl -sf http://localhost:3000/grafana/api/health; then
                 echo "Grafana is ready"
                 break
               fi
-              if [ $i -eq 12 ]; then
-                echo "ERROR: Grafana health check failed after 12 attempts"
+              if [ $i -eq 20 ]; then
+                echo "ERROR: Grafana health check failed after 20 attempts"
                 docker logs grafana --tail 50
                 exit 1
               fi
-              echo "Waiting for Grafana... (attempt $i/12)"
-              sleep 5
+              echo "Waiting for Grafana... (attempt $i/20)"
+              sleep 3
             done
 
             echo "=== Loki Health Check (재시도 포함) ==="
-            for i in {1..6}; do
+            for i in {1..12}; do
               if curl -f http://localhost:3100/ready 2>/dev/null; then
                 echo "Loki is ready"
                 break
               fi
-              if [ $i -eq 6 ]; then
-                echo "ERROR: Loki health check failed after 6 attempts"
+              if [ $i -eq 12 ]; then
+                echo "ERROR: Loki health check failed after 12 attempts"
                 docker logs loki --tail 50
                 exit 1
               fi
-              echo "Loki not ready, waiting 10 seconds... (attempt $i/6)"
-              sleep 10
+              echo "Loki not ready, waiting 5 seconds... (attempt $i/12)"
+              sleep 5
             done
 
             echo "=== Alertmanager Health Check ==="
