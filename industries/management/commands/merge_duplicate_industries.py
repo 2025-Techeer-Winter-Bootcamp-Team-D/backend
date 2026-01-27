@@ -11,7 +11,6 @@ KOSPI(0xxx)를 기준으로 병합하고, KOSDAQ(1xxx) Industry를 soft delete �
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
-from django.db.models import Count
 from collections import defaultdict
 
 from industries.models import Industry
