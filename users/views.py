@@ -155,14 +155,14 @@ class FavoriteViewSet(
 
 # --방문 기록--
 @extend_schema_view(
-    list=extend_schema(summary="방문 기록 목록 조회", tags=["User"]),
-    create=extend_schema(summary="방문 기록 추가", tags=["User"]),
+    list=extend_schema(summary="방문 기록 목록 조회", tags=["User-Visit"]),
+    create=extend_schema(summary="방문 기록 추가", tags=["User-Visit"]),
     destroy=extend_schema(
         summary="방문 기록 삭제",
-        tags=["User"],
+        tags=["User-Visit"],
         parameters=[OpenApiParameter("id", int, OpenApiParameter.PATH)],
     ),
-    clear=extend_schema(summary="전체 방문 기록 삭제", tags=["User"]),
+    clear=extend_schema(summary="전체 방문 기록 삭제", tags=["User-Visit"]),
 )
 class CompanyVisitViewSet(
     mixins.ListModelMixin,
