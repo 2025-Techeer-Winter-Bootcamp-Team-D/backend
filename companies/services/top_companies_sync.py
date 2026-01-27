@@ -314,25 +314,41 @@ class TopCompaniesSyncService:
                         )
                     continue
 
-                # kis_code로 Industry 찾기
+                # kis_code로 Industry 찾기 (KOSPI 코드 우선)
                 industry = Industry.objects.filter(
                     kis_code=target_kis_code,
                     is_deleted=False,
                 ).first()
 
-                # Industry가 없으면 생성
+                # Industry가 없으면 KisIndustry에서 이름 조회 후 이름으로 기존 Industry 찾기
                 if not industry:
                     kis_industry = KisIndustry.objects.filter(
                         kis_code=target_kis_code
                     ).first()
                     if kis_industry:
-                        industry = Industry.objects.create(
-                            kis_code=target_kis_code,
-                            induty_code=target_kis_code,  # 호환성 유지
+                        # 같은 이름의 Industry가 이미 있는지 확인 (KOSPI 우선)
+                        industry = Industry.objects.filter(
                             name=kis_industry.name,
                             is_deleted=False,
-                        )
-                        logger.info(f"Industry 생성: {target_kis_code} - {kis_industry.name}")
+                        ).order_by("kis_code").first()  # 0xxx가 1xxx보다 먼저 옴
+
+                        if industry:
+                            # 기존 Industry의 kis_code가 없으면 업데이트
+                            if not industry.kis_code:
+                                industry.kis_code = target_kis_code
+                                industry.save()
+                                logger.info(
+                                    f"기존 Industry kis_code 업데이트: {industry.name} → {target_kis_code}"
+                                )
+                        else:
+                            # 이름으로도 없으면 새로 생성
+                            industry = Industry.objects.create(
+                                kis_code=target_kis_code,
+                                induty_code=target_kis_code,  # 호환성 유지
+                                name=kis_industry.name,
+                                is_deleted=False,
+                            )
+                            logger.info(f"Industry 생성: {target_kis_code} - {kis_industry.name}")
                     else:
                         continue
 
