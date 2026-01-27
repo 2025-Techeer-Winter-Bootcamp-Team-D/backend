@@ -3,7 +3,7 @@ from django.contrib.auth.password_validation import validate_password # Django�
 from django.contrib.auth import authenticate
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator # 이메일 중복 방지를 위한 검증 도구
-from .models import Favorite
+from .models import Favorite, CompanyVisit
 from companies.models import Company
 
 
@@ -104,3 +104,34 @@ class FavoriteSerializer(serializers.ModelSerializer):
         favorite.save()
         return favorite
 
+
+# --- 방문 기록 시리얼라이저 ---
+class CompanyVisitSerializer(serializers.ModelSerializer):
+    """방문 기록 시리얼라이저"""
+
+    visitId = serializers.IntegerField(source='visit_id', read_only=True)
+    stockCode = serializers.CharField(source='company.stock_code')
+    companyName = serializers.CharField(source='company.company_name', read_only=True)
+    logoUrl = serializers.URLField(source='company.logo_url', read_only=True)
+    visitedAt = serializers.DateTimeField(source='visited_at', read_only=True)
+
+    class Meta:
+        model = CompanyVisit
+        fields = ['visitId', 'stockCode', 'companyName', 'logoUrl', 'visitedAt']
+
+    def validate_stockCode(self, value):
+        try:
+            Company.objects.get(stock_code=value, is_deleted=False)
+            return value
+        except Company.DoesNotExist:
+            raise serializers.ValidationError("존재하지 않는 기업 종목코드입니다.")
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        stock_code = validated_data.pop('company')['stock_code']
+        company = Company.objects.get(stock_code=stock_code, is_deleted=False)
+
+        return CompanyVisit.objects.create(
+            user=user,
+            company=company
+        )

@@ -3,14 +3,15 @@ from django.contrib.auth.models import User
 from rest_framework import generics, status, viewsets, mixins
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from .models import Favorite
-from .serializers import FavoriteSerializer
+from .models import Favorite, CompanyVisit
+from .serializers import FavoriteSerializer, CompanyVisitSerializer
 
 # 프로젝트 내부 모듈
 from .serializers import RegisterSerializer, LoginSerializer, LogoutRequestSerializer
 
 # swagger 관련
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
+from rest_framework.decorators import action
 
 # jwt 관련
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -149,3 +150,66 @@ class FavoriteViewSet(
                 {"message": "해당 즐겨찾기 항목을 찾을 수 없거나 이미 삭제되었습니다."},
                 status=status.HTTP_404_NOT_FOUND,
             )
+
+
+# --방문 기록--
+@extend_schema_view(
+    list=extend_schema(summary="방문 기록 목록 조회", tags=["User"]),
+    create=extend_schema(summary="방문 기록 추가", tags=["User"]),
+    destroy=extend_schema(
+        summary="방문 기록 삭제",
+        tags=["User"],
+        parameters=[OpenApiParameter("id", int, OpenApiParameter.PATH)],
+    ),
+    clear=extend_schema(summary="전체 방문 기록 삭제", tags=["User"]),
+)
+class CompanyVisitViewSet(
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    """사용자 기업 방문 기록 ViewSet"""
+
+    serializer_class = CompanyVisitSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return CompanyVisit.objects.filter(
+            user=self.request.user
+        ).select_related('company')
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+
+        return Response(
+            {"status": 201, "message": "방문 기록 추가 성공", "data": serializer.data},
+            status=status.HTTP_201_CREATED,
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            instance = self.get_object()
+            instance.delete()
+
+            return Response(
+                {"status": 200, "message": "방문 기록 삭제 성공", "data": None},
+                status=status.HTTP_200_OK,
+            )
+        except Exception:
+            logger.exception("방문 기록 삭제 중 예외 발생")
+            return Response(
+                {"message": "해당 방문 기록을 찾을 수 없습니다."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+    @action(detail=False, methods=['delete'])
+    def clear(self, request):
+        """전체 방문 기록 삭제"""
+        deleted_count, _ = self.get_queryset().delete()
+        return Response(
+            {"status": 200, "message": f"방문 기록 {deleted_count}건 삭제 완료", "data": None},
+            status=status.HTTP_200_OK,
+        )
