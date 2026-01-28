@@ -95,8 +95,8 @@ services:
   portainer:
     image: portainer/portainer-ce:latest
     container_name: portainer
-    # 리버스 프록시 CSRF 검증을 위한 신뢰 origin 설정 (command-line 플래그)
-    command: --http-enabled --csrf-trusted-origins=https://api.quasa.info,https://quasa.info
+    command:
+      - --csrf-trusted-origins=https://api.quasa.info,https://quasa.info
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
