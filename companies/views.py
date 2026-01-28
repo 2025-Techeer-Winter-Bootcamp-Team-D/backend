@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import logging
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAdminUser
@@ -1528,15 +1529,26 @@ def get_company_prices(request, stock_code: str):
         "1d": StockPrice1d,
     }
 
+    # 시간 단위별 조회 기간 (보관 기간)
+    retention_map = {
+        "1m": timedelta(days=1),      # 1분봉: 1일
+        "15m": timedelta(days=5),     # 15분봉: 5일 (평일 기준 일주일)
+        "1h": timedelta(days=30),     # 1시간봉: 30일 (한 달)
+        "1d": timedelta(days=365),    # 1일봉: 365일 (1년)
+    }
+
     # 결과 저장
     results = {}
 
     for interval_key in intervals_to_query:
         model = model_map[interval_key]
+        retention = retention_map[interval_key]
+        cutoff_time = timezone.now() - retention
 
         # values()를 사용하여 필요한 필드만 선택 (id 필드 제외)
+        # 조회 기간 제한 적용
         queryset = (
-            model.objects.filter(stock_code=stock_code)
+            model.objects.filter(stock_code=stock_code, bucket__gte=cutoff_time)
             .values(
                 "bucket",
                 "stock_code",
