@@ -96,7 +96,7 @@ services:
     image: portainer/portainer-ce:latest
     container_name: portainer
     command:
-      - --csrf-trusted-origins=https://api.quasa.info,https://quasa.info
+      - --trusted-origins=api.quasa.info,quasa.info
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
