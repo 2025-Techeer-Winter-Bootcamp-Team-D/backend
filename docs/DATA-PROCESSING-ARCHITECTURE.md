@@ -551,14 +551,165 @@ workflow = chain(
                               └─────────────────────┘
 ```
 
-### Celery Beat 스케줄 (기업 정보)
+### Celery Beat 스케줄러
 
-| 작업 | 스케줄 | 설명 |
-|------|--------|------|
-| `sync_all_company_info` | 매일 03:00 | DART 기업개황 동기화 |
-| `sync_all_financial_statements` | 매일 03:00 | DART 재무제표 동기화 (3년치) |
-| `sync_all_reports` | 매일 03:00 | DART 공시보고서 목록 동기화 |
-| `sync_all_market_amount` | 평일 16:10 | KIS 시가총액 갱신 (장 마감 후) |
+Celery Beat는 **crontab 기반의 주기적 태스크 스케줄러**로, 백그라운드에서 자동으로 데이터 동기화 작업을 실행합니다.
+
+#### 아키텍처
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           Celery Beat 스케줄러 아키텍처                           │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────┐        ┌──────────────────────┐        ┌──────────────────┐
+│    Celery Beat       │        │      RabbitMQ        │        │  Celery Workers  │
+│    (스케줄러)         │  발행   │    (메시지 브로커)    │  소비   │   (태스크 실행)   │
+│                      │ ─────► │                      │ ─────► │                  │
+│  • crontab 기반      │        │  celery 큐에 전달    │        │  • 태스크 실행    │
+│  • 주기적 태스크 발행  │        │                      │        │  • 결과 저장      │
+└──────────────────────┘        └──────────────────────┘        └──────────────────┘
+         │
+         │ 설정 참조
+         ▼
+┌──────────────────────┐
+│  config/settings.py  │
+│                      │
+│  CELERY_BEAT_SCHEDULE│
+│  • 환경변수 기반      │
+│  • 조건부 활성화      │
+└──────────────────────┘
+```
+
+#### 스케줄 상세
+
+##### 1. 뉴스 처리 (항상 활성화)
+
+| 태스크 ID | 태스크 | 스케줄 | 설명 |
+|-----------|--------|--------|------|
+| `crawl-news-every-3-hours` | `scheduled_crawl_news` | 매 3시간 | 뉴스 크롤링 + AI 처리 파이프라인 |
+| `sync-all-companies-news-every-3-hours` | `sync_all_companies_news_task` | 매 3시간 (30분 지연) | OpenSearch → CompanyNews 매핑 |
+
+```python
+# 뉴스 크롤링 파이프라인 (Canvas 워크플로우)
+"crawl-news-every-3-hours": {
+    "task": "news.tasks.workflows.scheduled_crawl_news",
+    "schedule": 3 * 60 * 60,  # 3시간 (10800초)
+    "kwargs": {
+        "keywords": ["AI", "반도체", "삼성전자", "SK하이닉스"],
+        "max_articles_per_keyword": 10,
+    },
+}
+```
+
+##### 2. DART 동기화 (`DART_SYNC_ENABLED=true`)
+
+| 태스크 ID | 태스크 | 스케줄 | 설명 |
+|-----------|--------|--------|------|
+| `sync-dart-company-info-daily` | `sync_all_company_info` | 매일 03:00 | 기업개황 (CEO, 설립일, 주소) |
+| `sync-dart-financial-statements-daily` | `sync_all_financial_statements` | 매일 03:00 | 재무제표 (최근 3년치) |
+| `sync-dart-reports-daily` | `sync_all_reports` | 매일 03:00 | 공시보고서 목록 |
+
+##### 3. KIS 시가총액 (항상 활성화)
+
+| 태스크 ID | 태스크 | 스케줄 | 설명 |
+|-----------|--------|--------|------|
+| `sync-market-amount-daily` | `sync_all_market_amount` | 평일 16:10 | 장 마감 후 시가총액 갱신 |
+| `sync-industry-charts-daily` | `sync_industry_charts_daily` | 매일 16:10 | 업종 지수 차트 갱신 |
+
+```python
+# 평일(월~금) 장 마감 후 실행
+"sync-market-amount-daily": {
+    "task": "companies.tasks.kis_market_amount.sync_all_market_amount",
+    "schedule": crontab(day_of_week="1-5", hour=16, minute=10),
+}
+```
+
+##### 4. 마켓 지수 (`MARKET_INDEX_SYNC_ENABLED=true`)
+
+| 태스크 ID | 태스크 | 스케줄 | 설명 |
+|-----------|--------|--------|------|
+| `sync-market-indices-test` | `sync_indices_daily` | 매일 05:00 | KOSPI/KOSDAQ 지수 동기화 |
+
+##### 5. 주가 데이터 (`STOCK_PRICE_SYNC_ENABLED=true`)
+
+| 태스크 ID | 태스크 | 스케줄 | 설명 |
+|-----------|--------|--------|------|
+| `sync-stock-prices-1m` | `sync_cagg_to_prices_1m` | 30초마다 | 1분봉 동기화 |
+| `sync-stock-prices-15m` | `sync_cagg_to_prices_15m` | 5분마다 | 15분봉 동기화 |
+| `sync-stock-prices-1h` | `sync_cagg_to_prices_1h` | 15분마다 | 1시간봉 동기화 |
+| `sync-stock-prices-1d` | `sync_cagg_to_prices_1d` | 1시간마다 | 1일봉 동기화 |
+
+```
+Continuous Aggregate (TimescaleDB) → Celery Beat → 통합 테이블 (Django ORM)
+```
+
+#### 환경변수 기반 조건부 활성화
+
+```bash
+# .env 설정 예시
+
+# 뉴스 크롤링 (Gemini 토큰 사용)
+NEWS_BATCH_ENABLED=false  # 개발 환경에서 비활성화
+
+# DART 동기화 (무료 API)
+DART_SYNC_ENABLED=true    # 기본 활성화
+
+# 마켓 지수 동기화
+MARKET_INDEX_SYNC_ENABLED=true
+
+# 주가 데이터 동기화 (장중에만 의미 있음)
+STOCK_PRICE_SYNC_ENABLED=true
+```
+
+#### 스케줄 타임라인 (24시간)
+
+```
+00:00 ─────────────────────────────────────────────────────────────────────────
+  │
+03:00 ├─ [DART] 기업개황 + 재무제표 + 공시보고서 동기화
+  │
+05:00 ├─ [마켓] KOSPI/KOSDAQ 지수 동기화
+  │
+09:00 ├─ [뉴스] 크롤링 파이프라인 시작
+  │   └─ 09:30 기업-뉴스 매핑
+  │
+12:00 ├─ [뉴스] 크롤링 파이프라인
+  │   └─ 12:30 기업-뉴스 매핑
+  │
+15:00 ├─ [뉴스] 크롤링 파이프라인
+  │   └─ 15:30 기업-뉴스 매핑
+  │
+16:10 ├─ [KIS] 시가총액 갱신 (평일만)
+  │   └─ [KIS] 업종 지수 차트 갱신
+  │
+18:00 ├─ [뉴스] 크롤링 파이프라인
+  │   └─ 18:30 기업-뉴스 매핑
+  │
+21:00 ├─ [뉴스] 크롤링 파이프라인
+  │   └─ 21:30 기업-뉴스 매핑
+  │
+24:00 ─────────────────────────────────────────────────────────────────────────
+
+[주가 데이터] 장중(09:00~15:30) 30초~1시간 간격으로 상시 동기화
+```
+
+#### Docker Compose 설정
+
+```yaml
+# docker-compose.yml
+celery-beat:
+  build: .
+  command: celery -A config beat --loglevel=info
+  environment:
+    - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672/
+    - DART_SYNC_ENABLED=true
+    - MARKET_INDEX_SYNC_ENABLED=true
+    - STOCK_PRICE_SYNC_ENABLED=true
+  depends_on:
+    rabbitmq:
+      condition: service_healthy
+```
 
 ---
 
