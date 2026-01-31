@@ -387,10 +387,8 @@ async def run_publisher():
 
     try:
         rabbitmq_connection = await aio_pika.connect_robust(rabbitmq_url)
-        rabbitmq_channel = await rabbitmq_connection.channel()
-
-        # Publisher Confirms 활성화
-        await rabbitmq_channel.set_publisher_confirms(True)
+        # Publisher Confirms 활성화 (채널 생성 시 옵션으로 설정)
+        rabbitmq_channel = await rabbitmq_connection.channel(publisher_confirms=True)
         print("[INIT] Publisher Confirms enabled")
 
         # Exchange 선언 (Fanout 타입)
