@@ -104,12 +104,13 @@ class PersistenceWorker:
             )
 
             # Queue 선언
+            # 주의: TTL 제거됨 - 메시지가 처리될 때까지 유지
+            # x-max-length만 유지하여 디스크 공간 보호
             queue = await channel.declare_queue(
                 QUEUE_NAME,
                 durable=True,
                 arguments={
-                    "x-max-length": 1000000,  # 최대 메시지 수
-                    "x-message-ttl": 3600000   # 1시간 TTL
+                    "x-max-length": 1000000,  # 최대 메시지 수 (초과 시 오래된 것부터 삭제)
                 }
             )
 

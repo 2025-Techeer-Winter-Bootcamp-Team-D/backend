@@ -13,8 +13,10 @@ import asyncio
 import json
 import os
 import signal
+import time
 import websockets
 import aio_pika
+from aio_pika.exceptions import DeliveryError
 import aiohttp
 from fetch_symbols import get_all_listed_symbols, get_stock_codes_from_db
 from subscription_handler import SubscriptionHandler
@@ -42,6 +44,42 @@ RPC_QUEUE_NAME = "subscription.commands"
 
 # 구독할 종목 코드 목록은 run_publisher() 함수 내에서 동적으로 로드
 SUBSCRIBE_SYMBOLS = []
+
+
+class PublishMetrics:
+    """Publisher Confirm 메트릭 추적"""
+
+    def __init__(self):
+        self.published = 0
+        self.confirmed = 0
+        self.failed = 0
+        self.last_report_time = time.time()
+        self.report_interval = 60  # 60초마다 메트릭 출력
+
+    def record_success(self):
+        self.published += 1
+        self.confirmed += 1
+        self._maybe_report()
+
+    def record_failure(self, stock_code: str, error: str):
+        self.published += 1
+        self.failed += 1
+        print(f"[CONFIRM FAILED] stock={stock_code}, error={error}")
+        self._maybe_report()
+
+    def _maybe_report(self):
+        now = time.time()
+        if now - self.last_report_time >= self.report_interval:
+            self.report()
+            self.last_report_time = now
+
+    def report(self):
+        success_rate = (self.confirmed / self.published * 100) if self.published > 0 else 0
+        print(
+            f"[METRICS] published={self.published}, "
+            f"confirmed={self.confirmed}, failed={self.failed}, "
+            f"success_rate={success_rate:.2f}%"
+        )
 
 
 class KISParser:
@@ -344,9 +382,16 @@ async def run_publisher():
     rabbitmq_url = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
     print(f"[INIT] Connecting to RabbitMQ: {rabbitmq_url}")
 
+    # Publisher Confirm 메트릭 초기화
+    publish_metrics = PublishMetrics()
+
     try:
         rabbitmq_connection = await aio_pika.connect_robust(rabbitmq_url)
         rabbitmq_channel = await rabbitmq_connection.channel()
+
+        # Publisher Confirms 활성화
+        await rabbitmq_channel.set_publisher_confirms(True)
+        print("[INIT] Publisher Confirms enabled")
 
         # Exchange 선언 (Fanout 타입)
         rabbitmq_exchange = await rabbitmq_channel.declare_exchange(
@@ -460,21 +505,35 @@ async def run_publisher():
                         if message and len(message) > 0 and message[0] in ["0", "1"]:
                             parsed_data = KISParser.parse_trade_data(message)
                             if parsed_data:
-                                # RabbitMQ에 메시지 발행
+                                # RabbitMQ에 메시지 발행 (Publisher Confirm 사용)
                                 rabbitmq_message = aio_pika.Message(
                                     body=json.dumps(parsed_data).encode(),
                                     content_type="application/json",
                                     delivery_mode=aio_pika.DeliveryMode.PERSISTENT
                                 )
-                                await rabbitmq_exchange.publish(
-                                    rabbitmq_message,
-                                    routing_key=""
-                                )
-                                mode = "[TEST]" if uri == TEST_URL else "[PROD]"
-                                print(
-                                    f"{mode} PUBLISH: stock.realtime exchange, "
-                                    f"stock={parsed_data['stock_code']}, price={parsed_data['price']}"
-                                )
+                                try:
+                                    # Publisher Confirm: 메시지가 RabbitMQ에 도달했는지 확인
+                                    await rabbitmq_exchange.publish(
+                                        rabbitmq_message,
+                                        routing_key="",
+                                        mandatory=True  # 라우팅 실패 시 예외 발생
+                                    )
+                                    publish_metrics.record_success()
+                                    mode = "[TEST]" if uri == TEST_URL else "[PROD]"
+                                    print(
+                                        f"{mode} PUBLISH: stock.realtime exchange, "
+                                        f"stock={parsed_data['stock_code']}, price={parsed_data['price']}"
+                                    )
+                                except DeliveryError as e:
+                                    publish_metrics.record_failure(
+                                        parsed_data['stock_code'],
+                                        f"DeliveryError: {e}"
+                                    )
+                                except Exception as e:
+                                    publish_metrics.record_failure(
+                                        parsed_data['stock_code'],
+                                        str(e)
+                                    )
                     except Exception as e:
                         print(f"[ERROR] Error processing message: {e}")
                         continue
@@ -485,6 +544,9 @@ async def run_publisher():
                     await heartbeat_manager.stop()
                     await subscription_handler.unsubscribe_all()
                     print("[WS] All subscriptions removed")
+                    # 종료 전 최종 메트릭 출력
+                    print("[SHUTDOWN] Final metrics:")
+                    publish_metrics.report()
                     break
 
         except websockets.ConnectionClosed as e:
@@ -537,6 +599,8 @@ async def run_publisher():
     print(
         f"[FATAL] Maximum reconnection attempts ({max_reconnect_attempts}) exceeded. Exiting."
     )
+    print("[SHUTDOWN] Final metrics:")
+    publish_metrics.report()
     raise SystemExit(1)
 
 
