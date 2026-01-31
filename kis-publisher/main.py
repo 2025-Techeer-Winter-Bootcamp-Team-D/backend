@@ -435,10 +435,20 @@ async def run_publisher():
 
     heartbeat_manager = None
 
+    # WebSocket 연결 타임아웃 설정
+    ws_open_timeout = int(os.getenv("KIS_WS_OPEN_TIMEOUT", "30"))
+    ws_ping_timeout = int(os.getenv("KIS_WS_PING_TIMEOUT", "20"))
+    ws_close_timeout = int(os.getenv("KIS_WS_CLOSE_TIMEOUT", "10"))
+
     while reconnect_count < max_reconnect_attempts and not shutdown_event.is_set():
         try:
             print(f"Connecting to WebSocket: {uri} (attempt {reconnect_count + 1})")
-            async with websockets.connect(uri) as ws:
+            async with websockets.connect(
+                uri,
+                open_timeout=ws_open_timeout,
+                ping_timeout=ws_ping_timeout,
+                close_timeout=ws_close_timeout,
+            ) as ws:
                 print(f"WebSocket connected: {uri}")
 
                 is_test_mode = uri == TEST_URL
