@@ -182,4 +182,4 @@ postgres_data/
 redis_data/
 opensearch_data/
 prometheus_data/
-grafana_data/
+grafana_data/.idea/

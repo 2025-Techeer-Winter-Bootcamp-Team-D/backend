@@ -11,7 +11,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost:5432/postgres")
 # RabbitMQ 설정
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
 EXCHANGE_NAME = "stock.realtime"
-QUEUE_NAME = "stock.ticks.persistence"
+QUEUE_NAME = "stock.ticks.writer"
 
 
 class TickWriter:

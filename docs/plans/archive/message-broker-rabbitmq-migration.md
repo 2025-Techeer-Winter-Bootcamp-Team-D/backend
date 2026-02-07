@@ -103,9 +103,9 @@ Django App / Management Command
 KIS WebSocket
   → kis-publisher
   → RabbitMQ Exchange: stock.realtime (Fanout)
-    → Queue 1: stock.ticks.persistence
+    → Queue 1: stock.ticks.writer
       → tick-writer → TimescaleDB
-    → Queue 2: stock.ticks.channels
+    → Queue 2: stock.ticks.broadcast
       → tick-broadcaster → Django Channels → WebSocket 클라이언트
 ```
 
@@ -125,8 +125,8 @@ Django App / Management Command
 
 | Exchange | Type | Queue | Consumer | 용도 |
 |----------|------|-------|----------|------|
-| `stock.realtime` | Fanout | `stock.ticks.persistence` | tick-writer | TimescaleDB 적재 |
-| `stock.realtime` | Fanout | `stock.ticks.channels` | tick-broadcaster | WebSocket 브로드캐스트 |
+| `stock.realtime` | Fanout | `stock.ticks.writer` | tick-writer | TimescaleDB 적재 |
+| `stock.realtime` | Fanout | `stock.ticks.broadcast` | tick-broadcaster | WebSocket 브로드캐스트 |
 | `celery` (default) | Direct | `celery` (default) | celery-worker | Celery 태스크 처리 |
 
 ---
@@ -187,7 +187,7 @@ depends_on:
 
 **테스트 결과**:
 - RabbitMQ Exchange: `stock.realtime` (Fanout) 생성 완료
-- Queue: `stock.ticks.persistence` (1 consumer), `stock.ticks.channels` (1 consumer)
+- Queue: `stock.ticks.writer` (1 consumer), `stock.ticks.broadcast` (1 consumer)
 - kis-publisher: 메시지 발행 정상
 - tick-writer: DB 저장 정상 (150+ messages processed)
 - tick-broadcaster: RabbitMQ 연결 정상
@@ -282,8 +282,8 @@ depends_on:
 ```
 RabbitMQ (메시지 브로커 전용)
 ├── Exchange: stock.realtime (Fanout)
-│   ├── Queue: stock.ticks.persistence → tick-writer
-│   └── Queue: stock.ticks.channels → tick-broadcaster
+│   ├── Queue: stock.ticks.writer → tick-writer
+│   └── Queue: stock.ticks.broadcast → tick-broadcaster
 └── Exchange: celery (Direct)
     └── Queue: celery → celery-worker
 ```

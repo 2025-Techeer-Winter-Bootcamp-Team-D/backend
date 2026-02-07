@@ -48,7 +48,7 @@ Delivery Mode: PERSISTENT (디스크 저장)
 
 **주요 설정**:
 ```python
-Queue: "stock.ticks.persistence"
+Queue: "stock.ticks.writer"
 Prefetch: 200 (배치 크기와 동일)
 Batch Size: 200
 Flush Interval: 5초
@@ -69,7 +69,7 @@ Max Length: 1,000,000 (디스크 보호용)
 
 **주요 설정**:
 ```python
-Queue: "stock.ticks.channels"
+Queue: "stock.ticks.broadcast"
 Prefetch: 100
 Max Length: 100,000
 ```
@@ -238,8 +238,8 @@ FLUSH_INTERVAL=5
 
 | 큐 | x-max-length | x-message-ttl | 용도 |
 |----|--------------|---------------|------|
-| stock.ticks.persistence | 1,000,000 | 없음 | DB 저장 |
-| stock.ticks.channels | 100,000 | 없음 | WebSocket 브로드캐스트 |
+| stock.ticks.writer | 1,000,000 | 없음 | DB 저장 |
+| stock.ticks.broadcast | 100,000 | 없음 | WebSocket 브로드캐스트 |
 
 ---
 

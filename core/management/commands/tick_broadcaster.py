@@ -14,7 +14,7 @@ from django.core.management.base import BaseCommand
 # RabbitMQ 설정
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
 EXCHANGE_NAME = "stock.realtime"
-QUEUE_NAME = "stock.ticks.channels"
+QUEUE_NAME = "stock.ticks.broadcast"
 
 
 class Command(BaseCommand):

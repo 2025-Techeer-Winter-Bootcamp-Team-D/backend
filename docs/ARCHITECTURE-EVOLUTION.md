@@ -59,8 +59,8 @@ Redis (모든 역할)
 ```
 RabbitMQ (메시지 브로커 전용)
 ├── Exchange: stock.realtime (Fanout)
-│   ├── Queue: stock.ticks.persistence → tick-writer
-│   └── Queue: stock.ticks.channels → tick-broadcaster
+│   ├── Queue: stock.ticks.writer → tick-writer
+│   └── Queue: stock.ticks.broadcast → tick-broadcaster
 └── Exchange: celery (Direct)
     └── Queue: celery → celery-worker
 
@@ -125,8 +125,8 @@ KIS WebSocket
 KIS WebSocket
   → kis-publisher
   → RabbitMQ Exchange: stock.realtime (Fanout)
-    → Queue: stock.ticks.persistence → tick-writer → TimescaleDB
-    → Queue: stock.ticks.channels → tick-broadcaster → WebSocket
+    → Queue: stock.ticks.writer → tick-writer → TimescaleDB
+    → Queue: stock.ticks.broadcast → tick-broadcaster → WebSocket
 ```
 
 ### 개선 결과
