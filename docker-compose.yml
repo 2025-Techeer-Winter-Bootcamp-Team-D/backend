@@ -197,11 +197,11 @@ services:
         condition: on-failure
         max_attempts: 3
 
-  persistence-worker:
+  tick-writer:
     build:
       context: .
-      dockerfile: ./persistence-worker/Dockerfile
-    container_name: persistence-worker
+      dockerfile: ./tick-writer/Dockerfile
+    container_name: tick-writer
     env_file:
       - .env
     environment:
@@ -304,12 +304,12 @@ services:
       - django-network
     restart: always
 
-  subscribe-handler:
+  tick-broadcaster:
     build: .
-    container_name: subscribe-handler
+    container_name: tick-broadcaster
     env_file:
       - .env
-    command: python manage.py subscribe_handler
+    command: python manage.py tick_broadcaster
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-postgres}
       - REDIS_URL=redis://redis:6379/0

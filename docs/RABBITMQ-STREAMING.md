@@ -6,10 +6,10 @@ KIS WebSocket API에서 수신한 실시간 주가 데이터를 RabbitMQ를 통�
 
 ```
 ┌─────────────────┐      ┌─────────────┐      ┌─────────────────────┐
-│  KIS WebSocket  │ ───▶ │ RabbitMQ    │ ───▶ │ persistence-worker  │ ───▶ TimescaleDB
+│  KIS WebSocket  │ ───▶ │ RabbitMQ    │ ───▶ │ tick-writer  │ ───▶ TimescaleDB
 │  (kis-publisher)│      │ (Exchange)  │      └─────────────────────┘
 └─────────────────┘      │             │      ┌─────────────────────┐
-                         │  FANOUT     │ ───▶ │ subscribe-handler   │ ───▶ Django Channels
+                         │  FANOUT     │ ───▶ │ tick-broadcaster   │ ───▶ Django Channels
                          └─────────────┘      └─────────────────────┘            │
                                                                                  ▼
                                                                           WebSocket 클라이언트
@@ -40,11 +40,11 @@ Delivery Mode: PERSISTENT (디스크 저장)
 }
 ```
 
-### 2. persistence-worker (Consumer #1)
+### 2. tick-writer (Consumer #1)
 
 **역할**: RabbitMQ에서 메시지를 구독하여 TimescaleDB에 배치 저장
 
-**위치**: `persistence-worker/main.py`
+**위치**: `tick-writer/main.py`
 
 **주요 설정**:
 ```python
@@ -61,11 +61,11 @@ Max Length: 1,000,000 (디스크 보호용)
 - `executemany()`로 성능 최적화
 - `ON CONFLICT` 처리로 중복 데이터 병합
 
-### 3. subscribe-handler (Consumer #2)
+### 3. tick-broadcaster (Consumer #2)
 
 **역할**: RabbitMQ에서 메시지를 구독하여 Django Channels WebSocket으로 브로드캐스트
 
-**위치**: `core/management/commands/subscribe_handler.py`
+**위치**: `core/management/commands/tick_broadcaster.py`
 
 **주요 설정**:
 ```python
@@ -94,7 +94,7 @@ Max Length: 100,000
 ### Consumer ACK 동작
 
 ```python
-# persistence-worker
+# tick-writer
 async with message.process(requeue=True):
     # 정상 완료 → 자동 ACK
     # 예외 발생 → 자동 NACK + 재큐잉
@@ -228,7 +228,7 @@ KIS_SYMBOL_LIMIT=5          # 구독 종목 수
 KIS_MAX_RECONNECT=10        # 최대 재연결 시도
 KIS_PING_INTERVAL=30        # PINGPONG 간격 (초)
 
-# persistence-worker
+# tick-writer
 # (하드코딩됨 - 환경변수화 권장)
 BATCH_SIZE=200
 FLUSH_INTERVAL=5
@@ -261,10 +261,10 @@ docker-compose exec rabbitmq rabbitmqctl list_queues name messages_ready message
 # kis-publisher 발행 로그
 docker-compose logs -f kis-publisher | grep PUBLISH
 
-# persistence-worker 저장 로그
-docker-compose logs -f persistence-worker | grep -E "\[RECV\]|\[DB\]"
+# tick-writer 저장 로그
+docker-compose logs -f tick-writer | grep -E "\[RECV\]|\[DB\]"
 
-# subscribe-handler 브로드캐스트 로그
+# tick-broadcaster 브로드캐스트 로그
 docker-compose logs -f app | grep BROADCAST
 ```
 

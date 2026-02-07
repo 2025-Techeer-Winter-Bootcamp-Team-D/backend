@@ -43,11 +43,11 @@ KIS WebSocket → Redis Pub/Sub → Django Consumer → DB
               메시지 유실 위험
 
 [After - 개선된 구조]
-KIS WebSocket → RabbitMQ → persistence-worker → TimescaleDB
+KIS WebSocket → RabbitMQ → tick-writer → TimescaleDB
                    ↓              ↓
               메시지 보장     배치 저장 (200건/5초)
                    ↓
-              subscribe-handler → WebSocket → 프론트엔드
+              tick-broadcaster → WebSocket → 프론트엔드
 ```
 
 ### 핵심 기술 요소
@@ -64,7 +64,7 @@ await channel.default_exchange.publish(
     routing_key="stock.ticks"
 )
 
-# 메시지 소비 (persistence-worker)
+# 메시지 소비 (tick-writer)
 async def on_message(message: aio_pika.IncomingMessage):
     try:
         await process_tick(message.body)

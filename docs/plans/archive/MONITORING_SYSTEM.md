@@ -92,14 +92,14 @@
 | Django App | django | 8000 | 메인 API 서버 (Daphne ASGI) |
 | Celery Worker | celery-worker | - | 비동기 작업 처리 |
 | Celery Beat | celery-beat | - | 주기적 작업 스케줄러 |
-| Subscribe Handler | subscribe-handler | - | 실시간 구독 처리 |
+| Subscribe Handler | tick-broadcaster | - | 실시간 구독 처리 |
 
 #### 데이터 처리 서비스
 
 | 서비스 | 컨테이너명 | 포트 | 설명 |
 |--------|-----------|------|------|
 | KIS Publisher | kis-publisher | - | 주식 시세 데이터 수집 |
-| Persistence Worker | persistence-worker | - | 시계열 데이터 저장 |
+| Persistence Worker | tick-writer | - | 시계열 데이터 저장 |
 | KIS Mock Server | kis-mock-server | 8080 | 테스트용 Mock 서버 |
 
 #### 데이터 저장소

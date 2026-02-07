@@ -916,7 +916,7 @@ KIS WebSocket API
        ↓
   Redis Pub/Sub Channel: stock:realtime:{종목코드}
        ↓         ↘
-persistence-worker   subscribe-handler (Django)
+tick-writer   tick-broadcaster (Django)
        ↓                    ↓
   TimescaleDB          Django Channels (WebSocket)
                             ↓
@@ -994,9 +994,9 @@ KIS_TEST_WS_URL=ws://kis-mock-server:8080
 
 ---
 
-### 3. persistence-worker
+### 3. tick-writer
 
-**파일**: `persistence-worker/main.py`
+**파일**: `tick-writer/main.py`
 
 #### 역할
 - Redis Pub/Sub 구독 (`stock:realtime:*` 패턴)
@@ -1043,9 +1043,9 @@ await conn.copy_records_to_table(
 
 ---
 
-### 4. subscribe-handler (Django)
+### 4. tick-broadcaster (Django)
 
-**파일**: `core/management/commands/subscribe_handler.py`
+**파일**: `core/management/commands/tick_broadcaster.py`
 
 #### 역할
 - Redis Pub/Sub 구독 (Django 내부)
@@ -1131,11 +1131,11 @@ operations = [
    └─ 채널: stock:realtime:005930
    └─ 페이로드: {"symbol": "001", "stock_code": "005930", "time": "153000", "price": 75000, "volume": 100}
 
-4-A. persistence-worker 구독
+4-A. tick-writer 구독
    └─ 메모리 버퍼에 적재 (200건 또는 5초)
    └─ TimescaleDB에 COPY 명령으로 대량 삽입
 
-4-B. subscribe-handler 구독
+4-B. tick-broadcaster 구독
    └─ Django에서 실시간 데이터 수신
    └─ (향후) Django Channels를 통해 WebSocket 전송
 ```
@@ -1154,20 +1154,20 @@ cd kis-publisher
 python main.py
 ```
 
-#### persistence-worker 실행
+#### tick-writer 실행
 ```bash
 # Docker Compose
-docker-compose up -d persistence-worker
+docker-compose up -d tick-writer
 
 # 로컬 실행
-cd persistence-worker
+cd tick-writer
 python main.py
 ```
 
-#### subscribe-handler 실행
+#### tick-broadcaster 실행
 ```bash
 # Django Management Command
-python manage.py subscribe_handler
+python manage.py tick_broadcaster
 ```
 
 ---
@@ -1227,8 +1227,8 @@ python manage.py subscribe_handler
 - **포트**: 8080
 - **목적**: 테스트용 WebSocket 서버
 
-#### 10. Persistence Worker (persistence-worker)
-- **빌드**: persistence-worker/Dockerfile
+#### 10. Persistence Worker (tick-writer)
+- **빌드**: tick-writer/Dockerfile
 - **의존성**: redis, db
 - **재시작**: always
 
@@ -1247,7 +1247,7 @@ django-network (Bridge)
 ├── flower
 ├── kis-publisher
 ├── kis-mock-server
-└── persistence-worker
+└── tick-writer
 ```
 
 ---
@@ -1349,13 +1349,13 @@ docker-compose up -d kis-mock-server
 # docker-compose.yml에 KIS_USE_TEST_MODE=true 설정됨
 ```
 
-#### 2. persistence-worker 데이터 저장 안 됨
+#### 2. tick-writer 데이터 저장 안 됨
 **증상**: Redis에는 메시지가 오지만 DB에 저장 안 됨
 
 **해결**:
 ```bash
-# persistence-worker 로그 확인
-docker-compose logs -f persistence-worker
+# tick-writer 로그 확인
+docker-compose logs -f tick-writer
 
 # Redis Pub/Sub 구독 테스트
 docker-compose exec redis redis-cli

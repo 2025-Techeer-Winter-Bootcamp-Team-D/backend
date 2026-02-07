@@ -10,7 +10,7 @@
 | 워크플로우 | `.github/workflows/ci-cd.yml` |
 | 메인 Dockerfile | `Dockerfile` |
 | kis-publisher | `kis-publisher/Dockerfile` |
-| persistence-worker | `persistence-worker/Dockerfile` |
+| tick-writer | `tick-writer/Dockerfile` |
 | OpenSearch | `opensearch/Dockerfile` |
 | Nginx | `deploy/app/nginx/Dockerfile` |
 | 의존성 | `requirements.txt` (65개 패키지) |
@@ -202,7 +202,7 @@ CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000"]
 |--------|-------------|--------------|----------------|
 | backend-core | ❌ | ⚠️ 사용 | ⚠️ 포함 |
 | kis-publisher | ❌ | ⚠️ 사용 | ⚠️ 포함 |
-| persistence-worker | ❌ | ⚠️ 사용 | ⚠️ 포함 |
+| tick-writer | ❌ | ⚠️ 사용 | ⚠️ 포함 |
 | opensearch | N/A | N/A | ✅ 없음 |
 | nginx | N/A | N/A | ⚠️ openssl 포함 |
 
@@ -386,7 +386,7 @@ redis:
 #### 8.5 멀티스테이지 빌드
 - `Dockerfile` → 2단계 분리
 - `kis-publisher/Dockerfile` → 2단계 분리
-- `persistence-worker/Dockerfile` → 2단계 분리
+- `tick-writer/Dockerfile` → 2단계 분리
 
 **예상 효과**: 이미지 크기 40-50% 감소
 

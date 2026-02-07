@@ -12,7 +12,7 @@
 
 | 시스템 | 현재 브로커 | 용도 | 전환 대상 |
 |--------|-------------|------|-----------|
-| **실시간 주가 통신** | Redis Streams | kis-publisher → persistence-worker, subscribe-handler | ✅ **RabbitMQ** |
+| **실시간 주가 통신** | Redis Streams | kis-publisher → tick-writer, tick-broadcaster | ✅ **RabbitMQ** |
 | **Celery 태스크 큐** | Redis | 백그라운드 작업 큐 (뉴스 크롤링, DART 동기화 등) | ✅ **RabbitMQ** |
 | **Celery Result Backend** | Redis | 작업 결과 저장 | ✅ **Redis 유지** |
 | **Django Cache** | Redis | API 응답, 쿼리 캐싱 | ✅ **Redis 유지** |
@@ -71,9 +71,9 @@ KIS WebSocket
   → kis-publisher
   → Redis Stream: stock:realtime
     → Consumer Group 1: stock_ticks_ingest
-      → persistence-worker → TimescaleDB
+      → tick-writer → TimescaleDB
     → Consumer Group 2: django_channels_group
-      → subscribe-handler → Django Channels → WebSocket 클라이언트
+      → tick-broadcaster → Django Channels → WebSocket 클라이언트
 ```
 
 ### 2.2 Celery 백그라운드 작업 (Redis)
@@ -104,9 +104,9 @@ KIS WebSocket
   → kis-publisher
   → RabbitMQ Exchange: stock.realtime (Fanout)
     → Queue 1: stock.ticks.persistence
-      → persistence-worker → TimescaleDB
+      → tick-writer → TimescaleDB
     → Queue 2: stock.ticks.channels
-      → subscribe-handler → Django Channels → WebSocket 클라이언트
+      → tick-broadcaster → Django Channels → WebSocket 클라이언트
 ```
 
 ### 3.2 Celery 백그라운드 작업 (RabbitMQ)
@@ -125,8 +125,8 @@ Django App / Management Command
 
 | Exchange | Type | Queue | Consumer | 용도 |
 |----------|------|-------|----------|------|
-| `stock.realtime` | Fanout | `stock.ticks.persistence` | persistence-worker | TimescaleDB 적재 |
-| `stock.realtime` | Fanout | `stock.ticks.channels` | subscribe-handler | WebSocket 브로드캐스트 |
+| `stock.realtime` | Fanout | `stock.ticks.persistence` | tick-writer | TimescaleDB 적재 |
+| `stock.realtime` | Fanout | `stock.ticks.channels` | tick-broadcaster | WebSocket 브로드캐스트 |
 | `celery` (default) | Direct | `celery` (default) | celery-worker | Celery 태스크 처리 |
 
 ---
@@ -137,8 +137,8 @@ Django App / Management Command
 
 - docker-compose.yml에 RabbitMQ 서비스 추가
 - kis-publisher → RabbitMQ 전환
-- persistence-worker → RabbitMQ 전환
-- subscribe-handler → RabbitMQ 전환
+- tick-writer → RabbitMQ 전환
+- tick-broadcaster → RabbitMQ 전환
 
 ### 4.2 Celery (신규 작업)
 
@@ -181,16 +181,16 @@ depends_on:
 
 1. ✅ docker-compose.yml에 RabbitMQ 서비스 추가
 2. ✅ kis-publisher → RabbitMQ 전환
-3. ✅ persistence-worker → RabbitMQ 전환
-4. ✅ subscribe-handler → RabbitMQ 전환
+3. ✅ tick-writer → RabbitMQ 전환
+4. ✅ tick-broadcaster → RabbitMQ 전환
 5. ✅ 테스트 완료
 
 **테스트 결과**:
 - RabbitMQ Exchange: `stock.realtime` (Fanout) 생성 완료
 - Queue: `stock.ticks.persistence` (1 consumer), `stock.ticks.channels` (1 consumer)
 - kis-publisher: 메시지 발행 정상
-- persistence-worker: DB 저장 정상 (150+ messages processed)
-- subscribe-handler: RabbitMQ 연결 정상
+- tick-writer: DB 저장 정상 (150+ messages processed)
+- tick-broadcaster: RabbitMQ 연결 정상
 
 ### Phase 2: Celery → RabbitMQ 전환 (✅ 완료)
 
@@ -254,8 +254,8 @@ depends_on:
 ### Phase 1: 실시간 주가 통신 (✅ 완료)
 - [x] docker-compose.yml에 RabbitMQ 서비스 추가
 - [x] kis-publisher → RabbitMQ 전환
-- [x] persistence-worker → RabbitMQ 전환
-- [x] subscribe-handler → RabbitMQ 전환
+- [x] tick-writer → RabbitMQ 전환
+- [x] tick-broadcaster → RabbitMQ 전환
 - [x] 테스트 완료
 
 ### Phase 2: Celery → RabbitMQ 전환 (✅ 완료)
@@ -282,8 +282,8 @@ depends_on:
 ```
 RabbitMQ (메시지 브로커 전용)
 ├── Exchange: stock.realtime (Fanout)
-│   ├── Queue: stock.ticks.persistence → persistence-worker
-│   └── Queue: stock.ticks.channels → subscribe-handler
+│   ├── Queue: stock.ticks.persistence → tick-writer
+│   └── Queue: stock.ticks.channels → tick-broadcaster
 └── Exchange: celery (Direct)
     └── Queue: celery → celery-worker
 ```

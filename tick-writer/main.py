@@ -14,7 +14,9 @@ EXCHANGE_NAME = "stock.realtime"
 QUEUE_NAME = "stock.ticks.persistence"
 
 
-class PersistenceWorker:
+class TickWriter:
+    """RabbitMQ에서 주가 틱 데이터를 받아 TimescaleDB에 배치 저장하는 워커"""
+
     def __init__(self):
         self.buffer = []
         self.lock = asyncio.Lock()
@@ -82,7 +84,7 @@ class PersistenceWorker:
             raise  # 예외를 상위로 전파하여 RabbitMQ에서 NACK 처리
 
     async def run(self):
-        print("[INIT] Starting PersistenceWorker (RabbitMQ mode)...")
+        print("[INIT] Starting TickWriter (RabbitMQ → TimescaleDB)...")
         print(f"[INIT] Queue: {QUEUE_NAME}, Exchange: {EXCHANGE_NAME}")
         print(f"[INIT] RABBITMQ_URL: {RABBITMQ_URL}")
         masked_url = re.sub(r"://[^:]+:[^@]+@", "://***:***@", DATABASE_URL)
@@ -183,7 +185,7 @@ class PersistenceWorker:
 
 if __name__ == "__main__":
     try:
-        worker = PersistenceWorker()
+        worker = TickWriter()
         asyncio.run(worker.run())
     except Exception as e:
         print(f"Fatal error: {e}")

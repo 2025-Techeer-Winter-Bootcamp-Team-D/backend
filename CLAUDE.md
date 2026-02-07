@@ -257,11 +257,11 @@ docs/
 
 ### 1. 실시간 주가 데이터 처리 (KIS WebSocket)
 
-**서비스 구성**: kis-publisher → Redis Pub/Sub → persistence-worker + subscribe-handler
+**서비스 구성**: kis-publisher → Redis Pub/Sub → tick-writer + tick-broadcaster
 
 - **kis-publisher**: KIS WebSocket API에서 실시간 체결 데이터를 수신하여 Redis Pub/Sub에 발행
-- **persistence-worker**: Redis에서 데이터를 구독하여 TimescaleDB에 배치 저장 (COPY 명령 사용)
-- **subscribe-handler**: Django 내부에서 데이터 구독 및 WebSocket 전송 (Django Channels)
+- **tick-writer**: Redis에서 데이터를 구독하여 TimescaleDB에 배치 저장 (COPY 명령 사용)
+- **tick-broadcaster**: Django 내부에서 데이터 구독 및 WebSocket 전송 (Django Channels)
 
 **주요 데이터 모델**:
 - `StockTick` (core/models.py): TimescaleDB Hypertable로 시계열 데이터 최적화
@@ -337,7 +337,7 @@ print(result['stats'])
 python manage.py crawl_news --keywords "AI" "반도체" --max-articles 10 --async
 
 # 실시간 주가 구독 핸들러 시작
-python manage.py subscribe_handler
+python manage.py tick_broadcaster
 
 # 시가총액 순위 계산
 python manage.py update_rankings
@@ -441,8 +441,8 @@ docker-compose logs -f celery-worker
 # kis-publisher 로그
 docker-compose logs -f kis-publisher
 
-# persistence-worker 로그
-docker-compose logs -f persistence-worker
+# tick-writer 로그
+docker-compose logs -f tick-writer
 ```
 
 ### Prometheus/Grafana 모니터링

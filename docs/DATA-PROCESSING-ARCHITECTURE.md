@@ -1616,7 +1616,7 @@ Python 코드:
 │   ┌─────────────────────────────────────────────────────────────────────────────┐ │
 │   │                     3. 실시간 주가 Pub/Sub                                   │ │
 │   │                                                                             │ │
-│   │   kis-publisher                    subscribe-handler                        │ │
+│   │   kis-publisher                    tick-broadcaster                        │ │
 │   │        │                                  │                                 │ │
 │   │        │  PUBLISH                         │  PSUBSCRIBE                     │ │
 │   │        ▼                                  ▼                                 │ │
@@ -1633,7 +1633,7 @@ Python 코드:
 │   │   └─────────────────────────────────────────────────────────────────┘       │ │
 │   │        │                                  │                                 │ │
 │   │        │                                  ▼                                 │ │
-│   │        │                          persistence-worker                        │ │
+│   │        │                          tick-writer                        │ │
 │   │        │                          (TimescaleDB 저장)                        │ │
 │   │        │                                                                    │ │
 │   │        ▼                                                                    │ │
@@ -1849,8 +1849,8 @@ Python 코드:
 | Celery Worker | Gemini API | HTTPS/443 | AI 처리 |
 | Celery Worker | Naver/DART/KIS | HTTPS/443 | 데이터 수집 |
 | kis-publisher | Redis | TCP/6379 | 실시간 주가 Pub/Sub |
-| persistence-worker | Redis | TCP/6379 | 실시간 주가 구독 |
-| persistence-worker | PostgreSQL | TCP/5432 | 주가 데이터 저장 |
+| tick-writer | Redis | TCP/6379 | 실시간 주가 구독 |
+| tick-writer | PostgreSQL | TCP/5432 | 주가 데이터 저장 |
 
 ---
 

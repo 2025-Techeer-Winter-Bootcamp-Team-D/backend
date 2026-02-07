@@ -59,8 +59,8 @@ Redis (모든 역할)
 ```
 RabbitMQ (메시지 브로커 전용)
 ├── Exchange: stock.realtime (Fanout)
-│   ├── Queue: stock.ticks.persistence → persistence-worker
-│   └── Queue: stock.ticks.channels → subscribe-handler
+│   ├── Queue: stock.ticks.persistence → tick-writer
+│   └── Queue: stock.ticks.channels → tick-broadcaster
 └── Exchange: celery (Direct)
     └── Queue: celery → celery-worker
 
@@ -90,7 +90,7 @@ Redis (캐시/세션/Channels 전용)
 초기 실시간 주가 파이프라인은 Redis Pub/Sub을 사용했습니다.
 
 ```
-KIS WebSocket → kis-publisher → Redis Pub/Sub → persistence-worker → TimescaleDB
+KIS WebSocket → kis-publisher → Redis Pub/Sub → tick-writer → TimescaleDB
 ```
 
 **발생한 문제**:
@@ -108,7 +108,7 @@ KIS WebSocket
   → kis-publisher
   → Redis Stream: stock:realtime
     → Consumer Group: stock_ticks_ingest
-      → persistence-worker → TimescaleDB (XACK)
+      → tick-writer → TimescaleDB (XACK)
 ```
 
 **개선점**:
@@ -125,8 +125,8 @@ KIS WebSocket
 KIS WebSocket
   → kis-publisher
   → RabbitMQ Exchange: stock.realtime (Fanout)
-    → Queue: stock.ticks.persistence → persistence-worker → TimescaleDB
-    → Queue: stock.ticks.channels → subscribe-handler → WebSocket
+    → Queue: stock.ticks.persistence → tick-writer → TimescaleDB
+    → Queue: stock.ticks.channels → tick-broadcaster → WebSocket
 ```
 
 ### 개선 결과

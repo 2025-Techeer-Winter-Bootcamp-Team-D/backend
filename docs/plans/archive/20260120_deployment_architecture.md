@@ -63,9 +63,9 @@ project_root/
 *   **docker-compose.yml 구성**:
     *   **Gateway**: `nginx` (80->443 SSL, Static Files, Gunicorn/Daphne Proxy).
     *   **Backend**: `app` (Django). CI/CD에서는 `image: my-repo/backend:tag` 사용.
-    *   **Async**: `subscribe-handler` (Daphne/Websockets).
+    *   **Async**: `tick-broadcaster` (Daphne/Websockets).
     *   **Workers Data**: `celery-worker`, `celery-beat`, `flower`.
-    *   **Stream Workers**: `kis-publisher` (Real Mode), `persistence-worker`.
+    *   **Stream Workers**: `kis-publisher` (Real Mode), `tick-writer`.
     *   **Monitoring**: `prometheus` (Data Node의 Exporter까지 수집), `grafana`, `node-exporter`, `cadvisor`.
 
 ## 4. 단계별 구현 액션 플랜
@@ -81,7 +81,7 @@ project_root/
     *   `kis-mock-server` **제거**.
     *   `kis-publisher`가 `kis-mock-server` 대신 실제 KIS 또는 테스트 서버를 바라보도록 환경변수 조정.
 2.  **`nginx/`**:
-    *   `nginx.conf`: `/api/`는 `app:8000`, `/ws/`는 `subscribe-handler` 등 적절한 라우팅 설정.
+    *   `nginx.conf`: `/api/`는 `app:8000`, `/ws/`는 `tick-broadcaster` 등 적절한 라우팅 설정.
 
 ### 3단계: CI/CD 연동 준비
 *   `deploy/app/docker-compose.yml`에서 이미지를 `local build`와 `registry image` 중 선택 가능하도록 주석 가이드 추가.

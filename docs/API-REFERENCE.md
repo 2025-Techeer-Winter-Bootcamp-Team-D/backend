@@ -358,12 +358,12 @@ python manage.py crawl_news --keywords "AI" --max-articles 5
 
 ### Core 앱
 
-#### `subscribe_handler`
+#### `tick_broadcaster`
 Redis Stream 구독하여 실시간 주가 데이터를 Django Channels로 전송
 
 **사용법:**
 ```bash
-python manage.py subscribe_handler
+python manage.py tick_broadcaster
 ```
 
 **설명:** Redis Stream(`stock:realtime`)을 구독하여 실시간 주가 데이터를 Django Channels로 전송합니다.

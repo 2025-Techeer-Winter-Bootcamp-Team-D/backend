@@ -269,7 +269,7 @@ class StockPriceConsumer(AsyncWebsocketConsumer):
 
     async def stock_price_update(self, event):
         """
-        subscribe_handler에서 group_send로 호출되는 핸들러.
+        tick_broadcaster에서 group_send로 호출되는 핸들러.
         실시간 주가 데이터를 클라이언트에게 전송.
         """
         stock_code = event.get("stock_code")

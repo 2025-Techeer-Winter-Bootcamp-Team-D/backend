@@ -1,7 +1,7 @@
 """
-RabbitMQ에서 실시간 주가 데이터를 구독하여 Django Channels로 전송하는 핸들러.
+RabbitMQ에서 실시간 주가 틱 데이터를 구독하여 WebSocket 클라이언트에게 브로드캐스트.
 
-종목별 Channels 그룹(stock_{code})으로 선택적 브로드캐스트.
+종목별 Channels 그룹(stock_{code})으로 선택적 전송.
 """
 
 import asyncio
@@ -18,7 +18,7 @@ QUEUE_NAME = "stock.ticks.channels"
 
 
 class Command(BaseCommand):
-    help = "RabbitMQ를 구독하여 실시간 주가 데이터를 Django Channels로 전송합니다."
+    help = "RabbitMQ에서 주가 틱 데이터를 받아 WebSocket으로 브로드캐스트합니다."
 
     def handle(self, *args, **options):
         asyncio.run(self.main())

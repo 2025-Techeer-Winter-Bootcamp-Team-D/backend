@@ -48,9 +48,9 @@ KIS API의 40개 종목 제한을 효율적으로 관리.
 - 종목별 Channels 그룹 가입/탈퇴 (`stock_{code}`)
 - 연결 해제 시 cleanup 처리
 
-### Phase 3: subscribe-handler 수정 ✅
+### Phase 3: tick-broadcaster 수정 ✅
 
-**파일**: `core/management/commands/subscribe_handler.py` (수정)
+**파일**: `core/management/commands/tick_broadcaster.py` (수정)
 
 - 전체 브로드캐스트 → 종목별 그룹 브로드캐스트 변경
 - `group_send("stock_prices", ...)` → `group_send(f"stock_{code}", ...)`
@@ -133,7 +133,7 @@ KIS API의 40개 종목 제한을 효율적으로 관리.
 |------|------|------|
 | `core/services/subscription_manager.py` | 신규 | ✅ |
 | `core/consumers.py` | 수정 | ✅ |
-| `core/management/commands/subscribe_handler.py` | 수정 | ✅ |
+| `core/management/commands/tick_broadcaster.py` | 수정 | ✅ |
 | `kis-publisher/subscription_handler.py` | 신규 | ✅ |
 | `kis-publisher/main.py` | 수정 | ✅ |
 | `kis-publisher/mock_server.py` | 수정 | ✅ |
@@ -160,7 +160,7 @@ KIS API의 40개 종목 제한을 효율적으로 관리.
 ```
 1. KIS API → kis-publisher: 체결 데이터 수신
 2. kis-publisher → RabbitMQ: 메시지 발행 (stock.realtime exchange)
-3. subscribe_handler: RabbitMQ 구독 → Channels 그룹 전송
+3. tick_broadcaster: RabbitMQ 구독 → Channels 그룹 전송
 4. StockPriceConsumer.stock_price_update() → Frontend
 ```
 

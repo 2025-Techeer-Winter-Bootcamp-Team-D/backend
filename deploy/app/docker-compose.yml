@@ -71,12 +71,12 @@ services:
       - app-network
     restart: always
 
-  subscribe-handler:
+  tick-broadcaster:
     image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/backend-core:latest
-    container_name: subscribe-handler
+    container_name: tick-broadcaster
     env_file:
       - .env
-    command: python manage.py subscribe_handler
+    command: python manage.py tick_broadcaster
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DB_HOST}:5432/${POSTGRES_DB}
       - REDIS_HOST=${REDIS_HOST}
@@ -117,9 +117,9 @@ services:
         max_attempts: 10
         window: 120s
 
-  persistence-worker:
-    image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/persistence-worker:latest
-    container_name: persistence-worker
+  tick-writer:
+    image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/tick-writer:latest
+    container_name: tick-writer
     env_file:
       - .env
     environment:

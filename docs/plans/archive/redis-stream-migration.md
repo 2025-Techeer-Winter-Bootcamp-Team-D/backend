@@ -36,7 +36,7 @@
 KIS WebSocket
   → kis-publisher (parse)
   → Redis Pub/Sub: stock:realtime:{종목코드}
-  → persistence-worker (subscribe)
+  → tick-writer (subscribe)
   → TimescaleDB stock_ticks
 ```
 
@@ -50,7 +50,7 @@ KIS WebSocket
 KIS WebSocket
   → kis-publisher (parse)
   → Redis Stream: stock:realtime
-  → persistence-worker (consumer group)
+  → tick-writer (consumer group)
   → TimescaleDB stock_ticks
 ```
 
@@ -82,12 +82,12 @@ KIS WebSocket
 - **Pub/Sub publish → XADD**
 - 기존 채널 포맷 제거, 단일 스트림으로 집계
 
-### 4.2 persistence-worker (소비자)
+### 4.2 tick-writer (소비자)
 - **Redis Pub/Sub 구독 → Streams Consumer Group**
 - 미ACK 메시지 재처리 로직 추가
 - 메시지 ID 기반 중복 방지 고려
 
-### 4.3 subscribe-handler (Django Channels용)
+### 4.3 tick-broadcaster (Django Channels용)
 - 별도 Consumer Group: `django_channels_group`
 - `XREADGROUP`으로 실시간 데이터 소비
 - Django Channels WebSocket으로 클라이언트에게 전송
@@ -100,7 +100,7 @@ KIS WebSocket
 - Redis client로 `XADD stock:realtime * fields...`
 - 필드 키는 JSON 직렬화 없이 단순 key/value 사용
 
-### 5.2 persistence-worker 변경
+### 5.2 tick-writer 변경
 - 시작 시 `XGROUP CREATE stock:realtime stock_ticks_ingest $ MKSTREAM`
 - `XREADGROUP GROUP stock_ticks_ingest <consumer> BLOCK 2000 COUNT 200 STREAMS stock:realtime >`
 - 처리 성공 → `XACK`
@@ -117,7 +117,7 @@ KIS WebSocket
 ## 6) 단계별 적용 순서
 
 1. **Redis Streams 기반 publish 추가**
-2. **persistence-worker Streams 소비 추가**
+2. **tick-writer Streams 소비 추가**
 3. **Pub/Sub 제거**
 
 ---
@@ -147,8 +147,8 @@ KIS WebSocket
 
 ## 9) 체크리스트
 - [x] kis-publisher XADD 적용
-- [x] persistence-worker XREADGROUP 적용
-- [x] subscribe-handler XREADGROUP 적용
+- [x] tick-writer XREADGROUP 적용
+- [x] tick-broadcaster XREADGROUP 적용
 - [x] Consumer Group 초기화 로직 추가
 - [x] Pub/Sub 제거
 - [ ] 문서/운영 가이드 업데이트
