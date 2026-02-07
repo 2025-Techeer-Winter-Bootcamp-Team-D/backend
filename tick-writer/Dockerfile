@@ -11,11 +11,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy uv from official image (much faster than pip install)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-COPY persistence-worker/requirements.txt .
+COPY tick-writer/requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --system -r requirements.txt
 
-COPY persistence-worker/main.py .
+COPY tick-writer/main.py .
 
 # 로그 즉시 출력을 위해 환경변수 설정
 ENV PYTHONUNBUFFERED=1
