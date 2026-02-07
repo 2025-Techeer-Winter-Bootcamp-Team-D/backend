@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'django-app'
+    metrics_path: /internal/metrics
+    static_configs:
+      # nginx를 통해 접근 (같은 네트워크 내)
+      - targets: ['nginx:80']
+
+  - job_name: 'node-exporter-app-layer'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  # Data Layer Targets (Configure in production with actual IPs)
+  # - job_name: 'data-node-exporter'
+  #   static_configs:
+  #     - targets: ['DATE_NODE_IP:9100']

@@ -1,0 +1,252 @@
+# =============================================================================
+# Upstream 정의
+# =============================================================================
+
+# App Layer (Docker 내부 네트워크)
+upstream backend_server {
+    server app:8000;
+}
+
+upstream flower_server {
+    server flower:5555;
+}
+
+# Monitoring Layer (환경변수로 호스트 지정)
+upstream prometheus_server {
+    server ${MONITORING_HOST}:9090;
+}
+
+upstream grafana_server {
+    server ${MONITORING_HOST}:3000;
+}
+
+upstream alertmanager_server {
+    server ${MONITORING_HOST}:9093;
+}
+
+upstream portainer_server {
+    server ${MONITORING_HOST}:9000;
+}
+
+# Data Layer (환경변수로 호스트 지정)
+upstream rabbitmq_server {
+    server ${DATA_HOST}:15672;
+}
+
+# =============================================================================
+# HTTP → HTTPS 리다이렉트
+# =============================================================================
+server {
+    listen 80;
+    server_name _;
+
+    # Docker 내부 DNS 서버
+    resolver 127.0.0.11 valid=30s;
+
+    # Let's Encrypt 인증용 경로
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    # Health check (HTTP에서도 응답)
+    location /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+    }
+
+    # Prometheus 메트릭 수집 (HTTP 허용 - 내부 네트워크)
+    location /internal/ {
+        # 내부 네트워크만 허용
+        allow 10.0.0.0/8;
+        allow 172.16.0.0/12;
+        allow 192.168.0.0/16;
+        allow 127.0.0.1;
+        deny all;
+
+        set $target_internal "backend_server";
+        proxy_pass http://$target_internal;
+        proxy_set_header Host localhost;
+    }
+
+    # 나머지는 HTTPS로 리다이렉트
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# =============================================================================
+# HTTPS Main Server Block
+# =============================================================================
+server {
+    listen 443 ssl http2;
+    server_name _;
+
+    # Docker 내부 DNS 서버 (변수 사용 시 필수)
+    resolver 127.0.0.11 valid=30s;
+
+    # =========================================================================
+    # SSL 설정
+    # =========================================================================
+    ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+
+    # SSL 보안 설정
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:50m;
+    ssl_session_tickets off;
+
+    # 최신 프로토콜만 사용
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+
+    # HSTS (Strict Transport Security)
+    add_header Strict-Transport-Security "max-age=63072000" always;
+
+    # 보안 헤더
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    # =========================================================================
+    # 공통 Proxy 헤더 설정
+    # =========================================================================
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # =========================================================================
+    # App Layer
+    # =========================================================================
+
+    # 1. Django API 및 일반 HTTP 요청
+    location / {
+        set $target_app "backend_server";
+        proxy_pass http://$target_app;
+
+        # 타임아웃 설정
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+
+    # 2. WebSocket 요청 처리 (Daphne/Channels)
+    location /ws/ {
+        set $target_ws "backend_server";
+        proxy_pass http://$target_ws;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 86400;
+        proxy_send_timeout 86400;
+    }
+
+    # 3. Celery Flower 모니터링
+    location /celery-flower/ {
+        set $target_flower "flower_server";
+        proxy_pass http://$target_flower;
+        proxy_set_header Host $host;
+    }
+
+    # 4. 정적 및 미디어 파일
+    location /static/ {
+        alias /app/static/;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location /media/ {
+        alias /app/media/;
+        expires 7d;
+    }
+
+    # =========================================================================
+    # Monitoring Layer
+    # =========================================================================
+
+    # 5. Grafana 대시보드 (GF_SERVER_SERVE_FROM_SUB_PATH=true 설정됨)
+    location /grafana/ {
+        proxy_pass http://grafana_server;
+        proxy_set_header Host $host;
+
+        # WebSocket 지원 (Live 기능)
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # 6. Prometheus (--web.external-url, --web.route-prefix 설정됨)
+    location /prometheus/ {
+        proxy_pass http://prometheus_server/prometheus/;
+        proxy_set_header Host $host;
+    }
+
+    # 7. Alertmanager (서브패스 미지원 - rewrite 필요)
+    location /alertmanager/ {
+        rewrite ^/alertmanager/(.*)$ /$1 break;
+        proxy_pass http://alertmanager_server;
+        proxy_set_header Host $host;
+    }
+
+    # 8. Portainer (서브패스 미지원 - rewrite 필요)
+    location /portainer/ {
+        rewrite ^/portainer/(.*)$ /$1 break;
+        proxy_pass http://portainer_server;
+        proxy_set_header Host $host;
+
+        # WebSocket 지원
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # =========================================================================
+    # Data Layer
+    # =========================================================================
+
+    # 9. RabbitMQ Management UI (서브패스 미지원 - rewrite 필요)
+    location /rabbitmq/ {
+        rewrite ^/rabbitmq/(.*)$ /$1 break;
+        proxy_pass http://rabbitmq_server;
+        proxy_set_header Host $host;
+    }
+
+    # =========================================================================
+    # Internal (Prometheus 메트릭)
+    # =========================================================================
+
+    # 10. Django Prometheus 메트릭 (내부 접근만 허용)
+    location /internal/ {
+        # 내부 네트워크만 허용 (EC2 VPC 대역)
+        allow 10.0.0.0/8;
+        allow 172.16.0.0/12;
+        allow 192.168.0.0/16;
+        allow 127.0.0.1;
+        deny all;
+
+        set $target_internal "backend_server";
+        proxy_pass http://$target_internal;
+        # Prometheus가 IP로 직접 접근할 때 Django ALLOWED_HOSTS 오류 방지
+        proxy_set_header Host localhost;
+    }
+
+    # =========================================================================
+    # Health & Status
+    # =========================================================================
+
+    # 11. Nginx 상태 확인 (Prometheus 용)
+    location /stub_status {
+        stub_status;
+        allow all;
+    }
+
+    # 12. Health check 엔드포인트
+    location /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+    }
+}

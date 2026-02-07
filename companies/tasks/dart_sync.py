@@ -1,0 +1,274 @@
+# companies/tasks/dart_sync.py
+"""
+DART 데이터 동기화 Celery 작업
+주기적으로 DART API에서 기업 정보, 재무제표, 보고서를 동기화하는 작업
+"""
+from celery import shared_task
+import logging
+import requests
+
+from companies.models import Company
+from companies.services.company_info import CompanyInfoService
+from companies.services.financial import FinancialService
+from companies.services.reports import ReportsService
+from companies.services.dart_api import DartAPIError
+
+logger = logging.getLogger(__name__)
+
+
+@shared_task(bind=True, max_retries=3)
+def sync_company_info_from_dart(self, stock_code: str):
+    """
+    DART에서 기업 기본 정보 동기화
+
+    Args:
+        stock_code: 종목코드
+    """
+    try:
+        company = Company.objects.get(pk=stock_code, is_deleted=False)
+
+        if not company.corp_code:
+            logger.warning(f"Corp code not found for {stock_code}")
+            return
+
+        service = CompanyInfoService()
+        service.sync_company_info(company)
+
+        logger.info(f"기업 정보 동기화 완료: {stock_code}")
+
+    except Company.DoesNotExist:
+        logger.error(f"Company not found: {stock_code}")
+    except DartAPIError as e:
+        logger.error(f"DART API error: {e}")
+        # 60초 후 재시도
+        raise self.retry(countdown=60, exc=e)
+    except (requests.RequestException, requests.HTTPError, requests.Timeout) as e:
+        # KIS API 등 일시적 네트워크/서버 오류는 재시도
+        logger.error(f"일시적 네트워크/서버 오류 (재시도): {e}")
+        raise self.retry(countdown=60, exc=e)
+    except Exception as e:
+        logger.error(f"Error syncing company info: {e}")
+        raise
+
+
+@shared_task(bind=True, max_retries=5)  # 재시도 횟수 증가 (3 -> 5)
+def sync_financial_statements(self, stock_code: str, year: int):
+    """
+    DART에서 재무제표 동기화 + 배당 정보 동기화 + 재무 지표 계산
+    느려도 확실하게 데이터가 저장되도록 재시도 로직 강화
+
+    Args:
+        stock_code: 종목코드
+        year: 사업연도
+    """
+    try:
+        company = Company.objects.get(pk=stock_code, is_deleted=False)
+
+        if not company.corp_code:
+            logger.warning(f"Corp code not found for {stock_code}")
+            return
+
+        service = FinancialService()
+        # 사업보고서(11011)만 조회 (기본값)
+        statements = service.sync_financial_statements(
+            company, year, sync_all_reports=False
+        )
+
+        logger.info(
+            f"재무제표 동기화 완료: {stock_code} ({year}년, {len(statements)}개 보고서)"
+        )
+
+        # 재무제표 동기화 후 배당 정보 동기화 및 재무 지표 계산
+        # statements가 비어있어도 빈 레코드가 생성되었을 수 있으므로 체크
+        if statements:
+            from companies.tasks.financial_metrics import (
+                sync_dividend_and_calculate_task,
+            )
+
+            logger.info(
+                f"배당 정보 동기화 및 재무 지표 계산 시작: {stock_code} ({year}년)"
+            )
+            sync_dividend_and_calculate_task.delay(stock_code, year)
+
+    except Company.DoesNotExist:
+        logger.error(f"Company not found: {stock_code}")
+        # 기업이 없으면 재시도 불필요
+        return
+    except DartAPIError as e:
+        # "조회된 데이타가 없습니다" (status: 013)는 재시도 불필요
+        error_message = str(e)
+        if "013" in error_message or "조회된 데이타가 없습니다" in error_message:
+            logger.warning(
+                f"재무제표 데이터 없음 (정상): {stock_code} ({year}년) - {e}"
+            )
+            return  # 재시도하지 않고 종료
+        else:
+            # DART API 오류는 재시도 (더 긴 대기 시간)
+            retry_count = self.request.retries
+            countdown = min(
+                60 * (retry_count + 1), 300
+            )  # 60초, 120초, 180초, 240초, 300초 (최대 5분)
+            logger.warning(
+                f"DART API error (재시도 {retry_count + 1}/{self.max_retries}): "
+                f"{stock_code} ({year}년) - {e}, {countdown}초 후 재시도"
+            )
+            raise self.retry(countdown=countdown, exc=e)
+    except Exception as e:
+        # 일반 예외도 재시도 (더 긴 대기 시간)
+        retry_count = self.request.retries
+        countdown = min(
+            60 * (retry_count + 1), 300
+        )  # 60초, 120초, 180초, 240초, 300초 (최대 5분)
+        logger.error(
+            f"Error syncing financial statements "
+            f"(재시도 {retry_count + 1}/{self.max_retries}): "
+            f"{stock_code} ({year}년) - {e}, {countdown}초 후 재시도"
+        )
+        raise self.retry(countdown=countdown, exc=e)
+
+
+@shared_task(bind=True, max_retries=3)
+def sync_company_reports(self, stock_code: str, days: int = 365):
+    """
+    DART에서 보고서 목록 동기화 (전체 동기화, 주요 공시만)
+
+    Args:
+        stock_code: 종목코드
+        days: 조회할 기간 (일 단위, 기본값: 365일)
+    """
+    try:
+        company = Company.objects.get(pk=stock_code, is_deleted=False)
+
+        if not company.corp_code:
+            logger.warning(f"Corp code not found for {stock_code}")
+            return
+
+        service = ReportsService()
+        # 전체 동기화 + 주요 공시만 (정기공시 + 주요사항보고)
+        reports = service.sync_reports(company, days=days, report_types=["A", "B"])
+
+        logger.info(f"보고서 동기화 완료: {stock_code} ({len(reports)}건)")
+
+    except Company.DoesNotExist:
+        logger.error(f"Company not found: {stock_code}")
+    except DartAPIError as e:
+        logger.error(f"DART API error: {e}")
+        raise self.retry(countdown=60, exc=e)
+    except Exception as e:
+        logger.error(f"Error syncing reports: {e}")
+        raise
+
+
+@shared_task
+def sync_all_company_info():
+    """
+    모든 기업의 기본 정보 동기화 (주기적 실행용)
+    """
+    companies = Company.objects.filter(is_deleted=False, corp_code__isnull=False)
+    total = companies.count()
+    logger.info(f"전체 기업 정보 동기화 시작: {total}개 기업")
+
+    for company in companies:
+        try:
+            sync_company_info_from_dart.delay(company.stock_code)
+        except Exception:
+            logger.exception("기업 정보 동기화 작업 등록 실패: %s", company.stock_code)
+
+    logger.info(f"전체 기업 정보 동기화 작업 등록 완료: {total}개")
+
+
+@shared_task
+def sync_all_financial_statements(years: int = 3, batch_size: int = 50):
+    """
+    모든 기업의 재무제표 동기화 (주기적 실행용)
+    재무제표 동기화 시 배당 정보 및 재무 지표 계산도 함께 수행됩니다.
+
+    Args:
+        years: 동기화할 연도 수 (기본값: 3, 최근 3년)
+        batch_size: 한 번에 처리할 기업 수 (기본값: 50)
+    """
+    from datetime import datetime
+    from celery.exceptions import Reject
+
+    current_year = datetime.now().year
+    companies = Company.objects.filter(is_deleted=False, corp_code__isnull=False)
+    total = companies.count()
+    logger.info(
+        f"전체 기업 재무제표 동기화 시작: {total}개 기업, 최근 {years}년 ({current_year - years + 1}~{current_year}년)"
+    )
+
+    task_count = 0
+    # 배치 단위로 기업을 처리
+    for i in range(0, total, batch_size):
+        batch = companies[i : i + batch_size]
+        tasks = []
+
+        for company in batch:
+            try:
+                # 현재부터 과거 N년치 재무제표 동기화 작업 등록
+                for year_offset in range(years):
+                    target_year = current_year - year_offset
+
+                    # 2025년, 2026년 제외 (아직 재무지표가 제공되지 않음)
+                    if target_year >= 2025:
+                        logger.debug(
+                            f"재무제표 동기화 제외 (미제공): {company.stock_code} ({target_year}년)"
+                        )
+                        continue
+
+                    # countdown을 사용하여 작업을 시간차로 분산
+                    countdown_offset = (i // batch_size) * 60 + year_offset * 10
+                    task = sync_financial_statements.apply_async(
+                        args=[company.stock_code, target_year],
+                        countdown=countdown_offset,
+                    )
+                    tasks.append(task)
+                    task_count += 1
+            except (Reject, ConnectionError):
+                # 특정 예외만 처리 (Celery 연결 오류 등)
+                logger.exception(
+                    "재무제표 동기화 작업 등록 실패: %s", company.stock_code
+                )
+
+        logger.info(
+            f"배치 {i // batch_size + 1} 완료: {len(batch)}개 기업, {len(tasks)}개 작업 등록"
+        )
+
+    logger.info(
+        f"전체 기업 재무제표 동기화 작업 등록 완료: {total}개 기업, 총 {task_count}개 작업"
+    )
+
+
+@shared_task
+def sync_all_reports():
+    """
+    모든 기업의 보고서 목록 동기화 (주기적 실행용)
+    전체 동기화 + 주요 공시만 (정기공시 + 주요사항보고)
+    """
+    companies = Company.objects.filter(is_deleted=False, corp_code__isnull=False)
+    total = companies.count()
+    logger.info(
+        f"전체 기업 보고서 동기화 시작: {total}개 기업 (전체 동기화, 주요 공시만)"
+    )
+
+    for company in companies:
+        try:
+            sync_company_reports.delay(company.stock_code, days=365)
+        except Exception as e:
+            logger.error(f"보고서 동기화 작업 등록 실패: {company.stock_code} - {e}")
+
+    logger.info(f"전체 기업 보고서 동기화 작업 등록 완료: {total}개")
+
+
+@shared_task
+def sync_all_rankings():
+    """
+    모든 산업의 시가총액 순위 동기화 (주기적 실행용)
+    """
+    from companies.tasks.rankings import update_all_rankings_task
+
+    try:
+        update_all_rankings_task.delay()
+        logger.info("산업 시가총액 순위 동기화 작업 등록 완료")
+    except Exception:
+        logger.exception("산업 시가총액 순위 동기화 작업 등록 실패")

@@ -1,0 +1,268 @@
+name: app
+
+services:
+  nginx:
+    build:
+      context: ../..
+      dockerfile: ./deploy/app/nginx/Dockerfile
+    container_name: nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # 도메인 설정 (SSL 인증서 경로에 사용)
+      - DOMAIN=${DOMAIN}
+      # 모니터링 서버 호스트 (같은 서버면 host.docker.internal, 다른 서버면 IP 지정)
+      - MONITORING_HOST=${MONITORING_HOST:-host.docker.internal}
+      # 데이터 서버 호스트 (같은 서버면 host.docker.internal, 다른 서버면 IP 지정)
+      - DATA_HOST=${DATA_HOST:-host.docker.internal}
+    extra_hosts:
+      # Linux에서 host.docker.internal 지원
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../../static:/app/static
+      - ../../media:/app/media
+      # SSL 인증서 및 Certbot 볼륨 (rw: 더미 인증서 생성 허용)
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot:ro
+    depends_on:
+      - app
+    networks:
+      - app-network
+    restart: always
+    # Dockerfile의 ENTRYPOINT/CMD 사용 (템플릿 처리 + nginx 시작)
+    # SSL 인증서 갱신은 certbot 컨테이너가 담당
+
+  # Let's Encrypt Certbot (인증서 자동 갱신)
+  certbot:
+    image: certbot/certbot
+    container_name: certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    # 12시간마다 갱신 확인 (만료 30일 전부터 갱신 시도)
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    networks:
+      - app-network
+
+  app:
+    image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/backend-core:latest
+    container_name: django
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DB_HOST}:5432/${POSTGRES_DB}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_PORT=6379
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@${RABBITMQ_HOST}:5672/
+      - CELERY_BROKER_URL=amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@${RABBITMQ_HOST}:5672/
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+      - OPENSEARCH_HOST=${OPENSEARCH_HOST}:9200
+      - OPENSEARCH_USE_SSL=true
+      - OPENSEARCH_VERIFY_CERTS=false
+      - OPENSEARCH_USERNAME=${OPENSEARCH_USERNAME:-admin}
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+    volumes:
+      - ../../static:/app/static
+      - ../../media:/app/media
+    networks:
+      - app-network
+    restart: always
+
+  tick-broadcaster:
+    image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/backend-core:latest
+    container_name: tick-broadcaster
+    env_file:
+      - .env
+    command: python manage.py tick_broadcaster
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DB_HOST}:5432/${POSTGRES_DB}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_PORT=6379
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@${RABBITMQ_HOST}:5672/
+      - PYTHONUNBUFFERED=1
+    networks:
+      - app-network
+    restart: always
+
+  kis-publisher:
+    image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/kis-publisher:latest
+    container_name: kis-publisher
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DB_HOST}:5432/${POSTGRES_DB}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@${RABBITMQ_HOST}:5672/
+      - PYTHONUNBUFFERED=1
+      - KRX_SYMBOLS_CSV_PATH=/app/companies_data.csv
+      - KIS_SYMBOL_LIMIT=50
+      - KIS_USE_TEST_MODE=${KIS_USE_TEST_MODE:-false}
+      - KIS_APP_KEY=${KIS_APP_KEY}
+      - KIS_APP_SECRET=${KIS_APP_SECRET}
+      - KIS_MAX_RECONNECT=3
+    networks:
+      - app-network
+    restart: on-failure
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 10
+        window: 120s
+
+  tick-writer:
+    image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/tick-writer:latest
+    container_name: tick-writer
+    env_file:
+      - .env
+    environment:
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_PORT=6379
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@${RABBITMQ_HOST}:5672/
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DB_HOST}:5432/${POSTGRES_DB}
+      - PYTHONUNBUFFERED=1
+      - TZ=Asia/Seoul
+    networks:
+      - app-network
+    restart: always
+
+  celery-worker:
+    image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/backend-core:latest
+    container_name: celery-worker
+    env_file:
+      - .env
+    command: celery -A config worker --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DB_HOST}:5432/${POSTGRES_DB}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_PORT=6379
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@${RABBITMQ_HOST}:5672/
+      - CELERY_BROKER_URL=amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@${RABBITMQ_HOST}:5672/
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+      - OPENSEARCH_HOST=${OPENSEARCH_HOST}:9200
+      - OPENSEARCH_USE_SSL=true
+      - OPENSEARCH_VERIFY_CERTS=false
+      - OPENSEARCH_USERNAME=${OPENSEARCH_USERNAME:-admin}
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ../../static:/app/static
+      - ../../media:/app/media
+    networks:
+      - app-network
+    restart: always
+
+  celery-beat:
+    image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/backend-core:latest
+    container_name: celery-beat
+    env_file:
+      - .env
+    command: celery -A config beat --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DB_HOST}:5432/${POSTGRES_DB}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_PORT=6379
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@${RABBITMQ_HOST}:5672/
+      - CELERY_BROKER_URL=amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@${RABBITMQ_HOST}:5672/
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+      - PYTHONUNBUFFERED=1
+      - NEWS_BATCH_ENABLED=${NEWS_BATCH_ENABLED:-true}
+      - DART_SYNC_ENABLED=${DART_SYNC_ENABLED:-true}
+      - REPORT_PROCESSING_ENABLED=${REPORT_PROCESSING_ENABLED:-true}
+    volumes:
+      - ../../static:/app/static
+      - ../../media:/app/media
+    networks:
+      - app-network
+    restart: always
+
+  flower:
+    image: ghcr.io/2025-techeer-winter-bootcamp-team-d/techeer-winter/backend-core:latest
+    container_name: celery-flower
+    env_file:
+      - .env
+    # [수정] url_prefix를 통해 하위 경로 인식
+    command: celery -A config flower --port=5555 --url_prefix=celery-flower
+    ports:
+      - "127.0.0.1:5555:5555"
+    environment:
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_PORT=6379
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@${RABBITMQ_HOST}:5672/
+      - CELERY_BROKER_URL=amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@${RABBITMQ_HOST}:5672/
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0
+    networks:
+      - app-network
+    restart: always
+
+  # Prometheus, Grafana는 Monitoring Layer로 이전됨
+  # Node Exporter와 cAdvisor는 메트릭 제공을 위해 유지
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - "9100:9100"  # Monitoring Layer에서 수집하기 위해 외부 노출
+    networks:
+      - app-network
+    restart: always
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor
+    container_name: cadvisor
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "8081:8080"  # Monitoring Layer에서 수집하기 위해 외부 노출
+    networks:
+      - app-network
+    restart: always
+
+  # Portainer Agent (중앙 Portainer에서 원격 관리용)
+  portainer-agent:
+    image: portainer/agent:latest
+    container_name: portainer-agent
+    ports:
+      - "9001:9001"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/volumes:/var/lib/docker/volumes
+    networks:
+      - app-network
+    restart: always
+
+networks:
+  app-network:
+    driver: bridge

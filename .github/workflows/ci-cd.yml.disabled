@@ -1,0 +1,405 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ "develop" ]
+  pull_request:
+    branches: [ "develop" ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  ci:
+    name: Continuous Integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Ruff
+        run: pip install ruff
+
+      - name: Run Ruff
+        run: ruff check .
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_DB: test_db
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 3s
+          --health-timeout 2s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv pip install --system -r requirements.txt
+
+      - name: Run Tests
+        env:
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/test_db
+          REDIS_URL: redis://localhost:6379/0
+          DJANGO_SECRET_KEY: test_secret_key
+          DEBUG: "True"
+        run: python manage.py test --parallel auto
+
+  build-and-push:
+    name: Build & Push Docker Images
+    needs: [ci, test]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+      
+    strategy:
+      matrix:
+        include:
+          - service: backend-core
+            context: .
+            file: Dockerfile
+            image: backend-core
+          - service: kis-publisher
+            context: .
+            file: ./kis-publisher/Dockerfile
+            image: kis-publisher
+          - service: tick-writer
+            context: .
+            file: ./tick-writer/Dockerfile
+            image: tick-writer
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/techeer-winter/${{ matrix.image }}
+          tags: |
+            type=raw,value=latest
+            type=sha,format=long
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  deploy-data:
+    name: Deploy Data Layer
+    needs: [build-and-push]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Copy deployment files
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DATA_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "deploy/data/docker-compose.yml,opensearch/*"
+          target: "~/techeer-deploy"
+          timeout: 120s
+          command_timeout: 15m
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DATA_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          timeout: 120s
+          command_timeout: 15m
+          script: |
+            cd ~/techeer-deploy/deploy/data
+            echo "${{ secrets.ENV_FILE_DATA }}" > .env
+            sudo mkdir -p /home/ubuntu/infra-data/opensearch
+            sudo chown -R 1000:1000 /home/ubuntu/infra-data/opensearch
+
+            docker compose pull
+            docker compose up -d --build --remove-orphans
+            docker image prune -f
+
+  deploy-app:
+    name: Deploy Application Layer
+    needs: [deploy-data]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Copy deployment files
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.APP_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "deploy/app/*"
+          target: "~/techeer-deploy"
+          strip_components: 0
+          overwrite: true
+          timeout: 120s
+          command_timeout: 15m
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.APP_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          timeout: 120s
+          command_timeout: 15m
+          script: |
+            cd ~/techeer-deploy/deploy/app
+            echo "${{ secrets.ENV_FILE_APP }}" > .env
+
+            # GHCR 로그인 및 배포
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker compose pull
+            docker compose up -d --build --remove-orphans
+            docker image prune -af
+
+      - name: Verify App deployment
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.APP_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          timeout: 120s
+          command_timeout: 10m
+          script: |
+            set -e  # 명령 실패 시 즉시 종료
+
+            echo "=== 컨테이너 상태 확인 ==="
+            docker ps
+
+            echo "=== Nginx Health Check (재시도 포함) ==="
+            for i in {1..20}; do
+              if curl -sf http://localhost/health; then
+                echo "Nginx is ready"
+                break
+              fi
+              if [ $i -eq 20 ]; then
+                echo "ERROR: Nginx health check failed after 20 attempts"
+                docker logs nginx --tail 100
+                docker logs django --tail 50
+                exit 1
+              fi
+              echo "Waiting for Nginx... (attempt $i/20)"
+              sleep 3
+            done
+
+            echo "=== Node Exporter Health Check ==="
+            if ! curl -f http://localhost:9100/metrics; then
+              echo "ERROR: Node Exporter health check failed"
+              exit 1
+            fi
+
+            echo "=== cAdvisor Health Check ==="
+            if ! curl -f http://localhost:8081/metrics; then
+              echo "ERROR: cAdvisor health check failed"
+              exit 1
+            fi
+
+            echo "All health checks passed successfully"
+
+  deploy-monitoring:
+    name: Deploy Monitoring Layer
+    needs: [deploy-app]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Copy monitoring deployment files
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.MONITORING_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "deploy/monitoring/*"
+          target: "~/techeer-deploy"
+          strip_components: 0
+          overwrite: true
+          timeout: 120s
+          command_timeout: 15m
+
+      - name: Deploy Monitoring Stack via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.MONITORING_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          timeout: 120s
+          command_timeout: 15m
+          script: |
+            cd ~/techeer-deploy/deploy/monitoring
+            echo "${{ secrets.ENV_FILE_MONITORING }}" > .env
+
+            # 환경 변수 로드
+            source .env
+
+            # 필수 환경 변수 검증
+            if [ -z "$APP_PRIVATE_IP" ]; then
+              echo "ERROR: APP_PRIVATE_IP is not set in .env file"
+              exit 1
+            fi
+
+            if [ -z "$DATA_PRIVATE_IP" ]; then
+              echo "ERROR: DATA_PRIVATE_IP is not set in .env file"
+              exit 1
+            fi
+
+            echo "Environment variables validated:"
+            echo "  APP_PRIVATE_IP: $APP_PRIVATE_IP"
+            echo "  DATA_PRIVATE_IP: $DATA_PRIVATE_IP"
+
+            # prometheus.yml에 IP 주소 치환
+            sed -i "s/\${APP_PRIVATE_IP}/$APP_PRIVATE_IP/g" prometheus.yml
+            sed -i "s/\${DATA_PRIVATE_IP}/$DATA_PRIVATE_IP/g" prometheus.yml
+
+            # Docker Compose로 모니터링 스택 시작
+            docker compose pull
+            docker compose up -d --build --remove-orphans --force-recreate
+            docker image prune -af
+
+      - name: Verify Monitoring Stack
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.MONITORING_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          timeout: 120s
+          command_timeout: 10m
+          script: |
+            set -e  # 명령 실패 시 즉시 종료
+
+            echo "=== 컨테이너 상태 확인 ==="
+            docker ps
+
+            echo "=== Prometheus Health Check (재시도 포함) ==="
+            for i in {1..20}; do
+              if curl -sf http://localhost:9090/prometheus/-/healthy; then
+                echo "Prometheus is ready"
+                break
+              fi
+              if [ $i -eq 20 ]; then
+                echo "ERROR: Prometheus health check failed"
+                exit 1
+              fi
+              echo "Waiting for Prometheus... (attempt $i/20)"
+              sleep 3
+            done
+
+            echo "=== Grafana Health Check (재시도 포함) ==="
+            for i in {1..20}; do
+              if curl -sf http://localhost:3000/grafana/api/health; then
+                echo "Grafana is ready"
+                break
+              fi
+              if [ $i -eq 20 ]; then
+                echo "ERROR: Grafana health check failed after 20 attempts"
+                docker logs grafana --tail 50
+                exit 1
+              fi
+              echo "Waiting for Grafana... (attempt $i/20)"
+              sleep 3
+            done
+
+            echo "=== Loki Health Check (재시도 포함) ==="
+            for i in {1..12}; do
+              if curl -f http://localhost:3100/ready 2>/dev/null; then
+                echo "Loki is ready"
+                break
+              fi
+              if [ $i -eq 12 ]; then
+                echo "ERROR: Loki health check failed after 12 attempts"
+                docker logs loki --tail 50
+                exit 1
+              fi
+              echo "Loki not ready, waiting 5 seconds... (attempt $i/12)"
+              sleep 5
+            done
+
+            echo "=== Alertmanager Health Check ==="
+            if ! curl -f http://localhost:9093/-/healthy; then
+              echo "ERROR: Alertmanager health check failed"
+              exit 1
+            fi
+
+            echo "=== Portainer Health Check ==="
+            if ! curl -f http://localhost:9000/api/status; then
+              echo "ERROR: Portainer health check failed"
+              exit 1
+            fi
+
+            echo "=== 최종 컨테이너 상태 확인 ==="
+            docker ps
+
+            echo "All monitoring services health checks passed successfully"

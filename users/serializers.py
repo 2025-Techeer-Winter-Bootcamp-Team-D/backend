@@ -1,0 +1,141 @@
+from django.contrib.auth.models import User 
+from django.contrib.auth.password_validation import validate_password # Django의 기본 pw 검증 도구
+from django.contrib.auth import authenticate
+from rest_framework import serializers
+from rest_framework.validators import UniqueValidator # 이메일 중복 방지를 위한 검증 도구
+from .models import Favorite, CompanyVisit
+from companies.models import Company
+
+
+# 회원가입 시리얼라이저
+class RegisterSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField(
+        required=True,
+        validators=[UniqueValidator(queryset=User.objects.all())], # 이메일에 대한 중복 검증
+    )
+    password = serializers.CharField(
+        write_only=True,
+        required=True,
+        validators=[validate_password], # 비밀번호에 대한 검증
+    )
+    password2 = serializers.CharField( # 비밀번호 확인을 위한 필드
+        write_only=True,
+        required=True,
+    )
+
+    class Meta:
+        model = User
+        fields = ('email', 'password', 'password2')
+
+    def validate(self, data): # password과 password2의 일치 여부 확인
+        if data['password'] != data['password2']:
+            raise serializers.ValidationError(
+                {"password": "비밀번호가 일치하지 않습니다."})
+        return data
+
+    def create(self, validated_data):
+        user = User.objects.create_user(
+            username=validated_data['email'], 
+            email=validated_data['email'],
+            password=validated_data['password']
+        )
+        return user
+
+# --- 로그인 시리얼라이저 ---
+class LoginSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
+
+    def validate(self, data):
+        email = data.get('email')
+        password = data.get('password')
+
+        if email and password:
+            user = authenticate(
+                request=self.context.get("request"), 
+                username=email,                     
+                password=password
+            )
+
+            if not user:
+                raise serializers.ValidationError("이메일 또는 비밀번호가 틀렸습니다.")
+        else:
+            raise serializers.ValidationError("이메일과 비밀번호를 모두 입력해주세요.")
+        
+        data['user'] = user
+        return data
+
+# --- 로그아웃 시리얼라이저 ---
+class LogoutRequestSerializer(serializers.Serializer):
+    """로그아웃 요청용 Serializer"""
+    refresh = serializers.CharField(help_text="Refresh 토큰")
+
+
+# --- 즐겨찾기 시리얼라이저 ---
+class FavoriteSerializer(serializers.ModelSerializer):
+    # 프론트엔드와 소통할 이름은 'companyId', 실제 DB 필드는 'company.stock_code'
+    companyId = serializers.CharField(source='company.stock_code')
+
+    favoriteId = serializers.IntegerField(source='favorite_id', read_only=True)
+    companyName = serializers.CharField(source='company.company_name', read_only=True)
+    logoUrl = serializers.URLField(source='company.logo_url', read_only=True)
+
+    class Meta:
+        model = Favorite
+        fields = ['favoriteId', 'companyId', 'companyName', 'logoUrl']
+    
+    def validate_companyId(self, value):
+        try:
+            Company.objects.get(stock_code=value)
+            return value  # 종목코드 문자열을 반환
+        except Company.DoesNotExist:
+            raise serializers.ValidationError("존재하지 않는 기업 종목코드입니다.")
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        stock_code = validated_data.pop('company')['stock_code']
+        company = Company.objects.get(stock_code=stock_code)
+
+        favorite, created = Favorite.objects.get_or_create(
+            user=user,
+            company=company
+        )
+        favorite.is_deleted = False
+        favorite.save()
+        return favorite
+
+
+# --- 방문 기록 시리얼라이저 ---
+class CompanyVisitSerializer(serializers.ModelSerializer):
+    """방문 기록 시리얼라이저"""
+
+    visitId = serializers.IntegerField(source='visit_id', read_only=True)
+    stockCode = serializers.CharField(source='company.stock_code')
+    companyName = serializers.CharField(source='company.company_name', read_only=True)
+    logoUrl = serializers.URLField(source='company.logo_url', read_only=True)
+    visitedAt = serializers.DateTimeField(source='visited_at', read_only=True)
+
+    class Meta:
+        model = CompanyVisit
+        fields = ['visitId', 'stockCode', 'companyName', 'logoUrl', 'visitedAt']
+
+    def validate_stockCode(self, value):
+        try:
+            Company.objects.get(stock_code=value, is_deleted=False)
+            return value
+        except Company.DoesNotExist:
+            raise serializers.ValidationError("존재하지 않는 기업 종목코드입니다.")
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        stock_code = validated_data.pop('company')['stock_code']
+        company = Company.objects.get(stock_code=stock_code, is_deleted=False)
+
+        # 같은 유저+기업 조합이면 visited_at만 업데이트 (auto_now=True로 자동 갱신)
+        visit, created = CompanyVisit.objects.get_or_create(
+            user=user,
+            company=company,
+        )
+        if not created:
+            visit.save()  # visited_at 자동 갱신
+        return visit

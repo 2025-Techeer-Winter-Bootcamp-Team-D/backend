@@ -1,0 +1,103 @@
+# Git files
+.git/
+.gitignore
+.github/
+
+# Documentation (not needed in container)
+docs/
+*.md
+!README.md
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+cover/
+
+# Django
+*.log
+*.pot
+*.mo
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Jupyter
+.ipynb_checkpoints/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre
+.pyre/
+
+# pytype
+.pytype/
+
+# Cython
+cython_debug/
+
+# Scripts (not needed in production)
+scripts/
+seed.py
+
+# Test files
+tests.py
+*_test.py
+test_*.py
+tests_*.py
+
+# Claude
+.claude/
+
+# Docker
+docker-compose.yml
+Dockerfile*
+.dockerignore
+
+# CI/CD
+.github/
+
+# Temporary files
+*.tmp
+*.bak
+*.swp

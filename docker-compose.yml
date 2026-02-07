@@ -1,20 +1,99 @@
 services:
   db:
-    image: mysql:8.0
-    container_name: mysql
+    image: timescale/timescaledb:latest-pg16
+    container_name: postgres-timescaledb
     env_file:
       - .env
     environment:
-      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
-      - MYSQL_DATABASE=${MYSQL_DATABASE}
-      - MYSQL_USER=${MYSQL_USER}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-postgres}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - TZ=Asia/Seoul
+    command: [ "postgres", "-c", "timezone=Asia/Seoul" ]
     networks:
       - django-network
     ports:
-      - 3307:3306
+      - 5432:5432
     volumes:
-      - mysql_data:/var/lib/mysql
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}" ]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    command: redis-server --maxmemory 768mb --maxmemory-policy allkeys-lru
+    networks:
+      - django-network
+    ports:
+      - 6379:6379
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 2s
+      timeout: 2s
+      retries: 5
+      start_period: 3s
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: rabbitmq
+    hostname: rabbitmq
+    ports:
+      - "5672:5672"    # AMQP 포트
+      - "15672:15672"  # Management UI 포트
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+      - RABBITMQ_DEFAULT_VHOST=/
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - django-network
+    restart: always
+
+  opensearch:
+    build: ./opensearch
+    container_name: opensearch
+    env_file:
+      - .env
+    environment:
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - plugins.security.disabled=${OPENSEARCH_SECURITY_DISABLED:-true}
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD:-admin123!@#}
+    networks:
+      - django-network
+    ports:
+      - 9200:9200
+      - 9600:9600
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   app:
     build: .
@@ -23,15 +102,29 @@ services:
       - .env
     ports:
       - 8000:8000
+    volumes:
+      - .:/app
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health/" ]
+      interval: 5s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
     environment:
-      - DATABASE_URL=mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-postgres}
+      - REDIS_URL=redis://redis:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672/
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - OPENSEARCH_HOST=opensearch:9200
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
     networks:
       - django-network
     develop:
@@ -39,11 +132,314 @@ services:
         - path: ./config
           target: config/
           action: sync+restart
+        - path: ./core
+          target: core/
+          action: sync+restart
+        - path: ./companies
+          target: /app/companies/
+          action: sync+restart
+        - path: ./industries
+          target: /app/industries/
+          action: sync+restart
         - path: ./requirements.txt
           action: rebuild
 
+  kis-mock-server:
+    build:
+      context: .
+      dockerfile: ./kis-publisher/Dockerfile
+    container_name: kis-mock-server
+    command: python mock_server.py
+    ports:
+      - "8080:8080"
+    environment:
+      - TZ=Asia/Seoul
+    networks:
+      - django-network
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import socket; s=socket.socket(); s.connect(('localhost', 8080)); s.close()" ]
+      interval: 3s
+      timeout: 2s
+      retries: 5
+      start_period: 3s
+
+  kis-publisher:
+    build:
+      context: .
+      dockerfile: ./kis-publisher/Dockerfile
+    container_name: kis-publisher
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-postgres}
+      - REDIS_HOST=redis
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - PYTHONUNBUFFERED=1
+      - KRX_SYMBOLS_CSV_PATH=/app/companies_data.csv
+      - KIS_SYMBOL_LIMIT=0
+      - KIS_USE_TEST_MODE=true
+      - KIS_TEST_WS_URL=ws://kis-mock-server:8080
+      - KIS_MAX_RECONNECT=3
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      kis-mock-server:
+        condition: service_healthy
+    networks:
+      - django-network
+    restart: on-failure
+    deploy:
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+
+  tick-writer:
+    build:
+      context: .
+      dockerfile: ./tick-writer/Dockerfile
+    container_name: tick-writer
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-postgres}
+      - PYTHONUNBUFFERED=1
+      - TZ=Asia/Seoul
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    networks:
+      - django-network
+    restart: always
+
+  celery-worker:
+    build: .
+    container_name: celery-worker
+    env_file:
+      - .env
+    command: celery -A config worker --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-postgres}
+      - REDIS_URL=redis://redis:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672/
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - OPENSEARCH_HOST=opensearch:9200
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    networks:
+      - django-network
+    restart: always
+
+  celery-beat:
+    build: .
+    container_name: celery-beat
+    env_file:
+      - .env
+    command: celery -A config beat --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-postgres}
+      - REDIS_URL=redis://redis:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672/
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - PYTHONUNBUFFERED=1
+      # 배치 작업 활성화 설정
+      # Gemini 토큰 사용하는 작업은 기본 비활성화
+      - NEWS_BATCH_ENABLED=${NEWS_BATCH_ENABLED:-false}
+      - DART_SYNC_ENABLED=${DART_SYNC_ENABLED:-true}
+      - REPORT_PROCESSING_ENABLED=${REPORT_PROCESSING_ENABLED:-false}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    networks:
+      - django-network
+    restart: always
+
+  flower:
+    build: .
+    container_name: celery-flower
+    env_file:
+      - .env
+    command: celery -A config flower --port=5555
+    ports:
+      - 5555:5555
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672/
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      celery-worker:
+        condition: service_started
+    networks:
+      - django-network
+    restart: always
+
+  tick-broadcaster:
+    build: .
+    container_name: tick-broadcaster
+    env_file:
+      - .env
+    command: python manage.py tick_broadcaster
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-postgres}
+      - REDIS_URL=redis://redis:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      app:
+        condition: service_healthy
+    networks:
+      - django-network
+    restart: always
+
+  # 모니터링 서비스
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/console_templates'
+    ports:
+      - "9090:9090"
+    networks:
+      - django-network
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: always
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - django-network
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    restart: always
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - "9100:9100"
+    networks:
+      - django-network
+    restart: always
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor
+    container_name: cadvisor
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "8081:8080" # kis-mock-server(8080)와 충돌 피하기 위해 호스트 포트 8081 사용
+    networks:
+      - django-network
+    restart: always
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres-exporter
+    environment:
+      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-postgres}?sslmode=disable
+    ports:
+      - "9187:9187"
+    networks:
+      - django-network
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: redis-exporter
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+    ports:
+      - "9121:9121"
+    networks:
+      - django-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+
 volumes:
-  mysql_data:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+  opensearch_data:
+  prometheus_data:
+  grafana_data:
 networks:
   django-network:
     driver: bridge

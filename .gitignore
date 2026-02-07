@@ -172,3 +172,14 @@ cython_debug/
 #.idea/
 
 # End of https://www.toptal.com/developers/gitignore/api/django
+
+.claude/
+
+docs_cache/
+
+# Deployment Data Directories
+postgres_data/
+redis_data/
+opensearch_data/
+prometheus_data/
+grafana_data/.idea/

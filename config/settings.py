@@ -10,27 +10,53 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+import os
 from pathlib import Path
+from urllib.parse import urlparse, quote
+from datetime import timedelta
+from dotenv import load_dotenv
+from celery.schedules import crontab
+from django.core.exceptions import ImproperlyConfigured
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# .env 파일 로드
+load_dotenv(BASE_DIR / ".env")
+
+# KIS API 설정 (환경 변수에서 읽어오기)
+KIS_APP_KEY = os.getenv("KIS_APP_KEY")
+KIS_APP_SECRET = os.getenv("KIS_APP_SECRET")
+
+DART_API_KEY = os.getenv("DART_API_KEY")
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-(1#88xs9ypkmy&q*2fudx_z@43%$atbm%_435xt_^izxmbv&n_"
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
-ALLOWED_HOSTS = ["*"]
+
+ALLOWED_HOSTS = [
+    host.strip() for host in os.getenv("ALLOWED_HOSTS", "").split(",") if host.strip()
+]
+
+if not DEBUG and not ALLOWED_HOSTS:
+    raise ImproperlyConfigured(
+        "ALLOWED_HOSTS environment variable must be set in production."
+    )
 
 
 # Application definition
 
 INSTALLED_APPS = [
+    "daphne",  # Channels ASGI 서버 (INSTALLED_APPS 최상단)
+    "django_prometheus",  # Prometheus 메트릭 (INSTALLED_APPS 상단에 위치)
+    "corsheaders",  # CORS 헤더 처리 (INSTALLED_APPS 상단에 위치)
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -38,9 +64,22 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    "drf_spectacular",
+    "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
+    # 만든 앱 등록
+    "industries",
+    "companies",
+    "comparisons",
+    "indices",
+    "core",
+    "news",
+    "users",
 ]
 
 MIDDLEWARE = [
+    "django_prometheus.middleware.PrometheusBeforeMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -48,6 +87,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "django_prometheus.middleware.PrometheusAfterMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -69,16 +109,273 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
+REST_FRAMEWORK = {
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ),
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Django API",
+    "DESCRIPTION": "Django REST API with TimescaleDB, Redis, OpenSearch",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    # API 문서 UI 설정
+    "SWAGGER_UI_SETTINGS": {
+        "deepLinking": True,  # 딥 링킹 활성화
+        "persistAuthorization": True,  # 인증 정보 유지
+        "displayOperationId": True,  # Operation ID 표시
+        "filter": True,  # 검색 필터 활성화
+        "docExpansion": "list",  # 기본적으로 태그만 펼쳐진 상태로 시작
+        "defaultModelsExpandDepth": 1,  # 스키마 모델 기본 펼침 깊이
+        "defaultModelExpandDepth": 1,  # 모델 기본 펼침 깊이
+    },
+    # 스키마 생성 설정
+    "COMPONENT_SPLIT_REQUEST": True,  # 요청/응답 스키마 분리
+    "SCHEMA_PATH_PREFIX": "/api/",  # API 경로 접두사
+    # 태그 정의 및 정렬 (이 순서대로 Swagger UI에 표시됨)
+    "TAGS": [
+        # 1. 시스템
+        {"name": "System", "description": "시스템 상태 및 헬스 체크"},
+        # 2. 사용자
+        {"name": "User", "description": "사용자 인증 및 즐겨찾기 관리"},
+        # 3. 기업 정보
+        {"name": "Company - Info", "description": "기업 기본 정보 및 재무 데이터 조회"},
+        {"name": "Company - Analysis", "description": "기업 전망 및 투자 분석"},
+        {"name": "Reports", "description": "기업 공시 및 보고서 조회"},
+        # 4. 뉴스
+        {"name": "News", "description": "기업 및 산업 관련 뉴스 조회"},
+        # 5. 산업
+        {"name": "Industry - Analysis", "description": "산업별 분석 및 전망"},
+        # 6. 순위
+        {"name": "Rankings", "description": "기업 및 산업 순위 조회"},
+        # 7. 비교
+        {"name": "Comparison", "description": "기업 비교 매치업 관리"},
+        # 8. 시장 지수
+        {"name": "Indices", "description": "KOSPI, KOSDAQ 등 시장 지수 조회"},
+        # 9. 관리자
+        {"name": "Admin", "description": "관리자 전용 기능 (데이터 동기화, 관리)"},
+    ],
+}
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-DATABASES = {
+# Parse DATABASE_URL or use environment variables
+if os.getenv("DATABASE_URL"):
+    db_url = urlparse(os.getenv("DATABASE_URL"))
+    DATABASES = {
+        "default": {
+            "ENGINE": "django_prometheus.db.backends.postgresql",
+            "NAME": db_url.path[1:],  # Remove leading '/'
+            "USER": db_url.username,
+            "PASSWORD": db_url.password,
+            "HOST": db_url.hostname,
+            "PORT": db_url.port or 5432,
+        }
+    }
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django_prometheus.db.backends.postgresql",
+            "NAME": os.getenv("POSTGRES_DB", "postgres"),
+            "USER": os.getenv("POSTGRES_USER", "postgres"),
+            "PASSWORD": os.getenv("POSTGRES_PASSWORD", ""),
+            "HOST": os.getenv("POSTGRES_HOST", "localhost"),
+            "PORT": os.getenv("POSTGRES_PORT", "5432"),
+        }
+    }
+
+# Redis Cache Configuration
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = os.getenv("REDIS_PORT", "6379")
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
+if REDIS_PASSWORD:
+    encoded_pwd = quote(REDIS_PASSWORD)
+    REDIS_URL = f"redis://:{encoded_pwd}@{REDIS_HOST}:{REDIS_PORT}/0"
+else:
+    REDIS_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
+
+CACHES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": REDIS_URL,
     }
 }
+
+# Redis Session Configuration (optional)
+SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+SESSION_CACHE_ALIAS = "default"
+
+# OpenSearch Configuration
+OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost:9200")
+OPENSEARCH_USE_SSL = os.getenv("OPENSEARCH_USE_SSL", "false").lower() == "true"
+OPENSEARCH_VERIFY_CERTS = (
+    os.getenv("OPENSEARCH_VERIFY_CERTS", "false").lower() == "true"
+)
+OPENSEARCH_USERNAME = os.getenv("OPENSEARCH_USERNAME", "admin")
+OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD", "")
+
+# Redis Channel Configuration
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [REDIS_URL],
+        },
+    },
+}
+
+# Celery Configuration
+# RabbitMQ를 Celery 브로커로 사용 (메시지 큐 처리)
+RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", RABBITMQ_URL)
+# Redis는 Result Backend로만 사용 (빠른 결과 조회)
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", REDIS_URL)
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = "Asia/Seoul"
+CELERY_ENABLE_UTC = False
+# Celery 6.0+ 호환성을 위한 설정
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+
+# KIS API Rate Limit: 초당 2회 제한 준수
+# KIS API를 호출하는 모든 태스크에 대해 rate limit 적용
+CELERY_TASK_ANNOTATIONS = {
+    "companies.tasks.kis_market_amount.sync_market_amount": {"rate_limit": "2/s"},
+    "companies.tasks.dart_sync.sync_company_info_from_dart": {"rate_limit": "2/s"},
+}
+
+# =============================================================================
+# 배치 작업 활성화 설정 (개발 환경에서 토큰 사용 절감)
+# =============================================================================
+# 환경변수로 개별 배치 작업을 활성화/비활성화할 수 있습니다.
+# 기본값은 모두 비활성화 (개발 환경 기본)
+# 프로덕션에서는 .env 파일에서 true로 설정하세요.
+
+# 뉴스 크롤링 배치 (Gemini 토큰 사용: 정제, 요약, 임베딩)
+NEWS_BATCH_ENABLED = os.getenv("NEWS_BATCH_ENABLED", "false").lower() == "true"
+
+# DART 동기화 배치 (DART OpenAPI - 무료, 기본 활성화)
+DART_SYNC_ENABLED = os.getenv("DART_SYNC_ENABLED", "true").lower() == "true"
+
+# 보고서 처리 배치 (Gemini 토큰 사용: 정제, 정보추출, 임베딩)
+REPORT_PROCESSING_ENABLED = (
+    os.getenv("REPORT_PROCESSING_ENABLED", "false").lower() == "true"
+)
+
+# 마켓 지수 데이터 동기화 활성화 설정
+MARKET_INDEX_SYNC_ENABLED = (
+    os.getenv("MARKET_INDEX_SYNC_ENABLED", "true").lower() == "true"
+)
+
+# =============================================================================
+# Celery Beat Schedule (주기적 작업 스케줄링)
+# 뉴스 크롤링: 매 3시간마다 실행 (오전 9시, 12시, 오후 3시, 6시, 9시, 자정)
+# 필요에 따라 주기를 조정할 수 있습니다 (예: 1시간, 6시간 등)
+CELERY_BEAT_SCHEDULE = {
+    "crawl-news-every-3-hours": {
+        "task": "news.tasks.workflows.scheduled_crawl_news",  # Canvas 워크플로우 사용
+        "schedule": 3 * 60 * 60,  # 3시간 (초 단위)
+        "kwargs": {
+            "keywords": ["AI", "반도체", "삼성전자", "SK하이닉스"],  # 기본 키워드
+            "max_articles_per_keyword": 10,
+        },
+    },
+    # 전체 기업 뉴스 동기화: 뉴스 크롤링 30분 후 실행 (OpenSearch 검색 → CompanyNews 매핑)
+    "sync-all-companies-news-every-3-hours": {
+        "task": "news.tasks.company_news.sync_all_companies_news_task",
+        "schedule": 3 * 60 * 60,  # 3시간 (초 단위)
+        "kwargs": {
+            "max_news": 20,
+            "days_back": 30,
+            "batch_size": 50,
+        },
+        "options": {"countdown": 30 * 60},  # 뉴스 크롤링 30분 후 실행
+    },
+    "sync-industry-charts-daily": {
+        # 오후 4시 10분에 실행
+        "task": "industries.tasks.index_sync.sync_industry_charts_daily",
+        "schedule": crontab(hour=16, minute=10),  # 매일 오후 4시 10분에 실행
+    },
+}
+
+
+# DART 동기화: 모두 일 1회 실행 (새벽 3시 통일)
+if DART_SYNC_ENABLED:
+    # DART 기업 정보 동기화: 일 1회 (새벽 3시)
+    CELERY_BEAT_SCHEDULE["sync-dart-company-info-daily"] = {
+        "task": "companies.tasks.dart_sync.sync_all_company_info",
+        "schedule": crontab(hour=3, minute=0),
+    }
+    # DART 재무제표 동기화: 일 1회 (새벽 3시) - 최근 3년치
+    CELERY_BEAT_SCHEDULE["sync-dart-financial-statements-daily"] = {
+        "task": "companies.tasks.dart_sync.sync_all_financial_statements",
+        "schedule": crontab(hour=3, minute=0),
+        "kwargs": {"years": 3},
+    }
+    # DART 보고서 목록 동기화: 일 1회 (새벽 3시)
+    CELERY_BEAT_SCHEDULE["sync-dart-reports-daily"] = {
+        "task": "companies.tasks.dart_sync.sync_all_reports",
+        "schedule": crontab(hour=3, minute=0),
+    }
+
+# 시가총액 갱신: 평일 장 마감 후 (16:10)
+# KIS REST API를 통해 전체 기업의 시가총액 배치 갱신
+# DART 동기화와 독립적으로 실행
+CELERY_BEAT_SCHEDULE["sync-market-amount-daily"] = {
+    "task": "companies.tasks.kis_market_amount.sync_all_market_amount",
+    "schedule": crontab(day_of_week="1-5", hour=16, minute=10),
+}
+
+# 마켓 지수 동기화 스케줄
+if MARKET_INDEX_SYNC_ENABLED:
+    CELERY_BEAT_SCHEDULE["sync-market-indices-test"] = {
+        "task": "indices.tasks.sync_indices_daily",
+        "schedule": crontab(hour=5, minute=0),  # 새벽 5시
+    }
+
+# =============================================================================
+# 주가 데이터 동기화 스케줄 (Continuous Aggregate → 통합 테이블)
+# =============================================================================
+# 장중(09:00~15:30)에만 실행되도록 설정
+STOCK_PRICE_SYNC_ENABLED = (
+    os.getenv("STOCK_PRICE_SYNC_ENABLED", "true").lower() == "true"
+)
+
+if STOCK_PRICE_SYNC_ENABLED:
+    # 1분봉: 30초마다 동기화
+    CELERY_BEAT_SCHEDULE["sync-stock-prices-1m"] = {
+        "task": "core.tasks.price_sync.sync_cagg_to_prices_1m",
+        "schedule": 30.0,  # 30초
+    }
+    # 15분봉: 5분마다 동기화
+    CELERY_BEAT_SCHEDULE["sync-stock-prices-15m"] = {
+        "task": "core.tasks.price_sync.sync_cagg_to_prices_15m",
+        "schedule": crontab(minute="*/5"),
+    }
+    # 1시간봉: 15분마다 동기화
+    CELERY_BEAT_SCHEDULE["sync-stock-prices-1h"] = {
+        "task": "core.tasks.price_sync.sync_cagg_to_prices_1h",
+        "schedule": crontab(minute="*/15"),
+    }
+    # 1일봉: 1시간마다 동기화
+    CELERY_BEAT_SCHEDULE["sync-stock-prices-1d"] = {
+        "task": "core.tasks.price_sync.sync_cagg_to_prices_1d",
+        "schedule": crontab(minute=0),
+    }
+
+# API Keys
+# 필수 API 키: 빈 문자열도 None으로 처리하여 명시적 검증 가능하도록 함
+NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID") or None
+NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET") or None
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or None
+# 선택 API 키: Jina는 무료 티어로도 동작 가능
+JINA_API_KEY = os.getenv("JINA_API_KEY") or None
+# Logo.dev API 키
+LOGO_DEV_PUB_KEY = os.getenv("LOGO_DEV_PUB_KEY") or None
 
 
 # Password validation
@@ -107,6 +404,7 @@ LANGUAGE_CODE = "ko-kr"
 
 TIME_ZONE = "Asia/Seoul"
 
+
 USE_TZ = True
 
 USE_I18N = True
@@ -116,3 +414,39 @@ USE_I18N = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "static"
+
+MEDIA_URL = "/media/"
+
+MEDIA_ROOT = BASE_DIR / "media"
+
+
+JWT_SIGNING_KEY = os.getenv("JWT_SIGNING_KEY", SECRET_KEY)
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
+    "ROTATE_REFRESH_TOKENS": True,  # [수정] 토큰 갱신 시 새로운 리프레시 토큰 발급
+    "BLACKLIST_AFTER_ROTATION": True,  # [추가] 갱신 전 사용된 토큰은 즉시 블랙리스트행
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": JWT_SIGNING_KEY,
+    "AUTH_HEADER_TYPES": ("Bearer",),
+}
+
+AUTHENTICATION_BACKENDS = [
+    "users.backends.EmailBackend",
+    "django.contrib.auth.backends.ModelBackend",
+]
+# Default primary key field type
+# https://docs.djangoproject.com/en/6.0/ref/settings/#default-auto-field
+
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# CORS Configuration
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",  # 프런트엔드 개발 서버
+    "http://127.0.0.1:5173",
+    "https://quasa.info",
+    "https://www.quasa.info",
+    "https://api.quasa.info",
+]

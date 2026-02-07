@@ -1,6 +1,65 @@
+# Django Core
 asgiref==3.11.0
-Django<=4.2.13
+Django==6.0.*
 djangorestframework==3.16.1
 sqlparse==0.5.5
-mysqlclient==2.2.4
-PyMySQL==1.1.1
+djangorestframework-simplejwt==5.3.1
+django-cors-headers==4.7.0
+
+# Database
+psycopg2-binary>=2.9.9
+
+# Search Engine
+opensearch-py==2.4.0
+
+# API Documentation
+drf-spectacular==0.27.0
+
+# WebSocket
+websockets
+
+# Cache & Message Broker
+redis==5.0.1
+aio-pika>=9.0.0
+celery>=5.4.0
+flower
+
+# HTTP & Async
+aiohttp
+requests==2.31.0
+
+# Environment
+python-dotenv
+
+# Django Channels
+channels>=4.0,<5.0
+channels-redis>=4.0,<5.0
+daphne>=4.0,<5.0
+
+# Django Extensions
+django-extensions
+
+# Prometheus
+django-prometheus>=2.3.1
+
+# Web Scraping & Parsing
+beautifulsoup4==4.12.2
+lxml>=5.0.0
+trafilatura==2.0.0
+xmltodict>=0.13.0  # DART API XML 파싱용
+
+# Date Utilities
+python-dateutil
+
+# AI & ML
+google-genai>=1.57.0
+scikit-learn
+numpy
+
+# Stock Data
+yfinance>=0.2.36
+pandas>=2.0.0
+
+# DART API
+opendartreader>=0.2.3
+finance-datareader>=0.9.50

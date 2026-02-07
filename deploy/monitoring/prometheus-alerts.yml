@@ -1,0 +1,134 @@
+groups:
+  # 인프라 알림
+  - name: infrastructure
+    interval: 30s
+    rules:
+      # CPU 사용률
+      - alert: HighCPUUsage
+        expr: 100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU 사용률이 80% 초과했습니다"
+          description: "{{ $labels.instance }}의 CPU 사용률이 {{ $value | humanizePercentage }}입니다"
+
+      # 메모리 사용률
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "메모리 사용률이 85% 초과했습니다"
+          description: "{{ $labels.instance }}의 메모리 사용률이 {{ $value | humanizePercentage }}입니다"
+
+      # 디스크 사용률
+      - alert: HighDiskUsage
+        expr: (node_filesystem_size_bytes{mountpoint="/"} - node_filesystem_avail_bytes{mountpoint="/"}) / node_filesystem_size_bytes{mountpoint="/"} * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "디스크 사용률이 85% 초과했습니다"
+          description: "{{ $labels.instance }}의 디스크 사용률이 {{ $value | humanizePercentage }}입니다"
+
+      - alert: CriticalDiskUsage
+        expr: (node_filesystem_size_bytes{mountpoint="/"} - node_filesystem_avail_bytes{mountpoint="/"}) / node_filesystem_size_bytes{mountpoint="/"} * 100 > 95
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "디스크 사용률이 95% 초과했습니다 (긴급)"
+          description: "{{ $labels.instance }}의 디스크 사용률이 {{ $value | humanizePercentage }}입니다. 즉시 조치가 필요합니다."
+
+  # 데이터베이스 알림
+  - name: database
+    interval: 30s
+    rules:
+      # PostgreSQL 다운
+      - alert: PostgreSQLDown
+        expr: up{job="postgres-exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL이 다운되었습니다"
+          description: "PostgreSQL에 연결할 수 없습니다. 즉시 확인이 필요합니다."
+
+      # Redis 다운
+      - alert: RedisDown
+        expr: up{job="redis-exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis가 다운되었습니다"
+          description: "Redis에 연결할 수 없습니다. 즉시 확인이 필요합니다."
+
+      # PostgreSQL 연결 수 높음
+      - alert: PostgreSQLHighConnections
+        expr: sum(pg_stat_activity_count) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL 연결 수가 80개를 초과했습니다"
+          description: "현재 연결 수: {{ $value }}개"
+
+      # Redis 메모리 사용률 높음
+      - alert: RedisHighMemoryUsage
+        expr: redis_memory_max_bytes > 0 and (redis_memory_used_bytes / redis_memory_max_bytes * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis 메모리 사용률이 80% 초과했습니다"
+          description: "Redis 메모리 사용률: {{ $value | humanizePercentage }}"
+
+  # 애플리케이션 알림
+  - name: application
+    interval: 30s
+    rules:
+      # Django 앱 다운
+      - alert: DjangoAppDown
+        expr: up{job="django-app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Django 애플리케이션이 다운되었습니다"
+          description: "Django 애플리케이션에 연결할 수 없습니다."
+
+      # 5xx 에러율 높음 (전체 요청 대비 10% 초과)
+      - alert: HighErrorRate
+        expr: sum(rate(django_http_responses_total_by_status_total{status=~"5.."}[5m])) / sum(rate(django_http_responses_total_by_status_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "5xx 에러율이 높습니다"
+          description: "5xx 에러율: {{ $value | humanizePercentage }}"
+
+      # 응답 시간 높음 (P95)
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, rate(django_http_request_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API 응답 시간이 1초를 초과했습니다 (P95)"
+          description: "P95 응답 시간: {{ $value }}초"
+
+  # Node Exporter 알림
+  - name: node_exporter
+    interval: 30s
+    rules:
+      - alert: NodeExporterDown
+        expr: up{job=~"node-exporter.*"} == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Node Exporter가 다운되었습니다"
+          description: "{{ $labels.instance }}의 Node Exporter가 다운되었습니다. 메트릭 수집이 중단되었습니다."
