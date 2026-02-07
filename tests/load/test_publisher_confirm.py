@@ -129,9 +129,9 @@ async def test_publisher_confirm_basic(
                     f"(성공률: {metrics.success_rate:.1f}%)"
                 )
 
-        # 큐 정리
-        await queue.delete()
-        await exchange.delete()
+        # 큐 정리 (메시지가 남아있어도 삭제)
+        await queue.delete(if_empty=False, if_unused=False)
+        await exchange.delete(if_unused=False)
 
     finally:
         await connection.close()
@@ -186,7 +186,7 @@ async def test_publisher_confirm_failure(
             result["error_type"] = type(e).__name__
             result["error_message"] = str(e)
 
-        await exchange.delete()
+        await exchange.delete(if_unused=False)
 
     finally:
         await connection.close()
@@ -273,8 +273,8 @@ async def test_publisher_confirm_under_load(
         )
 
         # 정리
-        await queue.delete()
-        await exchange.delete()
+        await queue.delete(if_empty=False, if_unused=False)
+        await exchange.delete(if_unused=False)
 
     finally:
         await connection.close()

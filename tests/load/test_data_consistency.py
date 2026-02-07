@@ -332,8 +332,8 @@ async def test_data_consistency(
                     )
 
             # 정리
-            await queue.delete()
-            await exchange.delete()
+            await queue.delete(if_empty=False, if_unused=False)
+            await exchange.delete(if_unused=False)
 
         finally:
             await rmq_connection.close()

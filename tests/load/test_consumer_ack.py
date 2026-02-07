@@ -128,15 +128,11 @@ async def test_consumer_ack_basic(
             except asyncio.TimeoutError:
                 pass
 
-        # 큐에 남은 메시지 확인
-        queue_info = await queue.declare(passive=True)
-        remaining = queue_info.message_count
-
-        print(f"[CONSUMER] 처리 완료: {processed}개, 큐 잔여: {remaining}개")
+        print(f"[CONSUMER] 처리 완료: {processed}개")
 
         # 정리
-        await queue.delete()
-        await exchange.delete()
+        await queue.delete(if_empty=False, if_unused=False)
+        await exchange.delete(if_unused=False)
 
     finally:
         await connection.close()
@@ -240,8 +236,8 @@ async def test_consumer_requeue(
             )
 
         # 정리
-        await queue.delete()
-        await exchange.delete()
+        await queue.delete(if_empty=False, if_unused=False)
+        await exchange.delete(if_unused=False)
 
     finally:
         await connection.close()
@@ -324,8 +320,8 @@ async def test_consumer_prefetch(
         )
 
         # 정리
-        await queue.delete()
-        await exchange.delete()
+        await queue.delete(if_empty=False, if_unused=False)
+        await exchange.delete(if_unused=False)
 
     finally:
         await connection.close()
