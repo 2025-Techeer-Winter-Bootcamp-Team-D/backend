@@ -103,10 +103,10 @@ jobs:
             context: .
             file: ./kis-publisher/Dockerfile
             image: kis-publisher
-          - service: persistence-worker
+          - service: tick-writer
             context: .
-            file: ./persistence-worker/Dockerfile
-            image: persistence-worker
+            file: ./tick-writer/Dockerfile
+            image: tick-writer
 
     steps:
       - uses: actions/checkout@v4
