@@ -15,10 +15,15 @@ QUEUE_NAME = "stock.ticks.writer"
 
 
 class TickWriter:
-    """RabbitMQ에서 주가 틱 데이터를 받아 TimescaleDB에 배치 저장하는 워커"""
+    """RabbitMQ에서 주가 틱 데이터를 받아 TimescaleDB에 배치 저장하는 워커.
+
+    수동 ACK/NACK:
+    - DB 저장 성공 후에만 메시지 ACK
+    - 저장 실패 시 NACK (requeue=True)로 재처리
+    """
 
     def __init__(self):
-        self.buffer = []
+        self.buffer = []  # {"data": dict, "message": IncomingMessage} 형태로 저장
         self.lock = asyncio.Lock()
         self.batch_size = 200
         self.flush_interval = 5  # 5초마다 버퍼 비우기
@@ -33,6 +38,7 @@ class TickWriter:
         return datetime(today.year, today.month, today.day, hour, minute, second)
 
     async def save_to_database(self, pool):
+        """배치 데이터를 DB에 저장하고 수동 ACK/NACK 처리."""
         if not self.buffer:
             return
 
@@ -42,6 +48,10 @@ class TickWriter:
 
         if not current_batch:
             return
+
+        # 메시지와 데이터 분리
+        messages = [item["message"] for item in current_batch]
+        data_list = [item["data"] for item in current_batch]
 
         try:
             async with pool.acquire() as conn:
@@ -65,23 +75,34 @@ class TickWriter:
                         int(r["price"]),
                         int(r["volume"]),
                     )
-                    for r in current_batch
+                    for r in data_list
                     if r.get("stock_code")
                 ]
 
                 if records:
                     await conn.executemany(insert_query, records)
                     print(f"[DB] Saved {len(records)} rows to database")
+
+                    # 저장 성공 → 모든 메시지 수동 ACK
+                    for msg in messages:
+                        await msg.ack()
+                    print(f"[ACK] Acknowledged {len(messages)} messages")
                 else:
                     print("[DB] No valid records to save (missing stock_code)")
+                    # 유효하지 않은 데이터는 버림 (ACK)
+                    for msg in messages:
+                        await msg.ack()
 
         except Exception as e:
             print(f"[ERROR] Error saving to database: {e}")
-            # 실패 시 버퍼 복구 (재처리 위해)
-            async with self.lock:
-                self.buffer = current_batch + self.buffer
-            print(f"[BUFFER] Restored: {len(self.buffer)} rows (will retry)")
-            raise  # 예외를 상위로 전파하여 RabbitMQ에서 NACK 처리
+            # 저장 실패 → 모든 메시지 수동 NACK (재큐잉)
+            for msg in messages:
+                try:
+                    await msg.nack(requeue=True)
+                except Exception as nack_err:
+                    print(f"[ERROR] Failed to NACK message: {nack_err}")
+            print(f"[NACK] Requeued {len(messages)} messages for retry")
+            raise
 
     async def run(self):
         print("[INIT] Starting TickWriter (RabbitMQ → TimescaleDB)...")
@@ -131,37 +152,36 @@ class TickWriter:
 
             message_count = 0
 
-            # Consumer
+            # Consumer (수동 ACK/NACK 모드)
             async with queue.iterator() as queue_iter:
                 async for message in queue_iter:
                     try:
-                        async with message.process(requeue=True):  # 실패 시 재큐잉
-                            message_count += 1
+                        message_count += 1
 
-                            # 메시지 파싱
-                            data = json.loads(message.body)
+                        # 메시지 파싱
+                        data = json.loads(message.body)
 
-                            # 버퍼에 추가
-                            async with self.lock:
-                                self.buffer.append(data)
+                        # 버퍼에 메시지와 데이터 함께 저장 (나중에 ACK/NACK 위해)
+                        async with self.lock:
+                            self.buffer.append({"data": data, "message": message})
 
-                            if message_count % 50 == 0:
-                                print(
-                                    f"[RECV] Processed {message_count} messages, buffer={len(self.buffer)}"
-                                )
+                        if message_count % 50 == 0:
+                            print(
+                                f"[RECV] Received {message_count} messages, buffer={len(self.buffer)}"
+                            )
 
-                            # 배치 크기 도달 시 즉시 저장
-                            if len(self.buffer) >= self.batch_size:
-                                await self.save_to_database(pool)
+                        # 배치 크기 도달 시 즉시 저장 (저장 후 ACK)
+                        if len(self.buffer) >= self.batch_size:
+                            await self.save_to_database(pool)
 
                     except json.JSONDecodeError as e:
                         print(f"[ERROR] JSON decode error: {e}")
-                        # JSON 파싱 실패 시 메시지 버림 (ACK)
+                        # JSON 파싱 실패 시 메시지 버림 (수동 ACK)
                         await message.ack()
                     except Exception as e:
                         print(f"[ERROR] Error processing message: {e}")
-                        # 예외 발생 시 NACK (재큐잉)
-                        # message.process(requeue=True)가 자동으로 처리
+                        # 예외 발생 시 수동 NACK (재큐잉)
+                        await message.nack(requeue=True)
 
         except Exception as e:
             print(f"[FATAL] Error in run(): {e}")

@@ -2,6 +2,10 @@
 RabbitMQ에서 실시간 주가 틱 데이터를 구독하여 WebSocket 클라이언트에게 브로드캐스트.
 
 종목별 Channels 그룹(stock_{code})으로 선택적 전송.
+
+수동 ACK/NACK:
+- 브로드캐스트 성공 후에만 메시지 ACK
+- 실패 시 NACK (requeue=True)로 재처리
 """
 
 import asyncio
@@ -75,54 +79,56 @@ class Command(BaseCommand):
         message_count = 0
         broadcast_count = 0
 
-        # Consumer
+        # Consumer (수동 ACK/NACK 모드)
         async with queue.iterator() as queue_iter:
             async for message in queue_iter:
                 try:
-                    async with message.process():  # 자동 ACK
-                        message_count += 1
+                    message_count += 1
 
-                        # 메시지 파싱
-                        data = json.loads(message.body)
+                    # 메시지 파싱
+                    data = json.loads(message.body)
 
-                        # 데이터 추출
-                        stock_code = data.get("stock_code", "N/A")
-                        symbol = data.get("symbol", "N/A")
-                        time_str = data.get("time", "N/A")
-                        price = data.get("price", "N/A")
-                        volume = data.get("volume", "N/A")
+                    # 데이터 추출
+                    stock_code = data.get("stock_code", "N/A")
+                    symbol = data.get("symbol", "N/A")
+                    time_str = data.get("time", "N/A")
+                    price = data.get("price", "N/A")
+                    volume = data.get("volume", "N/A")
 
-                        # 종목별 그룹으로 브로드캐스트
-                        group_name = f"stock_{stock_code}"
-                        await channel_layer.group_send(
-                            group_name,
-                            {
-                                "type": "stock_price_update",
-                                "stock_code": stock_code,
-                                "symbol": symbol,
-                                "time": time_str,
-                                "price": price,
-                                "volume": volume,
-                            },
-                        )
-                        broadcast_count += 1
+                    # 종목별 그룹으로 브로드캐스트
+                    group_name = f"stock_{stock_code}"
+                    await channel_layer.group_send(
+                        group_name,
+                        {
+                            "type": "stock_price_update",
+                            "stock_code": stock_code,
+                            "symbol": symbol,
+                            "time": time_str,
+                            "price": price,
+                            "volume": volume,
+                        },
+                    )
+                    broadcast_count += 1
 
-                        # 로그 출력 (100개마다)
-                        if message_count % 100 == 0:
-                            self.stdout.write(
-                                self.style.SUCCESS(
-                                    f"[BROADCAST] Processed {message_count} messages, "
-                                    f"broadcasted {broadcast_count} to stock groups"
-                                )
+                    # 브로드캐스트 성공 → 수동 ACK
+                    await message.ack()
+
+                    # 로그 출력 (100개마다)
+                    if message_count % 100 == 0:
+                        self.stdout.write(
+                            self.style.SUCCESS(
+                                f"[BROADCAST] Processed {message_count} messages, "
+                                f"broadcasted {broadcast_count} to stock groups"
                             )
+                        )
 
                 except json.JSONDecodeError as e:
                     self.stdout.write(self.style.ERROR(f"[ERROR] JSON decode error: {e}"))
-                    # JSON 파싱 실패 시 메시지 버림 (ACK)
+                    # JSON 파싱 실패 시 메시지 버림 (수동 ACK)
                     await message.ack()
                 except Exception as e:
                     self.stdout.write(self.style.ERROR(f"[ERROR] Unexpected error: {e}"))
                     import traceback
                     traceback.print_exc()
-                    # 예외 발생 시 NACK (재큐잉)
-                    # message.process()가 자동으로 처리
+                    # 예외 발생 시 수동 NACK (재큐잉)
+                    await message.nack(requeue=True)

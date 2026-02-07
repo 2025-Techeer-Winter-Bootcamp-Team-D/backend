@@ -91,24 +91,38 @@ Max Length: 100,000
 | **Message Persistence** | ✅ 구현됨 | `PERSISTENT` 모드로 디스크 저장 |
 | **Durable Queue** | ✅ 구현됨 | RabbitMQ 재시작 후에도 큐 유지 |
 
-### Consumer ACK 동작
+### Consumer ACK 동작 (수동 ACK/NACK)
 
 ```python
-# tick-writer
-async with message.process(requeue=True):
-    # 정상 완료 → 자동 ACK
-    # 예외 발생 → 자동 NACK + 재큐잉
+# tick-writer (수동 ACK/NACK)
+async for message in queue_iter:
+    try:
+        data = json.loads(message.body)
+        self.buffer.append({"data": data, "message": message})
 
-except json.JSONDecodeError:
-    await message.ack()  # 파싱 불가 메시지는 버림
+        if len(self.buffer) >= self.batch_size:
+            await self.save_to_database(pool)  # DB 저장 성공 시 ACK
+    except json.JSONDecodeError:
+        await message.ack()  # 파싱 불가 메시지는 버림
+    except Exception:
+        await message.nack(requeue=True)  # 재처리
+
+# save_to_database() 내부
+try:
+    await conn.executemany(...)
+    for msg in messages:
+        await msg.ack()  # 저장 성공 → 수동 ACK
+except Exception:
+    for msg in messages:
+        await msg.nack(requeue=True)  # 저장 실패 → 수동 NACK
 ```
 
 | 상황 | 동작 | 결과 |
 |------|------|------|
-| 정상 처리 | ACK | 큐에서 제거 |
-| JSON 파싱 실패 | ACK | 큐에서 제거 (버림) |
-| DB 저장 실패 | NACK + requeue | 재시도 |
-| 기타 예외 | NACK + requeue | 재시도 |
+| DB 저장 성공 | 수동 ACK | 큐에서 제거 |
+| JSON 파싱 실패 | 수동 ACK | 큐에서 제거 (버림) |
+| DB 저장 실패 | 수동 NACK + requeue | 재시도 |
+| 기타 예외 | 수동 NACK + requeue | 재시도 |
 
 ### 데이터 유실 위험 지점
 

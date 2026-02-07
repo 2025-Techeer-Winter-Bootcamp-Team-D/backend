@@ -24,12 +24,12 @@ RabbitMQ를 통한 실시간 주가 데이터 통신 시스템의 안정성과 �
          │                │
 ┌────────▼────────┐  ┌────▼────────────┐
 │ Queue:          │  │ Queue:          │
-│ .persistence    │  │ .channels       │
+│ .writer         │  │ .broadcast      │
 └────────┬────────┘  └────────┬────────┘
          │                    │
 ┌────────▼────────────┐  ┌────▼────────────────┐
-│ tick-writer  │  │ tick_broadcaster   │
-│ (Consumer ACK)      │  │ (Consumer ACK)      │
+│ tick-writer         │  │ tick_broadcaster    │
+│ (수동 ACK)          │  │ (수동 ACK)          │
 └────────┬────────────┘  └───────────────────┘
          │
 ┌────────▼────────────┐
@@ -45,8 +45,8 @@ RabbitMQ를 통한 실시간 주가 데이터 통신 시스템의 안정성과 �
 |----------|----------|-----------|
 | Publisher Confirms | `publisher_confirms=True` | `kis-publisher/main.py:391` |
 | Confirm Metrics | `PublishMetrics` 클래스 | `kis-publisher/main.py:58-90` |
-| Consumer ACK (persistence) | `requeue=True` | `tick-writer/main.py:133` |
-| Consumer ACK (channels) | 자동 ACK | `core/management/commands/tick_broadcaster.py:79` |
+| Consumer ACK (writer) | 수동 ACK (DB 저장 성공 후) | `tick-writer/main.py` |
+| Consumer ACK (broadcast) | 수동 ACK (브로드캐스트 성공 후) | `core/management/commands/tick_broadcaster.py` |
 | QoS 설정 | prefetch 200/100 | 각 워커 설정 |
 
 ---
