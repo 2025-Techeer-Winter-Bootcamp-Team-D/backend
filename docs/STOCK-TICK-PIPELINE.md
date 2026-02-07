@@ -220,3 +220,44 @@ async def save_to_database(self, pool):
         print(f"[NACK] Requeued {len(messages)} messages for retry")
         raise
 ```
+
+**DB 저장 + ACK/NACK 동작 방식:**
+
+1. 버퍼에서 배치 추출 → 버퍼 비움 (새 메시지 수신 가능)
+2. 메시지 객체와 데이터 분리
+3. `executemany()`로 배치 INSERT (UPSERT)
+4. **성공** → 배치 내 모든 메시지 ACK
+5. **실패** → 배치 내 모든 메시지 NACK (재큐잉)
+
+```
+tick-writer                  TimescaleDB                 RabbitMQ
+    │                              │                         │
+    │  current_batch = buffer      │                         │
+    │  buffer = []                 │                         │
+    │                              │                         │
+    │──── executemany() ──────────>│                         │
+    │                              │                         │
+    │  [성공]                       │                         │
+    │<─────── OK ──────────────────│                         │
+    │                              │                         │
+    │──────────────────── ack() ─────────────────────────────>│ × N개
+    │                              │                         │
+    │  [실패]                       │                         │
+    │<─────── Error ───────────────│                         │
+    │                              │                         │
+    │────────────────── nack(requeue) ───────────────────────>│ × N개
+```
+
+**UPSERT 전략 (`ON CONFLICT`):**
+
+```sql
+ON CONFLICT (stock_code, time) DO UPDATE SET
+    price = EXCLUDED.price,                    -- 최신 가격으로 덮어쓰기
+    volume = stock_ticks.volume + EXCLUDED.volume,  -- 거래량 누적
+    symbol = COALESCE(EXCLUDED.symbol, stock_ticks.symbol)  -- NULL 방지
+```
+
+| 상황 | 동작 |
+|------|------|
+| 새 데이터 | INSERT |
+| 중복 (stock_code, time) | UPDATE (가격 갱신, 거래량 누적) |
